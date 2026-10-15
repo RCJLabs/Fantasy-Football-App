@@ -46,7 +46,20 @@ export interface RawRoster {
     fpts?: number;
     fpts_decimal?: number;
     waiver_budget_used?: number;
+    waiver_position?: number;
   } | null;
+}
+
+/** Row of /league/{id}/transactions/{week} (verified on real leagues 2026-10-15). */
+export interface RawTransaction {
+  type: 'waiver' | 'free_agent' | 'trade' | (string & {});
+  status: 'complete' | 'failed' | (string & {});
+  leg: number;
+  adds?: Record<string, number> | null;
+  drops?: Record<string, number> | null;
+  roster_ids?: number[] | null;
+  settings?: { waiver_bid?: number; seq?: number } | null;
+  metadata?: { notes?: string } | null;
 }
 
 export interface RawMatchup {

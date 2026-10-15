@@ -22,9 +22,12 @@ export function parseLeagueRules(raw: RawLeague): LeagueRules {
   const opt: Array<[keyof LeagueRules, string]> = [
     ['playoffWeekStart', 'playoff_week_start'],
     ['playoffTeams', 'playoff_teams'],
+    ['playoffRoundType', 'playoff_round_type'],
     ['tradeDeadline', 'trade_deadline'],
     ['waiverType', 'waiver_type'],
     ['waiverBudget', 'waiver_budget'],
+    ['waiverBidMin', 'waiver_bid_min'],
+    ['lastScoredWeek', 'last_scored_leg'],
   ];
   for (const [key, rawKey] of opt) {
     const v = num(s[rawKey]);
@@ -62,6 +65,7 @@ export function parseRoster(raw: RawRoster): Roster {
     losses: s.losses ?? 0,
     ties: s.ties ?? 0,
     pointsFor: (s.fpts ?? 0) + (s.fpts_decimal ?? 0) / 100,
+    waiverBudgetUsed: s.waiver_budget_used ?? 0,
   };
 }
 

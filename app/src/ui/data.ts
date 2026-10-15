@@ -1,7 +1,20 @@
-import { analyzeLineup, analyzeWaivers, type LineupAnalysis, type WaiverRow, type WeekContext } from '../analysis/analyze';
+import { analyzeLineup, type LineupAnalysis, type WeekContext } from '../analysis/analyze';
+import { buildOutlook, type LeagueOutlook } from '../analysis/outlook';
+import { projectionPositions, regularSeasonEnd, seasonEnd } from '../analysis/ros';
 import type { League, Roster } from '../domain/types';
-import { loadLeagueData, loadLeagues, loadState, loadTrending, loadWeek, type DataNotes, type LeagueData } from '../data/repo';
+import {
+  loadLeagueData,
+  loadLeagues,
+  loadRosWeeks,
+  loadSchedule,
+  loadState,
+  loadWaiverClaims,
+  loadWeek,
+  type DataNotes,
+  type LeagueData,
+} from '../data/repo';
 import { findUserRoster } from '../sleeper/parse';
+import type { RawTransaction } from '../sleeper/raw';
 import type { Session } from './session';
 
 export interface Overview {
@@ -53,10 +66,38 @@ export async function loadLeagueBundle(league: League, week: number, session: Se
   return bundle;
 }
 
-export async function loadWaivers(bundle: LeagueBundle): Promise<WaiverRow[]> {
-  if (!bundle.myRoster) return [];
-  const trending = await loadTrending();
-  return analyzeWaivers(bundle.league, bundle.data.rosters, bundle.myRoster, bundle.ctx, trending);
+export interface SeasonBundle {
+  outlook: LeagueOutlook;
+  /** Future weeks whose projections couldn't be loaded (valued as zero). */
+  missingWeeks: number[];
+  claims: RawTransaction[];
+}
+
+const range = (from: number, to: number) => Array.from({ length: Math.max(0, to - from + 1) }, (_, i) => from + i);
+
+// Waivers, Trade and Season tabs share one rest-of-season load per league bundle.
+const seasonMemo = new WeakMap<LeagueBundle, Promise<SeasonBundle>>();
+export function loadSeason(bundle: LeagueBundle): Promise<SeasonBundle> {
+  let p = seasonMemo.get(bundle);
+  if (!p) {
+    p = buildSeason(bundle);
+    seasonMemo.set(bundle, p);
+    p.catch(() => seasonMemo.delete(bundle));
+  }
+  return p;
+}
+
+async function buildSeason(bundle: LeagueBundle): Promise<SeasonBundle> {
+  const { league, week, data, ctx } = bundle;
+  const weeks = range(week + 1, seasonEnd(league));
+  const [ros, schedule, claims] = await Promise.all([
+    loadRosWeeks(league.season, weeks, projectionPositions(league)),
+    loadSchedule(league.id, weeks.filter((w) => w <= regularSeasonEnd(league))),
+    league.rules.waiverType === 2 ? loadWaiverClaims(league.id, week).catch(() => []) : Promise.resolve([]),
+  ]);
+  if (weeks.length && ros.missing.length === weeks.length) throw new Error('Could not load future-week projections from Sleeper.');
+  const outlook = buildOutlook({ league, rosters: data.rosters, users: data.users, matchups: data.matchups, ctx, byWeek: ros.byWeek, schedule });
+  return { outlook, missingWeeks: ros.missing, claims };
 }
 
 export async function findLeague(session: Session, leagueId: string, force: boolean): Promise<{ overview: Overview; league: League }> {

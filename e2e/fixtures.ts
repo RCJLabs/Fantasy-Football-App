@@ -1,7 +1,7 @@
 // Mock Sleeper responses and pipeline data files for the end-to-end test. Shapes follow the live
 // responses recorded in docs/spikes.md; names and numbers are invented.
 import type { CompactPlayer, PlayersFile, ScheduleFile } from '../app/src/data/contracts';
-import type { RawLeague, RawMatchup, RawProjection, RawRoster } from '../app/src/sleeper/raw';
+import type { RawLeague, RawMatchup, RawProjection, RawRoster, RawTransaction } from '../app/src/sleeper/raw';
 
 const H = 3_600_000;
 export const now = Date.now();
@@ -18,7 +18,19 @@ export const league: RawLeague = {
   total_rosters: 4,
   roster_positions: ['QB', 'RB', 'RB', 'WR', 'WR', 'TE', 'FLEX', 'K', 'DEF', 'BN', 'BN', 'BN', 'BN'],
   scoring_settings: { pass_yd: 0.04, pass_td: 4, pass_int: -1, rush_yd: 0.1, rush_td: 6, rec: 0.5, rec_yd: 0.1, rec_td: 6, fum_lost: -2, bonus_rec_te: 0.5, fgm: 3, xpm: 1, sack: 1, int: 2, fum_rec: 2, pts_allow_0: 10, pts_allow_1_6: 7, pts_allow_7_13: 4, pts_allow_14_20: 1, pts_allow_28_34: -1, pts_allow_35p: -4 },
-  settings: { type: 0, num_teams: 4, league_average_match: 1, playoff_week_start: 15, trade_deadline: 11, reserve_slots: 1, reserve_allow_out: 1, waiver_budget: 100, waiver_type: 2 },
+  settings: {
+    type: 0,
+    num_teams: 4,
+    league_average_match: 1,
+    playoff_week_start: 15,
+    playoff_teams: 2,
+    trade_deadline: 11,
+    reserve_slots: 1,
+    reserve_allow_out: 1,
+    waiver_budget: 100,
+    waiver_type: 2,
+    last_scored_leg: 5,
+  },
 };
 export const otherLeague: RawLeague = { ...league, league_id: '1002', name: 'Dynasty Startup', status: 'pre_draft', settings: { ...league.settings, type: 2 } };
 
@@ -54,13 +66,20 @@ const PLAYERS: P[] = [
   ['o2', 'Opp Rusher', 'RB', 'DDD', { rush_yd: 75, rush_td: 0.55, rec: 2, rec_yd: 12 }],
 ];
 
-export const projections: RawProjection[] = PLAYERS.map(([id, name, pos, team, stats, injury]) => ({
+const projectionRow = ([id, name, pos, team, stats, injury]: P, sidelined: boolean): RawProjection => ({
   player_id: id,
-  stats: injury === 'Out' || injury === 'IR' ? {} : stats,
+  // Sleeper rows carry pts_ppr; the rest-of-season cache uses it to skip near-zero players.
+  stats: sidelined ? {} : { ...stats, pts_ppr: 10 },
   team,
   company: 'rotowire',
   player: { first_name: name.split(' ')[0], last_name: name.split(' ').slice(1).join(' '), position: pos, fantasy_positions: [pos], team, injury_status: injury ?? null },
-}));
+});
+
+export const projections: RawProjection[] = PLAYERS.map((p) => projectionRow(p, p[5] === 'Out' || p[5] === 'IR'));
+
+/** Weeks 7+: the Out RB is back; team GGG is on bye in week 8. */
+export const futureProjections = (week: number): RawProjection[] =>
+  PLAYERS.filter((p) => !(week === 8 && p[3] === 'GGG')).map((p) => projectionRow(p, p[5] === 'IR'));
 
 export const playersFile: PlayersFile = {
   schemaVersion: 1,
@@ -86,7 +105,7 @@ const me: RawRoster = {
   players: ['q1', 'r1', 'r2', 'r3', 'r4', 'w1', 'w2', 'w3', 't1', 'k1', 'd1', 'ir'],
   starters: ['q1', 'r1', 'r3', 'w1', 'w2', 't1', 'w3', 'k1', 'd1'],
   reserve: ['ir'],
-  settings: { wins: 4, losses: 1, fpts: 612 },
+  settings: { wins: 4, losses: 1, fpts: 612, waiver_budget_used: 30 },
 };
 const opp: RawRoster = { roster_id: 2, owner_id: 'u2', players: ['o1', 'o2'], starters: ['o1', 'o2', '0', '0', '0', '0', '0', '0', '0'], settings: { wins: 3, losses: 2 } };
 export const rosters: RawRoster[] = [me, opp, { roster_id: 3, owner_id: 'u3', players: [], starters: [] }, { roster_id: 4, owner_id: 'u4', players: [], starters: [] }];
@@ -102,6 +121,27 @@ export const matchups: RawMatchup[] = [
   { roster_id: 3, matchup_id: 2, starters: [], players: [], points: 0 },
   { roster_id: 4, matchup_id: 2, starters: [], players: [], points: 0 },
 ];
+/** Regular season runs through week 14: pairings rotate among the four teams. */
+export const futureMatchups = (week: number): RawMatchup[] => {
+  const pairs = [
+    [[1, 3], [2, 4]],
+    [[1, 4], [2, 3]],
+    [[1, 2], [3, 4]],
+  ][week % 3]!;
+  return pairs.flatMap(([a, b], i) => [a!, b!].map((r) => ({ roster_id: r, matchup_id: i + 1, starters: [], players: [], points: 0 })));
+};
+
+/** Winning and losing FAAB claims for weeks 1–5. */
+export const transactions: RawTransaction[] = [
+  [1, 'x1', 32],
+  [1, 'x2', 14],
+  [2, 'x3', 21],
+  [2, 'x4', 6],
+  [3, 'x5', 11],
+  [4, 'x6', 3],
+  [5, 'x7', 18],
+].map(([leg, id, bid]) => ({ type: 'waiver', status: 'complete', leg: leg as number, adds: { [id as string]: 2 }, settings: { waiver_bid: bid as number } }));
+
 export const trending = [
   { player_id: 'fa2', count: 1520 },
   { player_id: 'fa1', count: 830 },

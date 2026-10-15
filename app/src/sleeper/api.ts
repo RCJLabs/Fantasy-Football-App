@@ -1,8 +1,8 @@
-import type { RawLeague, RawMatchup, RawPlayer, RawProjection, RawRoster, RawState, RawTrending, RawUser } from './raw';
+import type { RawLeague, RawMatchup, RawPlayer, RawProjection, RawRoster, RawState, RawTransaction, RawTrending, RawUser } from './raw';
 
 const API = 'https://api.sleeper.app/v1';
 const WEB = 'https://api.sleeper.com';
-const POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF', 'DL', 'LB', 'DB'];
+export const ALL_POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF', 'DL', 'LB', 'DB'];
 
 export class SleeperError extends Error {
   constructor(
@@ -49,12 +49,13 @@ export const sleeperApi = {
   rosters: (leagueId: string) => getJson<RawRoster[]>(`${API}/league/${leagueId}/rosters`),
   users: (leagueId: string) => getJson<RawUser[]>(`${API}/league/${leagueId}/users`),
   matchups: (leagueId: string, week: number) => getJson<RawMatchup[]>(`${API}/league/${leagueId}/matchups/${week}`),
+  transactions: (leagueId: string, week: number) => getJson<RawTransaction[]>(`${API}/league/${leagueId}/transactions/${week}`),
   trending: (type: 'add' | 'drop', hours = 24, limit = 100) =>
     getJson<RawTrending[]>(`${API}/players/nfl/trending/${type}?lookback_hours=${hours}&limit=${limit}`),
   /** Undocumented endpoint used by Sleeper's own app (RotoWire projections). */
-  projections: (season: string, week: number) =>
+  projections: (season: string, week: number, positions: readonly string[] = ALL_POSITIONS) =>
     getJson<RawProjection[]>(
-      `${WEB}/projections/nfl/${season}/${week}?season_type=regular&${POSITIONS.map((p) => `position[]=${p}`).join('&')}`,
+      `${WEB}/projections/nfl/${season}/${week}?season_type=regular&${positions.map((p) => `position[]=${p}`).join('&')}`,
       { timeoutMs: 45_000 },
     ),
   /** Full player dump (~15 MB raw). Sleeper asks for at most one call per day; fallback only. */

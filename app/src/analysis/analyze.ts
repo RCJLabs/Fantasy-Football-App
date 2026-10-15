@@ -164,6 +164,14 @@ function lineupDist(rows: ReadonlyArray<PlayerRow | null>, now: number): Dist {
   return sumDists(rows.filter((r): r is PlayerRow => r !== null).map((r) => starterDist(r, now)));
 }
 
+/** A team's starters this week (as set in Sleeper) and the distribution of its score, points so far included. */
+export function teamSide(league: League, roster: Roster, users: readonly LeagueUser[], matchups: readonly Matchup[], ctx: WeekContext): TeamSide {
+  const m = matchups.find((x) => x.rosterId === roster.rosterId);
+  const starters = (m?.starters.length ? m.starters : roster.starters).filter((id) => id && id !== '0');
+  const rows = starters.map((id) => playerRow(id, league, ctx, m?.playersPoints[id]));
+  return { rosterId: roster.rosterId, name: teamName(roster, users), rows, dist: lineupDist(rows, ctx.now) };
+}
+
 export function analyzeLineup(
   league: League,
   rosters: readonly Roster[],
@@ -209,12 +217,7 @@ export function analyzeLineup(
   const me: TeamSide = { rosterId: myRoster.rosterId, name: teamName(myRoster, users), rows: recommendedRows, dist: lineupDist(recommendedRows, ctx.now) };
   const meCurrentDist = lineupDist(currentRows, ctx.now);
 
-  const sideFor = (roster: Roster): TeamSide => {
-    const m = matchups.find((x) => x.rosterId === roster.rosterId);
-    const starters = (m?.starters.length ? m.starters : roster.starters).filter((id) => id && id !== '0');
-    const r = starters.map((id) => playerRow(id, league, ctx, m?.playersPoints[id]));
-    return { rosterId: roster.rosterId, name: teamName(roster, users), rows: r, dist: lineupDist(r, ctx.now) };
-  };
+  const sideFor = (roster: Roster): TeamSide => teamSide(league, roster, users, matchups, ctx);
 
   let opponent: TeamSide | undefined;
   if (myMatchup?.matchupId != null) {
@@ -316,6 +319,33 @@ export interface WaiverRow {
   trendingAdds?: number;
 }
 
+/** Players on no roster in the league (IR and taxi included). */
+export function rosteredIds(rosters: readonly Roster[]): Set<string> {
+  return new Set(rosters.flatMap((r) => [...r.players, ...r.reserve, ...r.taxi]));
+}
+
+/** Whether a player can fill any starting slot in the league. */
+export function startable(league: League, fpos: readonly string[]): boolean {
+  return startingSlots(league.rosterPositions).some((s) => canFill(s, fpos));
+}
+
+/**
+ * Gain in this week's best lineup from adding one player. Starters whose games have started keep their
+ * slots; only the open slots can still improve.
+ */
+export function thisWeekGain(league: League, myRoster: Roster, ctx: WeekContext): (r: PlayerRow) => number {
+  const allSlots = startingSlots(league.rosterPositions);
+  const unavailable = new Set([...myRoster.reserve, ...myRoster.taxi]);
+  const mine = myRoster.players.filter((id) => !unavailable.has(id)).map((id) => playerRow(id, league, ctx));
+  const lockedIds = new Set(mine.filter((r) => r.locked).map((r) => r.id));
+  const slots = allSlots.filter((_, s) => !lockedIds.has(myRoster.starters[s] ?? ''));
+  const pool = mine.filter((r) => !r.locked);
+  const best = (rows: readonly PlayerRow[]) =>
+    bestAssignment(slots.length, rows.length, (s, i) => (canFill(slots[s]!, rows[i]!.fpos) ? rows[i]!.ev : null)).total;
+  const baseline = best(pool);
+  return (r) => (r.locked || !slots.some((s) => canFill(s, r.fpos)) ? 0 : Math.max(0, best([...pool, r]) - baseline));
+}
+
 /** Free agents ranked by how much they'd improve this week's best lineup, with trending adds. */
 export function analyzeWaivers(
   league: League,
@@ -325,30 +355,18 @@ export function analyzeWaivers(
   trending: ReadonlyMap<string, number>,
   limit = 25,
 ): WaiverRow[] {
-  const allSlots = startingSlots(league.rosterPositions);
-  const rostered = new Set(rosters.flatMap((r) => [...r.players, ...r.reserve, ...r.taxi]));
-  const unavailable = new Set([...myRoster.reserve, ...myRoster.taxi]);
-  const mine = myRoster.players.filter((id) => !unavailable.has(id)).map((id) => playerRow(id, league, ctx));
-  // Starters whose games have started keep their slots; only the open slots can still improve.
-  const lockedIds = new Set(mine.filter((r) => r.locked).map((r) => r.id));
-  const slots = allSlots.filter((_, s) => !lockedIds.has(myRoster.starters[s] ?? ''));
-  const pool = mine.filter((r) => !r.locked);
-  const fillable = (r: PlayerRow) => slots.some((s) => canFill(s, r.fpos));
-
-  const best = (rows: readonly PlayerRow[]) =>
-    bestAssignment(slots.length, rows.length, (s, i) => (canFill(slots[s]!, rows[i]!.fpos) ? rows[i]!.ev : null)).total;
-  const baseline = best(pool);
-
+  const rostered = rosteredIds(rosters);
+  const gain = thisWeekGain(league, myRoster, ctx);
   const candidates = [...ctx.projections.byPlayer.keys()]
     .filter((id) => !rostered.has(id))
     .map((id) => playerRow(id, league, ctx))
-    .filter((r) => r.hasProjection && !r.locked && fillable(r) && (r.ev > 0.5 || trending.has(r.id)))
+    .filter((r) => r.hasProjection && !r.locked && startable(league, r.fpos) && (r.ev > 0.5 || trending.has(r.id)))
     .sort((a, b) => b.ev - a.ev)
     .slice(0, 80);
 
   return candidates
     .map((r) => {
-      const row: WaiverRow = { player: r, gainThisWeek: Math.max(0, best([...pool, r]) - baseline) };
+      const row: WaiverRow = { player: r, gainThisWeek: gain(r) };
       const t = trending.get(r.id);
       if (t !== undefined) row.trendingAdds = t;
       return row;

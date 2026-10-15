@@ -62,11 +62,19 @@ export interface LeagueRules {
   bestBall: boolean;
   medianGame: boolean;
   numTeams: number;
+  /** First playoff week; absent when the league has no playoffs. */
   playoffWeekStart?: number;
   playoffTeams?: number;
+  /** 0 = one week per round, 1 = two-week final, 2 = two weeks per round. [unverified] Sleeper codes */
+  playoffRoundType?: number;
+  /** Last week trades are allowed. */
   tradeDeadline?: number;
+  /** 2 = FAAB; 0/1 = rolling / reverse-standings priority. */
   waiverType?: number;
   waiverBudget?: number;
+  waiverBidMin?: number;
+  /** Last week whose results are in the standings. */
+  lastScoredWeek?: number;
   reserveSlots: number;
   taxiSlots: number;
   reserveAllow: Record<string, boolean>;
@@ -95,6 +103,7 @@ export interface Roster {
   losses: number;
   ties: number;
   pointsFor: number;
+  waiverBudgetUsed: number;
 }
 
 export interface Matchup {
