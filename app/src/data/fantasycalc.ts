@@ -20,27 +20,37 @@ export interface MarketValue {
   /** 30-day change in value. */
   trend?: number;
   posRank?: number;
+  age?: number;
 }
 
 interface RawValue {
   value?: number;
   trend30Day?: number;
   positionRank?: number;
-  player?: { sleeperId?: string | null } | null;
+  player?: { sleeperId?: string | null; maybeAge?: number | null } | null;
+}
+
+/** 'season' = this season's market (redraft values); 'long' = beyond it (dynasty values). */
+export type Horizon = 'season' | 'long';
+
+/** Keeper and dynasty leagues care about value beyond this season too. */
+export function horizons(league: League): Horizon[] {
+  return league.rules.type === 'redraft' ? ['season'] : ['season', 'long'];
 }
 
 const nearest = <T extends number>(x: number, options: readonly T[]): T =>
   options.reduce((best, o) => (Math.abs(o - x) < Math.abs(best - x) ? o : best), options[0]!);
 
 /**
- * The FantasyCalc market closest to a league: dynasty or redraft (keeper leagues use redraft values),
- * superflex/2QB, team count and reception points.
+ * The FantasyCalc market closest to a league for a horizon: redraft or dynasty values (by default
+ * dynasty leagues use dynasty values and keeper leagues redraft), superflex/2QB, team count and
+ * reception points.
  */
-export function marketParams(league: League): MarketParams {
+export function marketParams(league: League, horizon: Horizon = league.rules.type === 'dynasty' ? 'long' : 'season'): MarketParams {
   const slots = startingSlots(league.rosterPositions);
   const qbSlots = slots.filter((s) => s === 'QB' || s === 'SUPER_FLEX').length;
   return {
-    dynasty: league.rules.type === 'dynasty',
+    dynasty: horizon === 'long',
     qbs: qbSlots >= 2 ? 2 : 1,
     teams: nearest(league.rules.numTeams, [8, 10, 12, 14] as const),
     ppr: nearest(league.scoring.rec ?? 0, [0, 0.5, 1] as const),
@@ -55,6 +65,7 @@ export function parseMarketValues(rows: readonly RawValue[]): Map<string, Market
     const v: MarketValue = { value: r.value };
     if (typeof r.trend30Day === 'number') v.trend = r.trend30Day;
     if (typeof r.positionRank === 'number') v.posRank = r.positionRank;
+    if (typeof r.player?.maybeAge === 'number') v.age = r.player.maybeAge;
     out.set(id, v);
   }
   return out;

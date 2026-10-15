@@ -28,6 +28,7 @@ export function parseLeagueRules(raw: RawLeague): LeagueRules {
     ['waiverBudget', 'waiver_budget'],
     ['waiverBidMin', 'waiver_bid_min'],
     ['lastScoredWeek', 'last_scored_leg'],
+    ['maxKeepers', 'max_keepers'],
   ];
   for (const [key, rawKey] of opt) {
     const v = num(s[rawKey]);

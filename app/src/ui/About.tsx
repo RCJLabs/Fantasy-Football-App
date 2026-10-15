@@ -43,6 +43,10 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             covering them. Playoff weeks count in proportion to your playoff odds.
           </li>
           <li>
+            <strong>Keeper and dynasty leagues</strong> also get a long-term view. Trades show market value this season and beyond it (FantasyCalc
+            dynasty values). The Season tab ranks teams by the value of the players they carry forward and lists your likely keepers.
+          </li>
+          <li>
             <strong>FAAB bids</strong> follow what your league has actually paid for players at the same position this season, scaled by your remaining
             budget.
           </li>

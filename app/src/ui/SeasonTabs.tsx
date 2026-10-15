@@ -2,7 +2,8 @@ import { useMemo, useState } from 'preact/hooks';
 import { analyzeWaivers, type PlayerRow } from '../analysis/analyze';
 import { marketPrice } from '../analysis/faab';
 import { evaluateTrade, freeAgentPool, scheduleOutlook, streamers, waiverBoard, type ByeWeek, type LeagueOutlook, type TradeSideResult } from '../analysis/outlook';
-import { FANTASYCALC_URL, loadMarketValues, marketParams, marketTotals, type MarketValue } from '../data/fantasycalc';
+import { carriedForward, longTermRanking } from '../analysis/longterm';
+import { FANTASYCALC_URL, horizons, loadMarketValues, marketParams, marketTotals, type Horizon, type MarketValue } from '../data/fantasycalc';
 import { loadTrending } from '../data/repo';
 import { InjuryBadge, ErrorBox, Spinner } from './components';
 import { loadSeason, type LeagueBundle, type SeasonBundle } from './data';
@@ -276,6 +277,89 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
           </table>
         </div>
       ) : null}
+      {bundle.league.rules.type !== 'redraft' ? <LongTermCard bundle={bundle} outlook={o} /> : null}
+    </div>
+  );
+}
+
+/** Keeper and dynasty leagues: who's built for beyond this season, and which of your players carry forward. */
+function LongTermCard({ bundle, outlook }: { bundle: LeagueBundle; outlook: LeagueOutlook }) {
+  const lt = useAsync(() => loadMarketValues(marketParams(bundle.league, 'long')), [bundle.league.id]);
+  if (lt.data === undefined) return lt.error ? null : <Spinner label="Loading long-term values…" />;
+  if (!lt.data) return <p class="muted small">Long-term values unavailable (FantasyCalc didn't respond).</p>;
+  const values = lt.data;
+  const keep = carriedForward(bundle.league);
+  const rosters = [...outlook.teams.values()].map((t) => t.roster);
+  const ranking = longTermRanking(rosters, values, keep);
+  // This season: average best-lineup points over the remaining regular season.
+  const nowScore = (rosterId: number) => {
+    const t = outlook.teams.get(rosterId);
+    const weeks = t?.future.slice(0, Math.max(1, outlook.regularWeeks.length)) ?? [];
+    return weeks.length ? weeks.reduce((a, d) => a + d.mean, 0) / weeks.length : 0;
+  };
+  const nowRank = new Map([...rosters].sort((a, b) => nowScore(b.rosterId) - nowScore(a.rosterId)).map((r, i) => [r.rosterId, i + 1]));
+  const myId = bundle.myRoster!.rosterId;
+  const mine = ranking.find((t) => t.rosterId === myId);
+  const name = (id: string) => bundle.ctx.players.get(id)?.name ?? outlook.model.player(id)?.name ?? id;
+  const pos = (id: string) => bundle.ctx.players.get(id)?.pos ?? '';
+  const n = rosters.length;
+  const outlookOf = (rid: number) => {
+    const now = nowRank.get(rid)! <= n / 2;
+    const later = ranking.find((t) => t.rosterId === rid)!.rank <= n / 2;
+    return now && later ? 'strong both' : now ? 'win now' : later ? 'built for later' : 'rebuild';
+  };
+  return (
+    <div class="card">
+      <h2>Long-term outlook</h2>
+      <p class="muted small">
+        {keep === undefined ? 'Whole rosters' : `Each team's best ${keep} keeper${keep > 1 ? 's' : ''}`} valued with FantasyCalc dynasty values, a proxy for worth
+        beyond this season{bundle.league.rules.type === 'keeper' ? ' (keeper costs aren’t in Sleeper’s data, so they aren’t counted)' : ''}. “Now” ranks
+        projected lineup strength for the rest of the regular season.
+      </p>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Team</th>
+              <th class="num">Value</th>
+              <th class="num">Later</th>
+              <th class="num">Now</th>
+              <th>Outlook</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ranking.map((t) => (
+              <tr class={t.rosterId === myId ? 'mine' : ''}>
+                <td>{outlook.teams.get(t.rosterId)?.name ?? t.rosterId}</td>
+                <td class="num">{shortValue(t.total)}</td>
+                <td class="num">{t.rank}</td>
+                <td class="num">{nowRank.get(t.rosterId)}</td>
+                <td class="muted small">{outlookOf(t.rosterId)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {mine?.core.length ? (
+        <>
+          <h3>{keep === undefined ? 'Your most valuable players' : 'Your likely keepers'}</h3>
+          <ol class="core">
+            {mine.core.slice(0, keep ?? 8).map((p) => (
+              <li>
+                <strong>{name(p.id)}</strong> <span class="muted small">{pos(p.id)}{p.age !== undefined ? ` · age ${Math.floor(p.age)}` : ''}</span>
+                <span class="num muted small">{shortValue(p.value)}</span>
+              </li>
+            ))}
+          </ol>
+        </>
+      ) : null}
+      <p class="muted small">
+        Values from{' '}
+        <a href={FANTASYCALC_URL} target="_blank" rel="noopener">
+          FantasyCalc
+        </a>
+        .
+      </p>
     </div>
   );
 }
@@ -300,8 +384,14 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
   const [give, setGive] = useState<string[]>([]);
   const [get, setGet] = useState<string[]>([]);
   const freeAgents = useMemo(() => freeAgentPool(o, bundle.ctx), [o, bundle.ctx]);
-  const market = useAsync(() => loadMarketValues(marketParams(bundle.league)), [bundle.league.id]);
-  const values = market.data ?? null;
+  const market = useAsync(async () => {
+    const hs = horizons(bundle.league);
+    const loaded = await Promise.all(hs.map((h) => loadMarketValues(marketParams(bundle.league, h))));
+    return hs.flatMap((h, i) => (loaded[i] ? [{ horizon: h, values: loaded[i]! }] : []));
+  }, [bundle.league.id]);
+  const markets = market.data ?? [];
+  const values = markets.find((m) => m.horizon === 'season')?.values ?? null;
+  const longValues = markets.find((m) => m.horizon === 'long')?.values ?? null;
   const result = useMemo(
     () => (partnerId >= 0 && (give.length || get.length) ? evaluateTrade(o, bundle.ctx, myId, partnerId, give, get, freeAgents) : null),
     [o, bundle.ctx, myId, partnerId, give, get, freeAgents],
@@ -329,6 +419,7 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
             <span class="muted small num">
               {pts(perWeek(id))}/wk
               {values?.get(id) ? <span class="mv"> · {shortValue(values.get(id)!.value)}</span> : null}
+              {longValues?.get(id) ? <span class="mv"> · LT {shortValue(longValues.get(id)!.value)}</span> : null}
             </span>
           </label>
         );
@@ -356,8 +447,8 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
           </select>
         </label>
         <p class="muted small">
-          Expected points per week over {weekSpan(o.weeks)} on their own{values ? ', then FantasyCalc market value' : ''}. The verdict below accounts for each
-          lineup.
+          Expected points per week over {weekSpan(o.weeks)} on their own{values ? ', then FantasyCalc market value' : ''}
+          {longValues ? ' and long-term (LT, dynasty) value' : ''}. The verdict below accounts for each lineup.
         </p>
         <div class="pickers">
           {picker('You give', myId, give, (id) => toggle(give, setGive, id))}
@@ -369,7 +460,7 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
           <h2>{verdict(result.me.delta, result.them.delta)}</h2>
           <TradeSide label="You" side={result.me} name={name} />
           <TradeSide label={result.them.name} side={result.them} name={name} />
-          {values ? <MarketLine values={values} give={give} get={get} dynasty={marketParams(bundle.league).dynasty} /> : null}
+          {markets.length ? <MarketLine markets={markets} give={give} get={get} /> : null}
           <WeeklyBars weeks={o.weeks} deltas={result.me.weekly} />
           <p class="muted small">
             Rest-of-season points from each team's best lineup by week (playoff weeks weighted by that team's playoff odds), including the drops a full roster
@@ -440,9 +531,10 @@ function WeeklyBars({ weeks, deltas }: { weeks: readonly number[]; deltas: reado
 /** FantasyCalc values read like 4,512: show 4.5k. */
 const shortValue = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n)}`);
 
-/** Market value of each side, shown apart from what the trade does for your lineup. */
-function MarketLine({ values, give, get, dynasty }: { values: ReadonlyMap<string, MarketValue>; give: string[]; get: string[]; dynasty: boolean }) {
-  const t = marketTotals(values, give, get);
+const HORIZON_LABEL: Record<Horizon, string> = { season: 'This season', long: 'Long term (dynasty values)' };
+
+/** Market value of each side, per horizon, shown apart from what the trade does for your lineup. */
+function MarketLine({ markets, give, get }: { markets: ReadonlyArray<{ horizon: Horizon; values: ReadonlyMap<string, MarketValue> }>; give: string[]; get: string[] }) {
   const credit = (
     <>
       Values from{' '}
@@ -452,18 +544,32 @@ function MarketLine({ values, give, get, dynasty }: { values: ReadonlyMap<string
       .
     </>
   );
-  if (!t.give && !t.get) return <p class="muted small">No market value for these players (FantasyCalc doesn't value K, DEF or deep reserves). {credit}</p>;
-  const diff = t.get - t.give;
-  const share = Math.abs(diff) / Math.max(t.give, t.get);
-  const lean = share < 0.05 ? 'about even' : `${Math.round(share * 100)}% in ${diff > 0 ? 'your' : 'their'} favor`;
+  const lines = markets.map(({ horizon, values }) => {
+    const t = marketTotals(values, give, get);
+    if (!t.give && !t.get) return { horizon, text: 'no values for these players', unvalued: t.unvalued.length };
+    const diff = t.get - t.give;
+    const share = Math.abs(diff) / Math.max(t.give, t.get);
+    const lean = share < 0.05 ? 'about even' : `${Math.round(share * 100)}% in ${diff > 0 ? 'your' : 'their'} favor`;
+    return { horizon, text: `you give ${shortValue(t.give)}, you get ${shortValue(t.get)}, ${lean}`, unvalued: t.unvalued.length };
+  });
+  const unvalued = Math.max(...lines.map((l) => l.unvalued));
   return (
-    <p class="small">
-      <strong>Market value</strong> ({dynasty ? 'dynasty' : 'this season'}): you give {shortValue(t.give)}, you get {shortValue(t.get)}, {lean}.
-      {t.unvalued.length ? ` ${t.unvalued.length} player${t.unvalued.length > 1 ? 's have' : ' has'} no value.` : ''}{' '}
-      <span class="muted">
-        Simple sums: FantasyCalc's own calculator adds a premium for the best player in uneven trades. {credit}
-      </span>
-    </p>
+    <div class="small market">
+      <p>
+        <strong>Market value</strong>
+      </p>
+      <ul>
+        {lines.map((l) => (
+          <li>
+            {HORIZON_LABEL[l.horizon]}: {l.text}.
+          </li>
+        ))}
+      </ul>
+      <p class="muted">
+        {unvalued ? `${unvalued} player${unvalued > 1 ? 's have' : ' has'} no value (FantasyCalc doesn't value K, DEF or deep reserves). ` : ''}Simple sums:
+        FantasyCalc's own calculator adds a premium for the best player in uneven trades. {credit}
+      </p>
+    </div>
   );
 }
 

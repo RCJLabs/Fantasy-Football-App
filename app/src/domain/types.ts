@@ -75,6 +75,8 @@ export interface LeagueRules {
   waiverBidMin?: number;
   /** Last week whose results are in the standings. */
   lastScoredWeek?: number;
+  /** Keeper leagues: players each team may keep into next season. */
+  maxKeepers?: number;
   reserveSlots: number;
   taxiSlots: number;
   reserveAllow: Record<string, boolean>;
