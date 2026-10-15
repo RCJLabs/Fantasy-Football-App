@@ -13,6 +13,7 @@ Raw output of the research pass behind [`../PLAN.md`](../PLAN.md). Each file has
 | [data.md](data.md) | nflverse datasets, usage metrics, matchup/scheme data availability (free vs paid) |
 | [methods.md](methods.md) | Consensus, distributions, start/sit, usage, matchups, injuries, trades, FAAB, validation |
 | [architecture.md](architecture.md) | Hosting, pipeline, Cloudflare edge, LLM costs, Google Play/TWA, competitors |
+| [plan-review.md](plan-review.md) | Four critics' review of plan v1 (evidence, feasibility, completeness, football methodology): the reasons for v2's changes |
 
 ## Limits of this research
 
