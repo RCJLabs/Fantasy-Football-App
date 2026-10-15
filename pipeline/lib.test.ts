@@ -1,0 +1,100 @@
+import { describe, expect, it } from 'vitest';
+import { compactPlayers, csvRecords, easternToUtcIso, gamesFromCsv, isEasternDst, latestInjuryReport, parseCsv, practiceStatus, sleeperToGsis, toSleeperTeam } from './lib';
+
+describe('csv', () => {
+  it('handles quotes, escaped quotes, empty quoted fields and CRLF', () => {
+    expect(parseCsv('a,b,c\r\n1,"x, y",""\n2,"say ""hi""",z')).toEqual([
+      ['a', 'b', 'c'],
+      ['1', 'x, y', ''],
+      ['2', 'say "hi"', 'z'],
+    ]);
+  });
+  it('maps rows to records and skips blank lines', () => {
+    expect(csvRecords('h1,h2\nv1,v2\n\n')).toEqual([{ h1: 'v1', h2: 'v2' }]);
+  });
+});
+
+describe('time zones', () => {
+  it('knows US Eastern DST boundaries for 2026', () => {
+    expect(isEasternDst(2026, 9, 18)).toBe(true); // Oct 18
+    expect(isEasternDst(2026, 10, 1)).toBe(false); // Nov 1: DST ends that morning
+    expect(isEasternDst(2026, 9, 31)).toBe(true); // Oct 31
+    expect(isEasternDst(2026, 2, 8)).toBe(true); // Mar 8: second Sunday
+    expect(isEasternDst(2026, 2, 7)).toBe(false);
+    expect(isEasternDst(2026, 11, 25)).toBe(false);
+  });
+  it('converts nflverse ET kickoffs to UTC', () => {
+    expect(easternToUtcIso('2026-10-15', '20:15')).toBe('2026-10-16T00:15:00.000Z'); // TNF, EDT
+    expect(easternToUtcIso('2026-10-18', '09:30')).toBe('2026-10-18T13:30:00.000Z'); // London
+    expect(easternToUtcIso('2026-11-01', '13:00')).toBe('2026-11-01T18:00:00.000Z'); // EST
+    expect(easternToUtcIso('2026-12-25', '16:30')).toBe('2026-12-25T21:30:00.000Z');
+  });
+});
+
+describe('schedule', () => {
+  const csv = [
+    'game_id,season,game_type,week,gameday,weekday,gametime,away_team,home_team,spread_line,total_line,roof',
+    '2026_06_SEA_DEN,2026,REG,6,2026-10-15,Thursday,20:15,SEA,DEN,-2.5,40.5,outdoors',
+    '2026_06_LA_SF,2026,REG,6,2026-10-18,Sunday,16:25,LA,SF,3,47,""',
+    '2025_01_X_Y,2025,REG,1,2025-09-07,Sunday,13:00,X,Y,1,40,dome',
+  ].join('\n');
+  it('builds games with Sleeper team codes and implied totals (spread positive = home favored)', () => {
+    const games = gamesFromCsv(csvRecords(csv), '2026');
+    expect(games).toHaveLength(2);
+    expect(games[0]).toMatchObject({ id: '2026_06_SEA_DEN', away: 'SEA', home: 'DEN', homeImplied: 19, awayImplied: 21.5, kickoff: '2026-10-16T00:15:00.000Z' });
+    expect(games[1]).toMatchObject({ away: 'LAR', home: 'SF', homeImplied: 25, awayImplied: 22 });
+    expect(games[1]!.roof).toBeUndefined();
+  });
+  it('maps team codes', () => {
+    expect(toSleeperTeam('LA')).toBe('LAR');
+    expect(toSleeperTeam('KC')).toBe('KC');
+  });
+});
+
+describe('injury report', () => {
+  const csv = [
+    'season,season_type,game_type,team,week,gsis_id,position,full_name,report_primary_injury,report_status,practice_primary_injury,practice_status',
+    '2026,REG,REG,SEA,5,00-1,WR,A,Hamstring,Questionable,Hamstring,Limited Participation in Practice',
+    '2026,REG,REG,SEA,6,00-1,WR,A,Hamstring,Questionable,Hamstring,Did Not Participate In Practice',
+    '2026,REG,REG,DEN,6,00-2,RB,B,,,Ankle,Full Participation in Practice',
+    '2026,REG,REG,DEN,7,00-3,RB,C,,,Knee,Full Participation in Practice',
+  ].join('\n');
+  it('takes the latest week up to the current week', () => {
+    const rep = latestInjuryReport(csvRecords(csv), 6)!;
+    expect(rep.week).toBe(6);
+    expect(rep.byGsis.get('00-1')).toEqual({ prac: 'DNP', rpt: 'Questionable', body: 'Hamstring' });
+    expect(rep.byGsis.get('00-2')).toEqual({ prac: 'Full', body: 'Ankle' });
+    expect(rep.byGsis.has('00-3')).toBe(false);
+  });
+  it('maps practice wording', () => {
+    expect(practiceStatus('Limited Participation in Practice')).toBe('Limited');
+    expect(practiceStatus('')).toBeUndefined();
+  });
+  it('joins practice status to Sleeper players by gsis_id and drops free agents', () => {
+    const rep = latestInjuryReport(csvRecords(csv), 6);
+    const players = compactPlayers(
+      {
+        '10': { player_id: '10', full_name: 'A', position: 'WR', team: 'SEA', injury_status: 'Questionable', gsis_id: ' 00-1 ', search_rank: 50 },
+        '11': { player_id: '11', full_name: 'Retired', position: 'WR', team: null },
+        SEA: { player_id: 'SEA', first_name: 'Seattle', last_name: 'Seahawks', position: 'DEF', team: 'SEA', fantasy_positions: ['DEF'] },
+      },
+      rep,
+    );
+    expect(players.map((p) => p.id)).toEqual(['10', 'SEA']);
+    expect(players[0]).toMatchObject({ n: 'A', inj: 'Questionable', prac: 'DNP', rpt: 'Questionable', gsis: '00-1', rk: 50 });
+    expect(players[1]).toMatchObject({ n: 'Seattle Seahawks', pos: 'DEF' });
+    expect(players[1]!.fp).toBeUndefined();
+  });
+  it('bridges gsis ids through nflverse weekly rosters (sleeper_id, then espn_id)', () => {
+    const dump = {
+      '20': { player_id: '20', full_name: 'B', position: 'RB', team: 'DEN' },
+      '30': { player_id: '30', full_name: 'C', position: 'RB', team: 'DEN', espn_id: 777 },
+    };
+    const rosters = csvRecords('gsis_id,sleeper_id,espn_id\n00-2,20,1\n00-3,NA,777\nNA,99,5');
+    const map = sleeperToGsis(dump, rosters);
+    expect(map.get('20')).toBe('00-2');
+    expect(map.get('30')).toBe('00-3');
+    const players = compactPlayers(dump, latestInjuryReport(csvRecords(csv), 6), map);
+    expect(players.find((p) => p.id === '20')).toMatchObject({ gsis: '00-2', prac: 'Full' });
+  });
+});

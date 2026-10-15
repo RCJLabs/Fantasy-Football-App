@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dev-dist/
+.cache/
+app/public/data/
+test-results/
+playwright-report/
+*.log
+.DS_Store

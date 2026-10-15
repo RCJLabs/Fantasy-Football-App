@@ -1,0 +1,38 @@
+{
+  "name": "fantasy-football-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Sleeper-first fantasy football decision engine (installable PWA)",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "data": "tsx pipeline/build-data.ts",
+    "e2e": "playwright test",
+    "check": "npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "idb": "8.0.4",
+    "preact": "10.29.8"
+  },
+  "devDependencies": {
+    "@babel/core": "7.29.7",
+    "@playwright/test": "1.56.1",
+    "@preact/preset-vite": "2.10.6",
+    "@types/node": "22.20.5",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vite-plugin-pwa": "1.3.0",
+    "vitest": "4.1.12",
+    "workbox-build": "7.4.1",
+    "workbox-window": "7.4.1"
+  }
+}

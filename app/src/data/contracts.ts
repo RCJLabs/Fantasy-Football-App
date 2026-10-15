@@ -1,0 +1,51 @@
+import type { Game, PracticeStatus } from '../domain/types';
+
+/** Bump when a published file changes shape; the app refuses files from a newer major version. */
+export const DATA_SCHEMA_VERSION = 1;
+
+/** Compact player record published by the pipeline (data/players.json). */
+export interface CompactPlayer {
+  id: string; // Sleeper player_id
+  n: string; // name
+  pos: string;
+  fp?: string[]; // fantasy positions when they differ from [pos]
+  t?: string; // team (Sleeper code)
+  inj?: string; // Sleeper injury_status
+  body?: string; // injury body part
+  prac?: PracticeStatus; // final practice status from the official report (nflverse)
+  rpt?: string; // official report status (Questionable/Doubtful/Out)
+  dp?: string; // depth chart position
+  do?: number; // depth chart order
+  rk?: number; // Sleeper search_rank
+  gsis?: string;
+}
+
+export interface PlayersFile {
+  schemaVersion: number;
+  generatedAt: string;
+  season: string;
+  week: number;
+  /** Week of the official injury report that `prac`/`rpt` come from. */
+  injuryReportWeek?: number;
+  players: CompactPlayer[];
+}
+
+export interface ScheduleFile {
+  schemaVersion: number;
+  generatedAt: string;
+  season: string;
+  games: Game[];
+}
+
+export interface ManifestEntry {
+  updatedAt: string;
+  source: string;
+  license: string;
+  credits?: string;
+}
+
+export interface Manifest {
+  schemaVersion: number;
+  generatedAt: string;
+  files: Record<string, ManifestEntry>;
+}
