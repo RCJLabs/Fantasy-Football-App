@@ -69,9 +69,20 @@ describe('scoring', () => {
     expect(expectedStats({ pass_fd: 12, rush_fd: 1 }, 'QB').bonus_fd_qb).toBe(13);
   });
 
-  it('lists scoring keys no projection covers', () => {
-    const scoring = { rec: 1, pass_td: 4, idp_tkl_solo: 1, def_3_and_out: 1, bonus_rec_yd_100: 2, zero_key: 0 };
+  it('lists scoring keys no projection covers, minus rare special-teams events', () => {
+    const scoring = { rec: 1, pass_td: 4, idp_tkl_solo: 1, def_3_and_out: 1, bonus_rec_yd_100: 2, zero_key: 0, def_st_td: 6, fgmiss: -1 };
     expect(uncoveredScoringKeys(scoring, new Set(['rec', 'pass_td', 'idp_tkl_solo']))).toEqual(['def_3_and_out']);
+  });
+
+  it('derives kicker misses and long-FG splits that projections lack', () => {
+    const k = expectedStats({ fga: 2.2, fgm: 1.9, fgm_50p: 0.3, xpm: 2.5 }, 'K');
+    expect(k.fgmiss).toBeCloseTo(0.3, 9);
+    expect(k.fgm_50_59! + k.fgm_60p!).toBeCloseTo(0.3, 9);
+    expect(k.fgm_60p).toBeLessThan(0.05);
+    // Leagues score either 50+ or 50–59 / 60+: both schemes give the same expected points here.
+    const both = { fgm_50p: 5, fgmiss: -1 };
+    const split = { fgm_50_59: 5, fgm_60p: 5, fgmiss: -1 };
+    expect(projectedPoints({ fga: 2.2, fgm: 1.9, fgm_50p: 0.3 }, both, 'K')).toBeCloseTo(projectedPoints({ fga: 2.2, fgm: 1.9, fgm_50p: 0.3 }, split, 'K'), 9);
   });
 });
 
@@ -213,6 +224,17 @@ describe('lineup', () => {
     const res = optimizeLineup({ slots: ['TE'], players, current: [0], now });
     expect(res.lineup).toEqual([1]);
     expect(res.currentExpected).toBe(0);
+  });
+
+  it('keeps the current slot arrangement when a reshuffle gains nothing', () => {
+    // Static optimum would order RB1/RB2 and FLEX by value; the user's order is just as good.
+    const players = [pl('a', ['RB'], 10, 1, at(5)), pl('b', ['RB'], 14, 1, at(5)), pl('c', ['RB'], 12, 1, at(5)), pl('d', ['RB'], 3, 1, at(5))];
+    const res = optimizeLineup({ slots: ['RB', 'RB', 'FLEX'], players, current: [0, 2, 1], now });
+    expect(res.lineup).toEqual([0, 2, 1]);
+    expect(res.expected).toBeCloseTo(res.currentExpected, 9);
+    // With a bench upgrade, only the replaced slot changes.
+    const res2 = optimizeLineup({ slots: ['RB', 'RB', 'FLEX'], players, current: [3, 2, 1], now });
+    expect(res2.lineup).toEqual([0, 2, 1]);
   });
 });
 

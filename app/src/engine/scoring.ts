@@ -88,6 +88,8 @@ export const YDS_ALLOW_BUCKETS: Array<[string, number, number]> = [
 /** Game-level spread of points/yards allowed. [design] calibrate from nflverse. */
 export const PTS_ALLOW_SD = 9.5;
 export const YDS_ALLOW_SD = 70;
+/** Share of 50+ yard field goals made from 60+. [design] roughly recent NFL seasons; calibrate later. */
+const FG_60P_SHARE = 0.06;
 
 /** Scoring keys `expectedStats` can derive even when a projection lacks them. */
 export const DERIVED_KEYS = new Set<string>([
@@ -100,6 +102,28 @@ export const DERIVED_KEYS = new Set<string>([
   'bonus_fd_rb',
   'bonus_fd_wr',
   'bonus_fd_te',
+  'fgmiss',
+  'fgm_50_59',
+  'fgm_60p',
+]);
+
+/**
+ * Rare special-teams and return events that projections don't carry. Each is worth a few tenths of a
+ * point per game at most and roughly the same for every team, so leaving them out doesn't change
+ * decisions and isn't worth a warning. [design]
+ */
+export const MINOR_SCORING_KEYS = new Set<string>([
+  'st_td',
+  'st_ff',
+  'st_fum_rec',
+  'st_tkl_solo',
+  'def_st_td',
+  'def_st_ff',
+  'def_st_fum_rec',
+  'def_st_tkl_solo',
+  'fum_rec_td',
+  'kr_td',
+  'pr_td',
 ]);
 
 /**
@@ -136,6 +160,13 @@ export function expectedStats(stats: StatLine, pos: string): StatLine {
     if (fd > 0) out[fdKey] = fd;
   }
 
+  if (!has('fgmiss') && has('fga') && has('fgm')) out.fgmiss = Math.max(0, out.fga! - out.fgm!);
+  const long = out.fgm_50p;
+  if (long !== undefined) {
+    if (!has('fgm_50_59')) out.fgm_50_59 = long * (1 - FG_60P_SHARE);
+    if (!has('fgm_60p')) out.fgm_60p = long * FG_60P_SHARE;
+  }
+
   if (pos === 'DEF') {
     const pa = out.pts_allow;
     if (pa !== undefined) {
@@ -154,10 +185,10 @@ export function projectedPoints(stats: StatLine, scoring: ScoringSettings, pos: 
   return scoreStats(expectedStats(stats, pos), scoring);
 }
 
-/** Scoring keys with non-zero points that no projection carries and we can't derive. */
+/** Scoring keys with non-zero points that no projection carries, we can't derive, and that matter. */
 export function uncoveredScoringKeys(scoring: ScoringSettings, projectedKeys: Set<string>): string[] {
   return Object.entries(scoring)
-    .filter(([key, pts]) => pts !== 0 && !projectedKeys.has(key) && !DERIVED_KEYS.has(key))
+    .filter(([key, pts]) => pts !== 0 && !projectedKeys.has(key) && !DERIVED_KEYS.has(key) && !MINOR_SCORING_KEYS.has(key))
     .map(([key]) => key)
     .sort();
 }

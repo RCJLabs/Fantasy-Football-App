@@ -30,6 +30,8 @@ export function parseLeagueRules(raw: RawLeague): LeagueRules {
     const v = num(s[rawKey]);
     if (v !== undefined) (rules as unknown as Record<string, unknown>)[key] = v;
   }
+  // Leagues without playoffs report playoff_week_start 0 (and no bracket).
+  if (!rules.playoffWeekStart) delete rules.playoffWeekStart;
   return rules;
 }
 

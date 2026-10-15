@@ -251,26 +251,35 @@ export function analyzeLineup(
   return analysis;
 }
 
-/** Describe how to get from the current lineup to the recommended one, slot by slot. */
+/**
+ * Describe how to get from the current lineup to the recommended one. Each newcomer is paired with a
+ * benched starter (same slot first, then same slot type, then any); moves between slots of the same
+ * type (RB ↔ RB) aren't changes.
+ */
 export function lineupChanges(slots: readonly string[], current: readonly number[], next: readonly number[], rows: readonly PlayerRow[]): LineupChange[] {
-  const curSet = new Set(current.filter((i) => i >= 0));
-  const nextSet = new Set(next.filter((i) => i >= 0));
-  const benched = new Set([...curSet].filter((i) => !nextSet.has(i)));
+  const slotOf = (lineup: readonly number[]) => new Map(lineup.flatMap((i, s) => (i >= 0 ? [[i, s] as const] : [])));
+  const curSlot = slotOf(current);
+  const nextSlot = slotOf(next);
+  const unpaired = new Set([...curSlot.keys()].filter((i) => !nextSlot.has(i)));
   const changes: LineupChange[] = [];
-  slots.forEach((slot, s) => {
-    const after = next[s]!;
-    const before = current[s] ?? -1;
-    if (after === before || after < 0) return;
-    if (!curSet.has(after)) {
-      if (before >= 0 && benched.has(before)) {
-        changes.push({ kind: 'swap', slot, in: rows[after]!, out: rows[before]! });
-        benched.delete(before);
-      } else changes.push({ kind: 'start', slot, in: rows[after]!, out: null });
-    } else changes.push({ kind: 'move', slot, in: rows[after]!, out: null });
-  });
-  for (const i of benched) {
-    const s = current.indexOf(i);
-    changes.push({ kind: 'bench', slot: slots[s] ?? 'BN', in: null, out: rows[i]! });
+  for (const [i, s] of nextSlot) {
+    if (curSlot.has(i)) continue;
+    let out = -1;
+    let outRank = 3;
+    for (const o of unpaired) {
+      const os = curSlot.get(o)!;
+      const r = os === s ? 0 : slots[os] === slots[s] ? 1 : 2;
+      if (r < outRank) [out, outRank] = [o, r];
+    }
+    if (out >= 0) {
+      unpaired.delete(out);
+      changes.push({ kind: 'swap', slot: slots[s]!, in: rows[i]!, out: rows[out]! });
+    } else changes.push({ kind: 'start', slot: slots[s]!, in: rows[i]!, out: null });
+  }
+  for (const o of unpaired) changes.push({ kind: 'bench', slot: slots[curSlot.get(o)!] ?? 'BN', in: null, out: rows[o]! });
+  for (const [i, s] of nextSlot) {
+    const before = curSlot.get(i);
+    if (before !== undefined && slots[before] !== slots[s]) changes.push({ kind: 'move', slot: slots[s]!, in: rows[i]!, out: null });
   }
   const order = { swap: 0, start: 1, bench: 2, move: 3 };
   return changes.sort((a, b) => order[a.kind] - order[b.kind]);
