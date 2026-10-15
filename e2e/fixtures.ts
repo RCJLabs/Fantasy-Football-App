@@ -142,6 +142,19 @@ export const transactions: RawTransaction[] = [
   [5, 'x7', 18],
 ].map(([leg, id, bid]) => ({ type: 'waiver', status: 'complete', leg: leg as number, adds: { [id as string]: 2 }, settings: { waiver_bid: bid as number } }));
 
+/** FantasyCalc rows (shape verified 2026-10-15); values invented. K and DEF have none, as on FantasyCalc. */
+export const marketValues = [
+  ['q1', 5200],
+  ['r1', 4100],
+  ['r2', 3000],
+  ['w1', 4800],
+  ['w2', 2600],
+  ['w3', 2100],
+  ['t1', 1900],
+  ['o1', 3900],
+  ['o2', 3400],
+].map(([id, value]) => ({ value, redraftValue: value, trend30Day: 0, positionRank: 10, player: { sleeperId: id, name: id, position: 'X' } }));
+
 export const trending = [
   { player_id: 'fa2', count: 1520 },
   { player_id: 'fa1', count: 830 },

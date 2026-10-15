@@ -22,6 +22,7 @@ async function mockBackends(page: Page) {
     const week = Number(new URL(route.request().url()).pathname.split('/').pop());
     return route.fulfill({ json: week === 6 ? fx.projections : fx.futureProjections(week) });
   });
+  await page.route('https://api.fantasycalc.com/**', (route) => route.fulfill({ json: fx.marketValues }));
   await page.route('**/data/players.json', (route) => route.fulfill({ json: fx.playersFile }));
   await page.route('**/data/schedule.json', (route) => route.fulfill({ json: fx.schedule }));
   await page.route('**/data/manifest.json', (route) => route.fulfill({ json: fx.manifest }));
@@ -106,6 +107,11 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await page.locator('fieldset', { hasText: 'You get' }).getByText('Opp Rusher').click();
   await expect(page.locator('.trade-side').first()).toContainText('rest of season');
   await expect(page.locator('.trade-side').nth(1)).toContainText('Rival Raiders');
-  await expect(page.locator('.card h2').last()).toContainText(/for you/);
+  await expect(page.locator('.card[aria-live]')).toContainText(/for you/);
+  // Market value (FantasyCalc, mocked) shown apart from the lineup verdict, and the week-by-week bye grid.
+  await expect(page.locator('.card[aria-live]')).toContainText('you give 2.1k, you get 3.4k');
+  await expect(page.getByRole('link', { name: 'FantasyCalc' }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your weeks after the trade' })).toBeVisible();
+  await expect(page.locator('table.byes tbody tr')).toHaveCount(9); // weeks 7–15
   await page.screenshot({ path: testInfo.outputPath('trade.png'), fullPage: true });
 });

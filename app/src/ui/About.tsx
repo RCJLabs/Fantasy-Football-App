@@ -59,6 +59,13 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           <li>Projections: RotoWire, via Sleeper.</li>
           <li>Practice reports and schedule: nflverse (CC-BY 4.0), processed daily.</li>
           <li>Trending adds: Sleeper.</li>
+          <li>
+            Trade market values:{' '}
+            <a href="https://www.fantasycalc.com" target="_blank" rel="noopener">
+              FantasyCalc
+            </a>{' '}
+            (fetched by your browser, non-commercial use).
+          </li>
         </ul>
         {manifest.data ? (
           <p class="muted small">

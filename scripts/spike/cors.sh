@@ -26,4 +26,6 @@ check g-stats-web "https://api.sleeper.com/stats/nfl/2026/5?season_type=regular&
 check g-stats-v1 "https://api.sleeper.app/v1/stats/nfl/regular/2026/5"
 check schedule-web "https://api.sleeper.com/schedule/nfl/regular/2026"
 check nfldata-raw "https://raw.githubusercontent.com/nflverse/nfldata/master/data/games.csv"
+check fantasycalc-redraft "https://api.fantasycalc.com/values/current?isDynasty=false&numQbs=1&numTeams=12&ppr=1"
+check fantasycalc-dynasty "https://api.fantasycalc.com/values/current?isDynasty=true&numQbs=1&numTeams=12&ppr=1"
 echo

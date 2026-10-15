@@ -606,3 +606,11 @@ h3 {
   color: #fff;
   font-weight: 600;
 }
+
+/* Trade bye grid */
+.table.byes tr.worse td {
+  background: color-mix(in srgb, var(--bad) 13%, transparent);
+}
+.table.byes tr.better td {
+  background: color-mix(in srgb, var(--good) 13%, transparent);
+}

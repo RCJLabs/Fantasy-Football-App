@@ -5,7 +5,7 @@ import { parseLeague, parseMatchup, parseRoster } from '../sleeper/parse';
 import type { RawLeague, RawTransaction } from '../sleeper/raw';
 import { gamesByTeam, type WeekContext } from './analyze';
 import { faabMarket, marketPrice, suggestBid, tierOf } from './faab';
-import { buildOutlook, evaluateTrade, freeAgentPool, scheduleOutlook, streamers, waiverBoard } from './outlook';
+import { buildOutlook, byeGrid, evaluateTrade, freeAgentPool, regularStarters, scheduleOutlook, streamers, waiverBoard } from './outlook';
 import { addGains, playoffByes, playoffRounds, projectionPositions, regularSeasonEnd, RosModel, seasonEnd, weekWeights } from './ros';
 import { simulateSeason } from './season';
 
@@ -22,8 +22,9 @@ const rawLeague: RawLeague = {
 const league: League = parseLeague(rawLeague);
 
 const player = (id: string, pos: string, injury: string | null = null): Player => ({ id, name: id, pos, fpos: [pos], team: id.toUpperCase(), injury });
-const index = (rows: Record<string, StatLine>, week: number): ProjectionIndex => ({
-  byPlayer: new Map(Object.entries(rows).map(([id, stats]) => [id, { playerId: id, week, stats }])),
+// Projection rows carry the player's team (as Sleeper's do); `player()` below uses the same team codes.
+const index = (rows: Record<string, StatLine>, week: number, teamOf = (id: string) => id.toUpperCase()): ProjectionIndex => ({
+  byPlayer: new Map(Object.entries(rows).map(([id, stats]) => [id, { playerId: id, week, stats, team: teamOf(id) }])),
   players: new Map(),
   statKeys: new Set(Object.values(rows).flatMap((s) => Object.keys(s))),
 });
@@ -74,6 +75,26 @@ describe('RosModel', () => {
     const bare = flexless.bestWeek(['qb', 'rb1', 'wr1', 'def'], 0).mean;
     expect(insured - bare).toBeCloseTo((1 - 0.91) * 0.91 * 6, 9); // rb1 out → rb2 plays
     expect(withBench.mean).toBeGreaterThan(bare);
+  });
+
+  it('knows byes from the teams playing each week, and counts slots nobody can fill', () => {
+    // Week 8: RB1's team has no rows at all, so it's on bye.
+    expect(model.onBye('rb1', 1)).toBe(true);
+    expect(model.onBye('rb1', 0)).toBe(false);
+    expect(model.onBye('rb2', 1)).toBe(false);
+    const w8 = model.lineupWeek(['qb', 'rb1', 'wr1', 'def'], 1);
+    expect(w8.open).toBe(2); // RB (on bye) and FLEX empty
+    expect(w8.starters).toEqual(['qb', 'wr1', 'def']);
+  });
+
+  it('builds a bye grid of regular starters and lineup points before and after', () => {
+    const before = ['qb', 'rb1', 'rb2', 'wr1', 'def'];
+    const after = ['qb', 'rb1', 'wr1', 'def']; // trade rb2 away
+    expect([...regularStarters(model, after)].sort()).toEqual(['def', 'qb', 'rb1', 'wr1']);
+    const grid = byeGrid(model, before, after);
+    expect(grid.map((g) => g.week)).toEqual([7, 8]);
+    expect(grid[1]).toMatchObject({ week: 8, byes: ['rb1'], openBefore: 1, openAfter: 2 });
+    expect(grid[1]!.after).toBeLessThan(grid[1]!.before);
   });
 
   it('suggests the cheapest drop when the roster is full', () => {
@@ -152,7 +173,7 @@ describe('league outlook', () => {
   const statFor = (id: string): StatLine =>
     posOf(id) === 'QB' ? { pass_yd: 240, pass_td: 1.7 } : posOf(id) === 'RB' ? { rush_yd: id === 'fa_rb' ? 95 : 55, rush_td: 0.4 } : posOf(id) === 'WR' ? { rec: 5, rec_yd: 60 } : { sack: 2.5 };
   const weekRows = Object.fromEntries(all.map((id) => [id, statFor(id)]));
-  const byWeek = new Map(Array.from({ length: 9 }, (_, i) => [7 + i, index(weekRows, 7 + i)]));
+  const byWeek = new Map(Array.from({ length: 9 }, (_, i) => [7 + i, index(weekRows, 7 + i, (id) => `T${id}`)]));
   const rosters: Roster[] = [
     { roster_id: 1, owner_id: 'u1', players: ids.me, starters: ['qa', 'ra', 'wa', 'rb', 'da'], settings: { wins: 3, losses: 2, waiver_budget_used: 40 } },
     { roster_id: 2, owner_id: 'u2', players: ids.opp, starters: ['qb', 'rd', 'wb', 're', 'db'], settings: { wins: 4, losses: 1, waiver_budget_used: 10 } },
@@ -163,7 +184,7 @@ describe('league outlook', () => {
     [...a.map((r) => ({ r, m: 1 })), ...b.map((r) => ({ r, m: 2 }))].map(({ r, m }) => parseMatchup({ roster_id: r, matchup_id: m, starters: [], players: [], points: 0 }));
   const schedule = new Map(Array.from({ length: 8 }, (_, i) => [7 + i, i % 2 ? pair([1, 3], [2, 4]) : pair([1, 4], [2, 3])]));
   const now = Date.UTC(2026, 9, 15, 12);
-  const ctx: WeekContext = { season: '2026', week: 6, now, players, projections: index(weekRows, 6), gamesByTeam: gamesByTeam([], 6) };
+  const ctx: WeekContext = { season: '2026', week: 6, now, players, projections: index(weekRows, 6, (id) => `T${id}`), gamesByTeam: gamesByTeam([], 6) };
   const o = buildOutlook({ league, rosters, users: [], matchups: pair([1, 2], [3, 4]), ctx, byWeek, schedule, sims: 1500 });
 
   it('simulates the rest of the regular season, this week included', () => {
