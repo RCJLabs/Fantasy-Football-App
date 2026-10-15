@@ -12,8 +12,8 @@ export interface CompactPlayer {
   t?: string; // team (Sleeper code)
   inj?: string; // Sleeper injury_status
   body?: string; // injury body part
-  prac?: PracticeStatus; // final practice status from the official report (nflverse)
-  rpt?: string; // official report status (Questionable/Doubtful/Out)
+  prac?: PracticeStatus; // latest practice status on the official report (nflverse); final once rpt is set
+  rpt?: string; // official game status (Questionable/Doubtful/Out), given only on the week's final report
   dp?: string; // depth chart position
   do?: number; // depth chart order
   rk?: number; // Sleeper search_rank

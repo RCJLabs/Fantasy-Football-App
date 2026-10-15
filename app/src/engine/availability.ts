@@ -1,11 +1,18 @@
 import type { InjuryStatus, PracticeStatus } from '../domain/types';
 
 /**
- * P(player is active) from the injury designation and final practice status (v0 table).
+ * P(player is active) from the injury designation and the final practice status.
  *
- * Sources: Questionable ≈ 70% active (2026 Wk 1–5: 181/259 by exact gsis join [own calc]);
- * Doubtful ≈ 0% (0/24); conditional on Questionable, final practice FP/LP/DNP ≈ 87/65/45%
- * (2026 Wk 1–5, name join adjusted [own calc]). No designation: ~1% inactive [design].
+ * Calibrated on the 2023–2025 regular seasons [own calc: scripts/calibrate/pplay.ts, see
+ * docs/calibration.md]: nflverse final injury reports joined to game-day active/inactive rosters,
+ * for fantasy-relevant QB/RB/WR/TE/K (≥ 8 PPR per game so far that season; QB 12).
+ * Questionable 72% active (364/502); by final practice Full 92% (82/89), Limited 71% (228/322),
+ * DNP 56% (45/80); stable across the three seasons. Doubtful 1% (1/69; 2% for all players, 3/152).
+ * Out 0/357. No designation 99% (including players listed on the report without one).
+ * Held out, 2026 weeks 1–5: see docs/calibration.md.
+ *
+ * `practice` must come from the week's final report (the player has a game status). Mid-week,
+ * pass undefined: the overall Questionable rate applies.
  */
 export function playProbability(injury: InjuryStatus | null | undefined, practice?: PracticeStatus): number {
   switch (injury) {
@@ -14,12 +21,12 @@ export function playProbability(injury: InjuryStatus | null | undefined, practic
     case '':
       return 0.99;
     case 'Questionable':
-      if (practice === 'Full') return 0.87;
-      if (practice === 'Limited') return 0.65;
-      if (practice === 'DNP') return 0.45;
-      return 0.7;
+      if (practice === 'Full') return 0.92;
+      if (practice === 'Limited') return 0.71;
+      if (practice === 'DNP') return 0.56;
+      return 0.72;
     case 'Doubtful':
-      return 0.03;
+      return 0.02;
     default:
       // Out, IR, PUP, NA, Sus, DNR, COV, …
       return 0;

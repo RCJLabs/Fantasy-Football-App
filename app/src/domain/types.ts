@@ -27,7 +27,10 @@ export interface Player {
   team: string | null;
   injury: InjuryStatus | null;
   injuryBody?: string;
+  /** Latest practice status on this week's official report. */
   practice?: PracticeStatus;
+  /** The report is the week's final one for this player (a game status was given). */
+  practiceFinal?: boolean;
   depthPos?: string;
   depthOrder?: number;
   rank?: number; // Sleeper search_rank (lower = more relevant)

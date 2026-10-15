@@ -61,8 +61,8 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   const flanker = page.locator('.pl').filter({ hasText: 'Drew Flanker' }).first();
   await expect(flanker).toContainText('Q · L');
   await flanker.getByRole('button').click();
-  await expect(flanker).toContainText('Chance to play: 65%');
-  await expect(flanker).toContainText('limited practice');
+  await expect(flanker).toContainText('Chance to play: 71%');
+  await expect(flanker).toContainText('limited practice on the final report');
   await expect(page.locator('.pl').filter({ hasText: 'Taylor Wideout' }).first()).toContainText('Live');
   await page.screenshot({ path: testInfo.outputPath('lineup.png'), fullPage: true });
 
