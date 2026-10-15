@@ -1,8 +1,10 @@
-import type { LineupAnalysis, LineupChange } from '../analysis/analyze';
+import { useMemo, useState } from 'preact/hooks';
+import type { LineupAnalysis, LineupChange, Objective } from '../analysis/analyze';
 import { ErrorBox, PlayerLine, Problems, slotLabel, Spinner } from './components';
-import { findLeague, loadLeagueBundle } from './data';
+import { findLeague, lineupFor, loadLeagueBundle, type LeagueBundle } from './data';
 import { ago, pct, pts, signed } from './format';
 import { useAsync, useTick } from './hooks';
+import { setObjectivePref } from './prefs';
 import { SeasonTab, TradeTab, WaiversTab } from './SeasonTabs';
 import type { Session } from './session';
 
@@ -60,7 +62,7 @@ export function LeaguePage({ session, leagueId, tab }: { session: Session; leagu
       ) : !b.lineup ? (
         <p class="card">This league isn't in season ({b.league.status.replace('_', ' ')}).</p>
       ) : tab === 'matchup' ? (
-        <MatchupTab a={b.lineup} now={now} />
+        <LineupArea b={b} tab="matchup" now={now} />
       ) : tab === 'waivers' ? (
         <WaiversTab bundle={b} now={now} />
       ) : tab === 'trade' ? (
@@ -68,7 +70,7 @@ export function LeaguePage({ session, leagueId, tab }: { session: Session; leagu
       ) : tab === 'season' ? (
         <SeasonTab bundle={b} />
       ) : (
-        <LineupTab a={b.lineup} bestBall={b.league.rules.bestBall} now={now} />
+        <LineupArea b={b} tab="lineup" now={now} />
       )}
     </section>
   );
@@ -101,7 +103,58 @@ function ChangeLine({ c }: { c: LineupChange }) {
   );
 }
 
-function LineupTab({ a, bestBall, now }: { a: LineupAnalysis; bestBall: boolean; now: number }) {
+/** Lineup and Matchup tabs share one analysis, re-run when you switch between max points and win chance. */
+function LineupArea({ b, tab, now }: { b: LeagueBundle; tab: 'lineup' | 'matchup'; now: number }) {
+  const [choice, setChoice] = useState<Objective | undefined>(undefined);
+  const a = useMemo(() => (choice ? lineupFor(b, choice) : b.lineup) ?? b.lineup!, [b, choice]);
+  const choose = (o: Objective) => {
+    setObjectivePref(b.league.id, b.phase, o);
+    setChoice(o);
+  };
+  return tab === 'matchup' ? <MatchupTab a={a} now={now} /> : <LineupTab a={a} bestBall={b.league.rules.bestBall} now={now} onObjective={choose} />;
+}
+
+function ObjectiveToggle({ a, onObjective }: { a: LineupAnalysis; onObjective: (o: Objective) => void }) {
+  if (a.winProbRecommended === undefined && a.medianProb === undefined) return null;
+  return (
+    <div class="seg" role="group" aria-label="Optimize lineup for">
+      <button type="button" aria-pressed={a.objective === 'points'} onClick={() => onObjective('points')}>
+        Max points
+      </button>
+      <button type="button" aria-pressed={a.objective === 'win'} onClick={() => onObjective('win')}>
+        Win chance
+      </button>
+    </div>
+  );
+}
+
+function ObjectiveNote({ a }: { a: LineupAnalysis }) {
+  const p = a.playoff;
+  const round = p ? `Playoffs, round ${p.round} of ${p.rounds}${p.roundWeeks === 2 ? ` (week ${p.weekInRound} of 2: the two-week total decides it)` : ''}. ` : '';
+  if (a.objective === 'points') {
+    if (a.winProbRecommended === undefined && a.medianProb === undefined) return round ? <p class="muted small">{round}</p> : null;
+    return (
+      <p class="muted small">
+        {round}
+        {p ? 'Showing the max-points lineup; Win chance tunes it for this matchup.' : 'Lineup maximizes expected points. Win chance also weighs how much your score can swing against this opponent.'}
+      </p>
+    );
+  }
+  const mp = a.maxPoints;
+  if (!mp || mp.same) return <p class="muted small">{round}The max-points lineup is also your best shot to win{p ? ' this round' : ''}.</p>;
+  const median = a.medianProb !== undefined;
+  const favored = (mp.winProb ?? 0.5) >= 0.5;
+  const tuned = median ? `${((a.winProbRecommended ?? 0) + (a.medianProb ?? 0)).toFixed(2)} expected wins` : `${pct(a.winProbRecommended)} to win`;
+  const plain = median ? ((mp.winProb ?? 0) + (mp.medianProb ?? 0)).toFixed(2) : pct(mp.winProb);
+  return (
+    <p class="small">
+      {round}Tuned for win chance: {tuned} vs {plain} with the max-points lineup, for {pts(mp.expected - a.expectedRecommended)} fewer expected points. As
+      the {favored ? 'favorite' : 'underdog'}, it {favored ? 'narrows' : 'widens'} the range of outcomes{mp.reasons.length ? `: ${mp.reasons.join('; ')}` : ''}.
+    </p>
+  );
+}
+
+function LineupTab({ a, bestBall, now, onObjective }: { a: LineupAnalysis; bestBall: boolean; now: number; onObjective: (o: Objective) => void }) {
   const inIds = new Set(a.changes.filter((c) => c.kind === 'swap' || c.kind === 'start').map((c) => c.in?.id));
   return (
     <div class="stack">
@@ -126,7 +179,14 @@ function LineupTab({ a, bestBall, now }: { a: LineupAnalysis; bestBall: boolean;
             </div>
           ) : null}
         </div>
-        {bestBall ? <p class="muted small">Best ball league: Sleeper picks your highest scorers automatically, so these are informational.</p> : null}
+        {bestBall ? (
+          <p class="muted small">Best ball league: Sleeper picks your highest scorers automatically, so these are informational.</p>
+        ) : (
+          <>
+            <ObjectiveToggle a={a} onObjective={onObjective} />
+            <ObjectiveNote a={a} />
+          </>
+        )}
         <Problems problems={a.problems} />
       </div>
 
@@ -203,14 +263,20 @@ function MatchupTab({ a, now }: { a: LineupAnalysis; now: number }) {
             </>
           ) : null}
         </p>
-        <p class="muted small">Totals include points already scored; games in progress are prorated. Spreads assume players score independently.</p>
+        <p class="muted small">
+          Totals include points already scored; games in progress are prorated. Players in the same NFL game are treated as correlated (a QB and his
+          receivers rise and fall together; a QB and the defense he faces move in opposite directions).
+        </p>
+        {a.opponent?.assumed?.length ? (
+          <p class="muted small">Assumes {a.opponent.name} replaces starters who can't play (marked “assumed”).</p>
+        ) : null}
       </div>
       {a.opponent ? (
         <div class="card">
           <h2>{a.opponent.name}</h2>
           <div class="list">
             {a.opponent.rows.map((row) => (
-              <PlayerLine row={row} now={now} />
+              <PlayerLine row={row} now={now} note={row && a.opponent!.assumed?.includes(row.id) ? 'assumed' : undefined} />
             ))}
           </div>
         </div>

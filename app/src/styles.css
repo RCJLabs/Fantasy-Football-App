@@ -581,3 +581,28 @@ h3 {
   color: var(--muted);
   font-size: 0.65rem;
 }
+
+/* Max points / Win chance switch */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px;
+  margin: 0.25rem 0 0.5rem;
+  background: var(--surface-2);
+}
+.seg button {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  cursor: pointer;
+}
+.seg button[aria-pressed='true'] {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}

@@ -1,10 +1,11 @@
-import { analyzeLineup, type LineupAnalysis, type WeekContext } from '../analysis/analyze';
+import { analyzeLineup, type LineupAnalysis, type LineupOptions, type WeekContext } from '../analysis/analyze';
 import { buildOutlook, type LeagueOutlook } from '../analysis/outlook';
-import { projectionPositions, regularSeasonEnd, seasonEnd } from '../analysis/ros';
+import { playoffWeekInfo, projectionPositions, regularSeasonEnd, RosModel, seasonEnd, teamIds } from '../analysis/ros';
 import type { League, Roster } from '../domain/types';
 import {
   loadLeagueData,
   loadLeagues,
+  loadMatchups,
   loadRosWeeks,
   loadSchedule,
   loadState,
@@ -15,6 +16,7 @@ import {
 } from '../data/repo';
 import { findUserRoster } from '../sleeper/parse';
 import type { RawTransaction } from '../sleeper/raw';
+import { objectivePref, type Phase } from './prefs';
 import type { Session } from './session';
 
 export interface Overview {
@@ -47,23 +49,65 @@ export function sharedWeek(season: string, week: number, force: boolean): Promis
 export interface LeagueBundle {
   league: League;
   week: number;
+  phase: Phase;
   data: LeagueData;
   ctx: WeekContext & DataNotes;
   myRoster?: Roster;
   lineup?: LineupAnalysis;
+  /** Two-week playoff rounds: the round's other week for both teams. */
+  extra?: LineupOptions['extra'];
+}
+
+export function seasonPhase(league: League, week: number): Phase {
+  const start = league.rules.playoffWeekStart;
+  return start && week >= start ? 'playoffs' : 'regular';
+}
+
+/** Lineup analysis with this device's lineup-mode choice for the league and phase (default otherwise). */
+export function lineupFor(bundle: LeagueBundle, objective = objectivePref(bundle.league.id, bundle.phase)): LineupAnalysis | undefined {
+  const { league, data, myRoster, ctx, extra } = bundle;
+  if (!myRoster || !(league.status === 'in_season' || league.status === 'post_season')) return undefined;
+  const opts: LineupOptions = {};
+  if (objective) opts.objective = objective;
+  if (extra) opts.extra = extra;
+  return analyzeLineup(league, data.rosters, data.users, data.matchups, myRoster, ctx, opts);
 }
 
 export async function loadLeagueBundle(league: League, week: number, session: Session, force: boolean): Promise<LeagueBundle> {
   const [data, ctx] = await Promise.all([loadLeagueData(league.id, week, force), sharedWeek(league.season, week, force)]);
   const myRoster = findUserRoster(data.rosters, session.userId);
-  const bundle: LeagueBundle = { league, week, data, ctx: { ...ctx, now: Date.now() } };
+  const bundle: LeagueBundle = { league, week, phase: seasonPhase(league, week), data, ctx: { ...ctx, now: Date.now() } };
   if (myRoster) {
     bundle.myRoster = myRoster;
-    if (league.status === 'in_season' || league.status === 'post_season') {
-      bundle.lineup = analyzeLineup(league, data.rosters, data.users, data.matchups, myRoster, bundle.ctx);
-    }
+    const extra = await roundExtra(bundle, myRoster).catch(() => undefined);
+    if (extra) bundle.extra = extra;
+    const lineup = lineupFor(bundle);
+    if (lineup) bundle.lineup = lineup;
   }
   return bundle;
+}
+
+/**
+ * In a two-week playoff round the total decides it: the first week's final scores (when this is the
+ * second week), or both teams' best projected lineups next week (when this is the first).
+ */
+async function roundExtra(bundle: LeagueBundle, myRoster: Roster): Promise<LineupOptions['extra']> {
+  const { league, week, data, ctx } = bundle;
+  const info = playoffWeekInfo(league, week);
+  if (info?.roundWeeks !== 2) return undefined;
+  const mine = data.matchups.find((m) => m.rosterId === myRoster.rosterId);
+  const opp = mine?.matchupId != null ? data.matchups.find((m) => m.matchupId === mine.matchupId && m.rosterId !== myRoster.rosterId) : undefined;
+  const oppRoster = opp ? data.rosters.find((r) => r.rosterId === opp.rosterId) : undefined;
+  if (!opp || !oppRoster) return undefined;
+  if (info.weekInRound === 2) {
+    const prev = await loadMatchups(league.id, week - 1);
+    const scored = (rosterId: number) => ({ mean: prev.find((m) => m.rosterId === rosterId)?.points ?? 0, variance: 0 });
+    return { me: scored(myRoster.rosterId), opp: scored(opp.rosterId) };
+  }
+  const ros = await loadRosWeeks(league.season, [week + 1], projectionPositions(league));
+  if (ros.missing.length) return undefined;
+  const model = new RosModel({ league, weeks: [week + 1], byWeek: ros.byWeek, players: ctx.players });
+  return { me: model.bestWeek(teamIds(myRoster), 0), opp: model.bestWeek(teamIds(oppRoster), 0) };
 }
 
 export interface SeasonBundle {

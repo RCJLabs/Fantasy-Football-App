@@ -1,10 +1,12 @@
 import type { Game, League, LeagueUser, Matchup, Player, PracticeStatus, Roster } from '../domain/types';
 import { bestAssignment } from '../engine/assignment';
 import { conditionalMean, playProbability } from '../engine/availability';
-import { canFill, optimizeLineup, startingSlots, type LineupPlayer } from '../engine/lineup';
+import { crossCovariance, pairCorrelation, withinCovariance, type CorrItem } from '../engine/correlation';
+import { canFill, optimizeLineup, startingSlots, twoStageValue, type LineupPlayer, type LineupProblem } from '../engine/lineup';
 import { expectedStats, scoreBreakdown, scoreStats, uncoveredScoringKeys } from '../engine/scoring';
 import { pointSd, playerDist, probBeatAtLeast, sumDists, winProbability, type Dist } from '../engine/winprob';
 import type { ProjectionIndex } from '../sleeper/parse';
+import { playoffWeekInfo, type PlayoffWeek } from './ros';
 
 const HOUR = 3_600_000;
 /** Typical game length used to estimate how much of an in-progress game remains. [design] */
@@ -72,6 +74,21 @@ export interface TeamSide {
   name: string;
   rows: Array<PlayerRow | null>;
   dist: Dist;
+  /** Bench players assumed to start in place of starters who can't play (opponents fix their holes). */
+  assumed?: string[];
+}
+
+/** What a lineup recommendation maximizes. */
+export type Objective = 'points' | 'win';
+
+export interface LineupOptions {
+  /** Defaults to 'win' in the playoffs, 'points' otherwise. */
+  objective?: Objective;
+  /**
+   * The other week of a two-week playoff round, for both teams: points already scored (second week)
+   * or projected (first week). Round winners are decided by the two-week total.
+   */
+  extra?: { me: Dist; opp: Dist };
 }
 
 export interface LineupAnalysis {
@@ -87,12 +104,31 @@ export interface LineupAnalysis {
   reserve: PlayerRow[];
   me: TeamSide;
   opponent?: TeamSide;
+  /** Chance to win this week's game (the whole round in a two-week playoff round). */
   winProbCurrent?: number;
   winProbRecommended?: number;
+  /** Chance to beat the league median (regular season in median leagues). */
+  medianProbCurrent?: number;
   medianProb?: number;
+  objective: Objective;
+  defaultObjective: Objective;
+  playoff?: PlayoffWeek;
+  /** In win-chance mode: what the max-expected-points lineup would give, for comparison. */
+  maxPoints?: {
+    expected: number;
+    winProb?: number;
+    medianProb?: number;
+    same: boolean;
+    /** Why the win-chance lineup differs: correlations its new starters bring. */
+    reasons: string[];
+  };
   problems: Problem[];
   uncoveredKeys: string[];
 }
+
+/** A win-chance lineup must beat the max-points lineup by this much to be recommended. [design] */
+const WIN_EDGE = 0.005;
+const ZERO: Dist = { mean: 0, variance: 0 };
 
 export function teamName(roster: Roster | undefined, users: readonly LeagueUser[]): string {
   if (!roster) return 'Unknown';
@@ -160,16 +196,56 @@ export function starterDist(row: PlayerRow, now: number): Dist {
   return playerDist(row.mu, row.p, row.sd);
 }
 
-function lineupDist(rows: ReadonlyArray<PlayerRow | null>, now: number): Dist {
-  return sumDists(rows.filter((r): r is PlayerRow => r !== null).map((r) => starterDist(r, now)));
+const isRow = (r: PlayerRow | null): r is PlayerRow => r !== null;
+
+/** The part of a starter's points that still moves with his game (for correlations between players). */
+export function corrItem(row: PlayerRow, now: number): CorrItem {
+  let sd = row.p * row.sd;
+  if (row.locked && row.kickoff !== null) sd = Math.sqrt(1 - Math.min(1, Math.max(0, (now - row.kickoff) / GAME_MS))) * row.sd;
+  return { pos: row.pos, team: row.team, opponent: row.opponent ?? null, sd };
 }
 
-/** A team's starters this week (as set in Sleeper) and the distribution of its score, points so far included. */
+/** Distribution of a lineup's total, including correlations between starters in the same NFL games. */
+function lineupDist(rows: ReadonlyArray<PlayerRow | null>, now: number): Dist {
+  const starters = rows.filter(isRow);
+  const base = sumDists(starters.map((r) => starterDist(r, now)));
+  return { mean: base.mean, variance: Math.max(0, base.variance + withinCovariance(starters.map((r) => corrItem(r, now)))) };
+}
+
+/**
+ * A team's starters this week (as set in Sleeper) and the distribution of its score, points so far
+ * included. Starters who can't play (Out, bye, empty slot) are assumed replaced by the best eligible bench
+ * player whose game hasn't started: managers fix obvious holes before kickoff.
+ */
 export function teamSide(league: League, roster: Roster, users: readonly LeagueUser[], matchups: readonly Matchup[], ctx: WeekContext): TeamSide {
   const m = matchups.find((x) => x.rosterId === roster.rosterId);
-  const starters = (m?.starters.length ? m.starters : roster.starters).filter((id) => id && id !== '0');
-  const rows = starters.map((id) => playerRow(id, league, ctx, m?.playersPoints[id]));
-  return { rosterId: roster.rosterId, name: teamName(roster, users), rows, dist: lineupDist(rows, ctx.now) };
+  const slots = startingSlots(league.rosterPositions);
+  const set = m?.starters.length ? m.starters : roster.starters;
+  const row = (id: string) => playerRow(id, league, ctx, m?.playersPoints[id]);
+  const starting = slots.map((_, s) => {
+    const id = set[s];
+    return id && id !== '0' ? row(id) : null;
+  });
+  const used = new Set(starting.filter(isRow).map((r) => r.id));
+  const off = new Set([...roster.reserve, ...roster.taxi]);
+  const bench = roster.players
+    .filter((id) => !used.has(id) && !off.has(id))
+    .map(row)
+    .filter((r) => !r.locked && r.ev > 0)
+    .sort((a, b) => b.ev - a.ev);
+  const assumed: string[] = [];
+  const rows = starting.map((r, s) => {
+    if (r && (r.locked || r.ev > 0)) return r;
+    const k = bench.findIndex((b) => canFill(slots[s]!, b.fpos));
+    if (k < 0) return r;
+    const sub = bench.splice(k, 1)[0]!;
+    assumed.push(sub.id);
+    return sub;
+  });
+  const live = rows.filter(isRow);
+  const side: TeamSide = { rosterId: roster.rosterId, name: teamName(roster, users), rows: live, dist: lineupDist(live, ctx.now) };
+  if (assumed.length) side.assumed = assumed;
+  return side;
 }
 
 export function analyzeLineup(
@@ -179,6 +255,7 @@ export function analyzeLineup(
   matchups: readonly Matchup[],
   myRoster: Roster,
   ctx: WeekContext,
+  opts: LineupOptions = {},
 ): LineupAnalysis {
   const slots = startingSlots(league.rosterPositions);
   const myMatchup = matchups.find((m) => m.rosterId === myRoster.rosterId);
@@ -201,30 +278,68 @@ export function analyzeLineup(
     const id = myRoster.starters[s];
     return id && id !== '0' ? (indexOf.get(id) ?? -1) : -1;
   });
-  const result = optimizeLineup({ slots, players: lineupPlayers, current, now: ctx.now });
-
+  const problem: LineupProblem = { slots, players: lineupPlayers, current, now: ctx.now };
+  const best = optimizeLineup(problem);
   const pick = (lineup: readonly number[]) => lineup.map((i) => (i >= 0 ? rows[i]! : null));
+
+  let opponent: TeamSide | undefined;
+  if (myMatchup?.matchupId != null) {
+    const opp = matchups.find((m) => m.matchupId === myMatchup.matchupId && m.rosterId !== myRoster.rosterId);
+    const oppRoster = opp ? rosters.find((r) => r.rosterId === opp.rosterId) : undefined;
+    if (oppRoster) opponent = teamSide(league, oppRoster, users, matchups, ctx);
+  }
+
+  // The median game is a regular-season thing; playoff weeks are single (or two-week) eliminations.
+  const playoff = playoffWeekInfo(league, ctx.week);
+  const start = league.rules.playoffWeekStart;
+  const median =
+    league.rules.medianGame && rosters.length > 2 && !(start && ctx.week >= start)
+      ? {
+          others: rosters.filter((r) => r.rosterId !== myRoster.rosterId).map((r) => teamSide(league, r, users, matchups, ctx).dist),
+          need: Math.floor(rosters.length / 2),
+        }
+      : undefined;
+  const extra = opts.extra ?? { me: ZERO, opp: ZERO };
+  const oppItems = opponent ? opponent.rows.filter(isRow).map((r) => corrItem(r, ctx.now)) : [];
+  const oppDist = opponent ? { mean: opponent.dist.mean + extra.opp.mean, variance: opponent.dist.variance + extra.opp.variance } : undefined;
+
+  /** Chance to win the game (round) and to beat the median with a lineup worth `expected` points. */
+  const odds = (lineup: readonly number[], expected: number) => {
+    const starters = pick(lineup).filter(isRow);
+    const items = starters.map((r) => corrItem(r, ctx.now));
+    const variance = sumDists(starters.map((r) => starterDist(r, ctx.now))).variance + withinCovariance(items);
+    const mine = { mean: expected + extra.me.mean, variance: Math.max(0, variance) + extra.me.variance };
+    return {
+      win: oppDist ? winProbability(mine, oppDist, crossCovariance(items, oppItems)) : undefined,
+      median: median ? probBeatAtLeast(mine, median.others, median.need) : undefined,
+    };
+  };
+  const wins = (o: { win?: number | undefined; median?: number | undefined }) => (o.win ?? 0) + (o.median ?? 0);
+
+  const defaultObjective: Objective = playoff && opponent ? 'win' : 'points';
+  const objective: Objective = opponent || median ? (opts.objective ?? defaultObjective) : 'points';
+  let result = best;
+  let maxPoints: LineupAnalysis['maxPoints'];
+  if (objective === 'win') {
+    const base = odds(best.lineup, best.expected);
+    const tuned = optimizeLineup(problem, { score: (l) => wins(odds(l, twoStageValue(problem, l))), starts: [best.lineup] });
+    // Only trade expected points for win chance when the model sees a real edge, not noise.
+    if (tuned.score > wins(base) + WIN_EDGE) result = tuned;
+    const reasons = result === best ? [] : correlationReasons(pick(result.lineup), pick(best.lineup), opponent?.rows ?? []);
+    maxPoints = { expected: best.expected, same: result === best, reasons };
+    if (base.win !== undefined) maxPoints.winProb = base.win;
+    if (base.median !== undefined) maxPoints.medianProb = base.median;
+  }
+
   const currentRows = pick(current);
   const recommendedRows = pick(result.lineup);
   const changes = lineupChanges(slots, current, result.lineup, rows);
   const recommendedSet = new Set(result.lineup.filter((i) => i >= 0));
   // Moves between slots (same players, different positions) without anyone entering or leaving.
   const reshuffled = changes.length > 0 && changes.every((c) => c.kind === 'move');
-
   const bench = rows.filter((_, i) => !recommendedSet.has(i)).sort((a, b) => b.ev - a.ev);
   const reserve = [...myRoster.reserve, ...myRoster.taxi].map((id) => playerRow(id, league, ctx, points[id]));
-
   const me: TeamSide = { rosterId: myRoster.rosterId, name: teamName(myRoster, users), rows: recommendedRows, dist: lineupDist(recommendedRows, ctx.now) };
-  const meCurrentDist = lineupDist(currentRows, ctx.now);
-
-  const sideFor = (roster: Roster): TeamSide => teamSide(league, roster, users, matchups, ctx);
-
-  let opponent: TeamSide | undefined;
-  if (myMatchup?.matchupId != null) {
-    const opp = matchups.find((m) => m.matchupId === myMatchup.matchupId && m.rosterId !== myRoster.rosterId);
-    const oppRoster = opp ? rosters.find((r) => r.rosterId === opp.rosterId) : undefined;
-    if (oppRoster) opponent = sideFor(oppRoster);
-  }
 
   const analysis: LineupAnalysis = {
     week: ctx.week,
@@ -238,20 +353,44 @@ export function analyzeLineup(
     bench,
     reserve,
     me,
+    objective,
+    defaultObjective,
     problems: [],
     uncoveredKeys: uncoveredScoringKeys(league.scoring, ctx.projections.statKeys),
   };
+  if (playoff) analysis.playoff = playoff;
+  if (maxPoints) analysis.maxPoints = maxPoints;
+  const oddsCurrent = odds(current, result.currentExpected);
+  const oddsRecommended = odds(result.lineup, result.expected);
   if (opponent) {
     analysis.opponent = opponent;
-    analysis.winProbCurrent = winProbability(meCurrentDist, opponent.dist);
-    analysis.winProbRecommended = winProbability(me.dist, opponent.dist);
+    analysis.winProbCurrent = oddsCurrent.win!;
+    analysis.winProbRecommended = oddsRecommended.win!;
   }
-  if (league.rules.medianGame && rosters.length > 2) {
-    const others = rosters.filter((r) => r.rosterId !== myRoster.rosterId).map((r) => sideFor(r).dist);
-    analysis.medianProb = probBeatAtLeast(me.dist, others, Math.floor(rosters.length / 2));
+  if (median) {
+    analysis.medianProbCurrent = oddsCurrent.median!;
+    analysis.medianProb = oddsRecommended.median!;
   }
   analysis.problems = lineupProblems(analysis, reshuffled, league, myRoster);
   return analysis;
+}
+
+/** Correlations the win-chance lineup's new starters bring, in words (at most two). */
+function correlationReasons(chosen: ReadonlyArray<PlayerRow | null>, maxPoints: ReadonlyArray<PlayerRow | null>, opponents: ReadonlyArray<PlayerRow | null>): string[] {
+  const before = new Set(maxPoints.filter(isRow).map((r) => r.id));
+  const mine = chosen.filter(isRow);
+  const out: string[] = [];
+  for (const p of mine.filter((r) => !before.has(r.id))) {
+    for (const q of mine) {
+      if (q.id !== p.id && pairCorrelation(p, q) >= 0.15) out.push(`${p.name} pairs with your ${q.name}`);
+    }
+    for (const o of opponents.filter(isRow)) {
+      const r = pairCorrelation(p, o);
+      if (r >= 0.15) out.push(`${p.name} moves with their ${o.name}`);
+      else if (r <= -0.15) out.push(`${p.name} works against their ${o.name}`);
+    }
+  }
+  return [...new Set(out)].slice(0, 2);
 }
 
 /**
@@ -291,7 +430,20 @@ export function lineupChanges(slots: readonly string[], current: readonly number
 function lineupProblems(a: LineupAnalysis, reshuffled: boolean, league: League, roster: Roster): Problem[] {
   const out: Problem[] = [];
   // The summary leads: it's the actionable line when a card shows only the top few problems.
-  if (a.gain >= 0.5) out.push({ level: 'warn', text: `Better lineup available: +${a.gain.toFixed(1)} expected points` });
+  if (a.objective === 'win') {
+    const before = (a.winProbCurrent ?? 0) + (a.medianProbCurrent ?? 0);
+    const after = (a.winProbRecommended ?? 0) + (a.medianProb ?? 0);
+    const pctOf = (x: number) => `${Math.round(x * 100)}%`;
+    if (a.changes.length && after - before >= WIN_EDGE) {
+      out.push({
+        level: 'warn',
+        text:
+          a.medianProb !== undefined
+            ? `Better lineup available: +${(after - before).toFixed(2)} expected wins`
+            : `Better lineup available: win chance ${pctOf(before)} → ${pctOf(after)}`,
+      });
+    }
+  } else if (a.gain >= 0.5) out.push({ level: 'warn', text: `Better lineup available: +${a.gain.toFixed(1)} expected points` });
   else if (reshuffled && a.gain > 0.05) out.push({ level: 'info', text: `Slot reshuffle adds +${a.gain.toFixed(1)} via late-swap flexibility` });
   a.current.forEach((row, s) => {
     const slot = a.slots[s]!;

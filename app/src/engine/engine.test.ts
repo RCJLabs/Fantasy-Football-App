@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { bestAssignment, hungarianMin } from './assignment';
 import { conditionalMean, playProbability } from './availability';
 import { expectNormal, gaussHermite, normCdf, normInterval } from './math';
+import { crossCovariance, pairCorrelation, withinCovariance } from './correlation';
 import { canFill, optimizeLineup, startingSlots, twoStageValue, type LineupPlayer, type LineupProblem } from './lineup';
 import { expectedStats, projectedPoints, scoreStats, uncoveredScoringKeys } from './scoring';
 import { pointSd, playerDist, probBeatAtLeast, sumDists, winProbability } from './winprob';
@@ -226,6 +227,16 @@ describe('lineup', () => {
     expect(res.currentExpected).toBe(0);
   });
 
+  it('optimizes a custom objective, starting from given lineups', () => {
+    // Objective prefers the lower-mean player: the search must follow it, not expected points.
+    const players = [pl('a', ['WR'], 12, 1, at(5)), pl('b', ['WR'], 10, 1, at(5))];
+    const problem: LineupProblem = { slots: ['WR'], players, current: [0], now };
+    const res = optimizeLineup(problem, { score: (l) => (l[0] === 1 ? 1 : 0), starts: [[0]] });
+    expect(res.lineup).toEqual([1]);
+    expect(res.score).toBe(1);
+    expect(res.expected).toBeCloseTo(10, 9);
+  });
+
   it('keeps the current slot arrangement when a reshuffle gains nothing', () => {
     // Static optimum would order RB1/RB2 and FLEX by value; the user's order is just as good.
     const players = [pl('a', ['RB'], 10, 1, at(5)), pl('b', ['RB'], 14, 1, at(5)), pl('c', ['RB'], 12, 1, at(5)), pl('d', ['RB'], 3, 1, at(5))];
@@ -235,6 +246,26 @@ describe('lineup', () => {
     // With a bench upgrade, only the replaced slot changes.
     const res2 = optimizeLineup({ slots: ['RB', 'RB', 'FLEX'], players, current: [3, 2, 1], now });
     expect(res2.lineup).toEqual([0, 2, 1]);
+  });
+});
+
+describe('correlation', () => {
+  const qb = { pos: 'QB', team: 'KC', opponent: 'BUF' };
+  it('pairs players in the same NFL game', () => {
+    expect(pairCorrelation(qb, { pos: 'WR', team: 'KC', opponent: 'BUF' })).toBe(0.3);
+    expect(pairCorrelation({ pos: 'TE', team: 'KC', opponent: 'BUF' }, qb)).toBe(0.3); // order doesn't matter
+    expect(pairCorrelation(qb, { pos: 'DEF', team: 'BUF', opponent: 'KC' })).toBe(-0.35);
+    expect(pairCorrelation(qb, { pos: 'QB', team: 'BUF', opponent: 'KC' })).toBe(0.1);
+    expect(pairCorrelation(qb, { pos: 'WR', team: 'DAL', opponent: 'NYG' })).toBe(0);
+    expect(pairCorrelation({ pos: 'RB', team: 'KC' }, { pos: 'RB', team: 'KC' })).toBe(-0.2);
+  });
+  it('adds covariance for stacks and between lineups', () => {
+    const stack = [
+      { ...qb, sd: 8 },
+      { pos: 'WR', team: 'KC', opponent: 'BUF', sd: 6 },
+    ];
+    expect(withinCovariance(stack)).toBeCloseTo(2 * 0.3 * 8 * 6, 9);
+    expect(crossCovariance([stack[0]!], [{ pos: 'DEF', team: 'BUF', opponent: 'KC', sd: 5 }])).toBeCloseTo(-0.35 * 8 * 5, 9);
   });
 });
 
@@ -250,6 +281,12 @@ describe('win probability', () => {
     expect(d.variance).toBeCloseTo(0.7 * (16 + 100) - 49, 9);
     expect(pointSd('WR', 15)).toBeCloseTo(9.9, 9);
     expect(sumDists([d, d]).mean).toBeCloseTo(14, 9);
+  });
+  it('narrows the spread of the difference when the two lineups move together', () => {
+    const a = { mean: 110, variance: 900 };
+    const b = { mean: 100, variance: 900 };
+    expect(winProbability(a, b, 300)).toBeCloseTo(normCdf(10 / Math.sqrt(1200)), 9);
+    expect(winProbability(a, b, 300)).toBeGreaterThan(winProbability(a, b));
   });
   it('median-game probability is ~50% for an average team in a symmetric league', () => {
     const team = { mean: 100, variance: 400 };
