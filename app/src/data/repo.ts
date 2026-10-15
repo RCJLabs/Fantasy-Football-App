@@ -79,6 +79,28 @@ export function playersFromFile(file: PlayersFile, week: number): Map<string, Pl
   return out;
 }
 
+/**
+ * Projection rows carry Sleeper's current injury tags (refreshed every few minutes): they win over
+ * the daily player file. A player Sleeper no longer tags keeps no practice status either.
+ */
+export function mergeProjectionPlayers(players: Map<string, Player>, fromProjections: ReadonlyMap<string, Player>): Map<string, Player> {
+  for (const [id, pp] of fromProjections) {
+    const cur = players.get(id);
+    if (!cur) players.set(id, pp);
+    else {
+      const merged: Player = { ...cur, injury: pp.injury, team: pp.team ?? cur.team };
+      if (pp.injuryBody) merged.injuryBody = pp.injuryBody;
+      else if (!pp.injury) delete merged.injuryBody;
+      if (!pp.injury) {
+        delete merged.practice;
+        delete merged.practiceFinal;
+      }
+      players.set(id, merged);
+    }
+  }
+  return players;
+}
+
 function fromCompact(c: CompactPlayer, currentReport: boolean): Player {
   const p: Player = { id: c.id, name: c.n, pos: c.pos, fpos: c.fp ?? [c.pos], team: c.t ?? null, injury: c.inj ?? null };
   if (c.body) p.injuryBody = c.body;
@@ -116,21 +138,7 @@ export async function loadWeek(season: string, week: number, force = false): Pro
       notes.push('Player database unavailable; names and injuries come from projection rows.');
     }
   }
-  // Projection rows carry Sleeper's current injury tags (refreshed every few minutes): prefer them.
-  for (const [id, pp] of projections.players) {
-    const cur = players.get(id);
-    if (!cur) players.set(id, pp);
-    else {
-      const merged: Player = { ...cur, injury: pp.injury, team: pp.team ?? cur.team };
-      if (pp.injuryBody) merged.injuryBody = pp.injuryBody;
-      else if (!pp.injury) delete merged.injuryBody;
-      if (!pp.injury) {
-        delete merged.practice;
-        delete merged.practiceFinal;
-      }
-      players.set(id, merged);
-    }
-  }
+  mergeProjectionPlayers(players, projections.players);
 
   let games: Game[] = [];
   let kickoffsApproximate = false;

@@ -77,11 +77,21 @@
     - The six traded picks resolve to the right owners; the 2026 ones are already drafted.
     - The owner's dynasty league is still pre-draft, so nothing shows there yet.
 
+- **Prediction ledger, commit step — built (2026-10-15):**
+  - Each archive run (about 10 a day, plus before every slate) also runs a predict hook. The hook writes the app's own numbers into the
+    encrypted snapshot for every player whose game hasn't started: chance to play, full-PPR points if active, and spread.
+  - It uses the same code and the same inputs the app reads: Sleeper's projection rows and the deployed `players.json` and `schedule.json`.
+    Those two files are now archived too.
+  - A public `commit_*.json` asset carries the SHA-256 of those predictions; GitHub's upload time shows they predate kickoff.
+  - Nothing RotoWire-derived is published. A hook failure never blocks the snapshot.
+  - On today's real snapshot: 415 players in 14 week-6 games, in 0.6 s.
+
   **Not yet:**
+  - scoring the committed predictions (the reveal): chance to play (Brier, calibration by tag) against game-day actives, and points (MAE,
+    ±1 SD coverage) against PPR results. It needs the archive key wherever it runs; first possible after week 6 is final;
   - keeper-league picks: Sleeper lets them be traded, but FantasyCalc's rookie-pick prices don't fit a keeper draft;
   - draft order from playoff results or a league-set order (picks follow reverse regular-season standings);
   - keeper costs: draft-round prices aren't in Sleeper's API;
-  - our own predictions in the ledger with commit-reveal hashes;
   - mid-week P(play) (practice before the final report, Sleeper's pre-report tags), from the archive's twice-daily snapshots once a few weeks are final;
   - position-specific P(play): Questionable QBs played 53% (27/51), but the gap swings by season and disappears for top QBs.
 
