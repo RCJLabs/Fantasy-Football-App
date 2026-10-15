@@ -1,7 +1,7 @@
 // Mock Sleeper responses and pipeline data files for the end-to-end test. Shapes follow the live
 // responses recorded in docs/spikes.md; names and numbers are invented.
 import type { CompactPlayer, PlayersFile, ScheduleFile } from '../app/src/data/contracts';
-import type { RawLeague, RawMatchup, RawProjection, RawRoster, RawTransaction } from '../app/src/sleeper/raw';
+import type { RawLeague, RawMatchup, RawProjection, RawRoster, RawTradedPick, RawTransaction } from '../app/src/sleeper/raw';
 
 const H = 3_600_000;
 export const now = Date.now();
@@ -34,6 +34,14 @@ export const league: RawLeague = {
   },
 };
 export const otherLeague: RawLeague = { ...league, league_id: '1002', name: 'Dynasty Startup', status: 'pre_draft', settings: { ...league.settings, type: 2 } };
+/** In-season dynasty league with the same teams: exercises draft picks. */
+export const dynastyLeague: RawLeague = { ...league, league_id: '1003', name: 'Gridiron Dynasty', settings: { ...league.settings, type: 2, pick_trading: 1, draft_rounds: 2 } };
+
+/** Dynasty league: I own Rival Raiders' 2027 1st; they own my 2028 2nd. */
+export const tradedPicks: RawTradedPick[] = [
+  { season: '2027', round: 1, roster_id: 2, owner_id: 1, previous_owner_id: 2 },
+  { season: '2028', round: 2, roster_id: 1, owner_id: 2, previous_owner_id: 1 },
+];
 
 // Teams: AAA@BBB live (kicked off 1h ago), CCC@DDD in 5h, EEE@FFF in 8h; GGG is on bye.
 export const schedule: ScheduleFile = {
@@ -155,6 +163,19 @@ export const marketValues = [
   ['o1', 3900],
   ['o2', 3400],
 ].map(([id, value]) => ({ value, redraftValue: value, trend30Day: 0, positionRank: 10, player: { sleeperId: id, name: id, position: 'X' } }));
+
+/** Dynasty lists add rookie picks (names and ids as FantasyCalc sends them); values invented. */
+export const pickValues = (
+  [
+    ['2027 1st (Early)', 4600],
+    ['2027 1st (Mid)', 3000],
+    ['2027 1st', 2800],
+    ['2027 1st (Late)', 2300],
+    ['2027 2nd', 1500],
+    ['2028 1st', 2100],
+    ['2028 2nd', 1300],
+  ] as const
+).map(([name, value], i) => ({ value, redraftValue: 0, trend30Day: 0, positionRank: i + 1, player: { sleeperId: `FP_${i}`, name, position: 'PICK' } }));
 
 export const trending = [
   { player_id: 'fa2', count: 1520 },

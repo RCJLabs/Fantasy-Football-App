@@ -80,6 +80,10 @@ export interface LeagueRules {
   lastScoredWeek?: number;
   /** Keeper leagues: players each team may keep into next season. */
   maxKeepers?: number;
+  /** Future draft picks can be traded. */
+  pickTrading: boolean;
+  /** Rounds of future drafts (the rookie draft in dynasty leagues). */
+  draftRounds?: number;
   reserveSlots: number;
   taxiSlots: number;
   reserveAllow: Record<string, boolean>;

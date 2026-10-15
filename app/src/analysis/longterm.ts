@@ -12,8 +12,10 @@ export interface CorePlayer {
 
 export interface TeamLongTerm {
   rosterId: number;
-  /** Long-term value of the players the team carries forward. */
+  /** Long-term value of what the team carries forward: players, plus draft picks when given. */
   total: number;
+  /** Value of the draft picks it owns (dynasty). */
+  picks: number;
   core: CorePlayer[];
   rank: number;
 }
@@ -43,12 +45,18 @@ export function longTermCore(roster: Roster, values: ReadonlyMap<string, MarketV
   return keep === undefined ? ranked : ranked.slice(0, keep);
 }
 
-/** Teams ranked by the long-term value of what they carry forward. */
-export function longTermRanking(rosters: readonly Roster[], values: ReadonlyMap<string, MarketValue>, keep?: number): TeamLongTerm[] {
+/** Teams ranked by the long-term value of what they carry forward (`picks`: pick value by roster id). */
+export function longTermRanking(
+  rosters: readonly Roster[],
+  values: ReadonlyMap<string, MarketValue>,
+  keep?: number,
+  picks?: ReadonlyMap<number, number>,
+): TeamLongTerm[] {
   return rosters
     .map((r) => {
       const core = longTermCore(r, values, keep);
-      return { rosterId: r.rosterId, total: core.reduce((a, p) => a + p.value, 0), core, rank: 0 };
+      const pickValue = picks?.get(r.rosterId) ?? 0;
+      return { rosterId: r.rosterId, total: core.reduce((a, p) => a + p.value, 0) + pickValue, picks: pickValue, core, rank: 0 };
     })
     .sort((a, b) => b.total - a.total)
     .map((t, i) => ({ ...t, rank: i + 1 }));

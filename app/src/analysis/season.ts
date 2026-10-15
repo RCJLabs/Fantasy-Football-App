@@ -31,6 +31,8 @@ export interface TeamOdds {
   expWins: number;
   expLosses: number;
   avgSeed: number;
+  /** P(finishing the regular season in each place): index 0 = 1st. */
+  rankProbs: number[];
 }
 
 /** Small fast PRNG: seeded runs give the same odds every time (no flicker between refreshes). */
@@ -103,6 +105,7 @@ export function simulateSeason(input: SeasonInput): Map<number, TeamOdds> {
   const winSum = new Float64Array(n);
   const lossSum = new Float64Array(n);
   const seedSum = new Float64Array(n);
+  const rankCount = new Float64Array(n * n);
   const wins = new Float64Array(n);
   const losses = new Float64Array(n);
   const pf = new Float64Array(n);
@@ -142,6 +145,7 @@ export function simulateSeason(input: SeasonInput): Map<number, TeamOdds> {
       if (rank < byes) add(bye, i, 1);
       if (rank === 0) add(first, i, 1);
       add(seedSum, i, rank + 1);
+      add(rankCount, i * n + rank, 1);
       add(winSum, i, wins[i]!);
       add(lossSum, i, losses[i]!);
     });
@@ -158,6 +162,7 @@ export function simulateSeason(input: SeasonInput): Map<number, TeamOdds> {
         expWins: winSum[i]! / sims,
         expLosses: lossSum[i]! / sims,
         avgSeed: seedSum[i]! / sims,
+        rankProbs: Array.from(rankCount.subarray(i * n, (i + 1) * n), (c) => c / sims),
       },
     ]),
   );

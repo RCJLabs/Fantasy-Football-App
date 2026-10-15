@@ -18,6 +18,8 @@ export function parseLeagueRules(raw: RawLeague): LeagueRules {
     reserveSlots: num(s.reserve_slots) ?? 0,
     taxiSlots: num(s.taxi_slots) ?? 0,
     reserveAllow,
+    // Set in every league seen (0 in redraft); dynasty leagues trade picks when it's missing.
+    pickTrading: s.pick_trading == null ? type === 'dynasty' : num(s.pick_trading) === 1,
   };
   const opt: Array<[keyof LeagueRules, string]> = [
     ['playoffWeekStart', 'playoff_week_start'],
@@ -29,6 +31,7 @@ export function parseLeagueRules(raw: RawLeague): LeagueRules {
     ['waiverBidMin', 'waiver_bid_min'],
     ['lastScoredWeek', 'last_scored_leg'],
     ['maxKeepers', 'max_keepers'],
+    ['draftRounds', 'draft_rounds'],
   ];
   for (const [key, rawKey] of opt) {
     const v = num(s[rawKey]);

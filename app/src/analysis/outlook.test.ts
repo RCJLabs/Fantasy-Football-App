@@ -119,6 +119,15 @@ describe('simulateSeason', () => {
     expect(odds.get(4)!.expWins).toBe(2);
     expect(odds.get(1)!.pPlayoffs + odds.get(2)!.pPlayoffs).toBe(2);
     expect(odds.get(3)!.pPlayoffs).toBe(0);
+    expect(odds.get(4)!.rankProbs).toEqual([0, 0, 0, 1]);
+    expect(odds.get(3)!.rankProbs).toEqual([0, 0, 1, 0]);
+  });
+
+  it('gives each team a distribution over final places', () => {
+    const teams = [1, 2, 3, 4].map((id) => ({ rosterId: id, wins: 3, losses: 2, ties: 0, pointsFor: 500, weeks: [{ mean: 100, variance: 400 }, { mean: 100, variance: 400 }] }));
+    const odds = [...simulateSeason({ teams, weeks: [7, 8], pairings, medianGame: false, playoffTeams: 2, sims: 1000 }).values()];
+    for (const o of odds) expect(o.rankProbs.reduce((a, p) => a + p, 0)).toBeCloseTo(1, 9);
+    for (let place = 0; place < 4; place++) expect(odds.reduce((a, o) => a + o.rankProbs[place]!, 0)).toBeCloseTo(1, 9);
   });
 
   it('adds median wins and keeps odds summing to the playoff spots', () => {

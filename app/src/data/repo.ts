@@ -2,7 +2,7 @@ import type { Game, League, LeagueUser, Matchup, Player, Roster, StatLine } from
 import { gamesByTeam, type WeekContext } from '../analysis/analyze';
 import { sleeperApi, SleeperError } from '../sleeper/api';
 import { indexProjections, parseLeague, parseMatchup, parsePlayersDump, parseRoster, parseUser, type ProjectionIndex } from '../sleeper/parse';
-import type { RawProjection, RawState, RawTransaction, RawUser } from '../sleeper/raw';
+import type { RawProjection, RawState, RawTradedPick, RawTransaction, RawUser } from '../sleeper/raw';
 import { cached } from './cache';
 import { DATA_SCHEMA_VERSION, type AccuracyFile, type CompactPlayer, type Manifest, type PlayersFile, type ScheduleFile } from './contracts';
 
@@ -271,6 +271,11 @@ export async function loadWaiverClaims(leagueId: string, throughWeek: number, fo
     ),
   );
   return results.flatMap((r) => (r.status === 'fulfilled' ? r.value.value : []));
+}
+
+/** Future draft picks that changed hands (Sleeper lists no others). */
+export async function loadTradedPicks(leagueId: string, force = false): Promise<RawTradedPick[]> {
+  return (await cached(`picks:${leagueId}`, HOUR, () => sleeperApi.tradedPicks(leagueId), { force })).value;
 }
 
 export async function loadTrending(): Promise<Map<string, number>> {

@@ -52,4 +52,12 @@ describe('long-term view', () => {
       [2, 8000, 2],
     ]);
   });
+
+  it('adds the draft picks a team owns (dynasty)', () => {
+    const withPicks = longTermRanking([mine, theirs], values, undefined, new Map([[2, 15000]]));
+    expect(withPicks.map((t) => [t.rosterId, t.total, t.picks, t.rank])).toEqual([
+      [2, 23000, 15000, 1],
+      [1, 21500, 0, 2],
+    ]);
+  });
 });
