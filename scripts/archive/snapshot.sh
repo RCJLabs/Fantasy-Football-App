@@ -44,6 +44,23 @@ fetch() {
   fi
 }
 
+# slim FILE JQ_FILTER — rewrite FILE through jq to drop fields we don't need (keeps the archive small).
+slim() {
+  local f="$out/$1"
+  [ -f "$f" ] || return 0
+  if jq -c "$2" "$f" >"$f.slim" 2>/dev/null; then mv "$f.slim" "$f"; else rm -f "$f.slim"; fi
+}
+# Projection rows embed a full player object; keep the fields that change week to week.
+SLIM_PROJ='map({player_id, stats, team, opponent, game_id, date, status, company, updated_at, last_modified,
+  position: .player.position, injury_status: .player.injury_status,
+  injury_body_part: .player.injury_body_part, news_updated: .player.news_updated})'
+# Players dump: only rostered or injured players, and only status/depth/ID fields.
+SLIM_PLAYERS='with_entries(select(.value.team != null or .value.injury_status != null)
+  | .value |= {player_id, full_name, position, fantasy_positions, team, status, active, years_exp, age,
+    injury_status, injury_body_part, injury_start_date, injury_notes, practice_participation,
+    practice_description, depth_chart_position, depth_chart_order, news_updated, search_rank,
+    team_changed_at, gsis_id, espn_id, sportradar_id, rotowire_id, yahoo_id})'
+
 fetch state.json "$SLEEPER/state/nfl"
 season=$(date -u +%Y); week=0; stype=regular
 if [ -f "$out/state.json" ]; then
@@ -64,8 +81,10 @@ if [ "$week" -ge 1 ] && [ "$stype" = regular ]; then
     fetch "$name" "$SLEEPER_WEB/projections/nfl/$season/$w?season_type=$stype$qs"
     # Fallback to the older v1 path if the web host fails or returns an empty list.
     if [ ! -f "$out/$name" ] || [ "$(jq 'length' "$out/$name" 2>/dev/null || echo 0)" = 0 ]; then
-      fetch "proj_v1_w$(printf %02d "$w").json" "$SLEEPER/projections/nfl/$stype/$season/$w"
+      name="proj_v1_w$(printf %02d "$w").json"
+      fetch "$name" "$SLEEPER/projections/nfl/$stype/$season/$w"
     fi
+    slim "$name" "$SLIM_PROJ"
   done
 fi
 
@@ -75,6 +94,7 @@ fetch trending_drop.json "$SLEEPER/players/nfl/trending/drop?lookback_hours=24&l
 # Sleeper asks for the full players dump at most once a day: only the 12:xx UTC run fetches it.
 if [ "$MODE" = full ] || [ "$hour" = 12 ]; then
   fetch players.json "$SLEEPER/players/nfl"
+  slim players.json "$SLIM_PLAYERS"
 fi
 
 # nflverse keeps only the latest row per player-week, so snapshot it twice a day.
