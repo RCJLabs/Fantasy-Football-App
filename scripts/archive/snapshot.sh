@@ -5,7 +5,9 @@
 # the raw third-party data is never published in readable form.
 #
 # Env: ARCHIVE_MODE=auto|full (full = all remaining weeks + players dump + injuries),
-#      GH_TOKEN and GH_REPO (for `gh release`), GITHUB_STEP_SUMMARY (optional).
+#      GH_TOKEN and GH_REPO (for `gh release`), GITHUB_STEP_SUMMARY (optional),
+#      SNAPSHOT_HOOK (optional command run on the snapshot dir before encryption; the prediction ledger),
+#      ARCHIVE_SITE (the deployed app, default https://rcjlabs.github.io/Fantasy-Football-App).
 set -euo pipefail
 
 SLEEPER=https://api.sleeper.app/v1
@@ -102,6 +104,19 @@ if [ "$MODE" = full ] || [ "$hour" = 08 ] || [ "$hour" = 20 ]; then
   fetch "injuries_${season}.csv" "$NFLVERSE/injuries/injuries_${season}.csv"
 fi
 
+# The app's own data files as deployed (player DB with practice reports, schedule): with this
+# week's projections, exactly what the app showed at this moment.
+SITE="${ARCHIVE_SITE:-https://rcjlabs.github.io/Fantasy-Football-App}"
+fetch site_players.json "$SITE/data/players.json"
+fetch site_schedule.json "$SITE/data/schedule.json"
+
+# Optional hook (the prediction ledger): runs on the snapshot before it's encrypted, without the
+# GitHub token, and never blocks the upload.
+if [ -n "${SNAPSHOT_HOOK:-}" ]; then
+  read -r -a hook <<<"$SNAPSHOT_HOOK"
+  env -u GH_TOKEN "${hook[@]}" "$out" || echo "Snapshot hook failed; uploading without it." >&2
+fi
+
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
   {
     echo "### Archive snapshot $ts (season $season, week $week, $stype, mode $MODE)"
@@ -109,6 +124,10 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     echo "| file | http | bytes |"
     echo "|---|---|---|"
     jq -r '"| \(.name) | \(.http) | \(.bytes) |"' "$manifest"
+    if [ -f "$out/commitment.json" ]; then
+      echo
+      jq -r '"Predictions committed: \(.players) players in \(.games | length) games (week \(.week)), sha256 `\(.sha256)`"' "$out/commitment.json"
+    fi
   } >>"$GITHUB_STEP_SUMMARY"
 fi
 
@@ -123,8 +142,14 @@ tar -C "$work" -czf - snap | age -r "$recipient" -o "$work/$asset"
 tag="archive-${season}-$(date -u +%m)"
 if ! gh release view "$tag" >/dev/null 2>&1; then
   gh release create "$tag" --prerelease --title "Encrypted input archive $tag" \
-    --notes "age-encrypted snapshots of fantasy inputs for private backtesting. Unreadable without the private key; not for redistribution." \
+    --notes "age-encrypted snapshots of fantasy inputs for private backtesting. Unreadable without the private key; not for redistribution. Each commit_*.json is the public SHA-256 of the predictions.json inside the snapshot with the same timestamp." \
     || gh release view "$tag" >/dev/null # another run may have created it concurrently
 fi
-gh release upload "$tag" "$work/$asset"
-echo "Uploaded $asset to $tag ($oks ok, $fails failed)"
+# The commitment (SHA-256 of the predictions inside the bundle) is public: its upload time proves when they were made.
+assets=("$work/$asset")
+if [ -f "$out/commitment.json" ]; then
+  cp "$out/commitment.json" "$work/commit_${season}w$(printf %02d "$week")_${ts}.json"
+  assets+=("$work/commit_${season}w$(printf %02d "$week")_${ts}.json")
+fi
+gh release upload "$tag" "${assets[@]}"
+echo "Uploaded ${assets[*]##*/} to $tag ($oks ok, $fails failed)"
