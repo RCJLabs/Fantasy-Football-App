@@ -46,6 +46,8 @@ export interface LineupProblem {
 
 export interface LineupResult {
   lineup: number[];
+  /** Value of the lineup under the objective it was optimized for (expected points by default). */
+  score: number;
   /** Expected points including the option to swap out players ruled inactive. */
   expected: number;
   /** Σ p·μ (no swap option). */
@@ -170,15 +172,18 @@ export function staticOptimalLineup(problem: LineupProblem): number[] {
   return lineup;
 }
 
+/** What a lineup search maximizes; expected points with late swaps unless given. */
+export type LineupObjective = (lineup: readonly number[]) => number;
+
 /**
  * Keep the recommended starters but put each one back in his current slot wherever that costs
  * nothing, so equal-value reshuffles (RB1 ↔ RB2) don't show up as changes to make.
  */
-function alignToCurrent(problem: LineupProblem, lineup: readonly number[], current: readonly number[]): number[] {
+function alignToCurrent(problem: LineupProblem, lineup: readonly number[], current: readonly number[], score: LineupObjective): number[] {
   const { players, slots } = problem;
   const movable = (l: number[], s: number) => l[s]! < 0 || !players[l[s]!]!.locked;
   let best = [...lineup];
-  let bestVal = twoStageValue(problem, best);
+  let bestVal = score(best);
   // Each accepted swap puts one more player in his current slot, so this ends within slots.length passes.
   for (let changed = true; changed; ) {
     changed = false;
@@ -193,7 +198,7 @@ function alignToCurrent(problem: LineupProblem, lineup: readonly number[], curre
       const next = [...best];
       next[s] = want;
       next[s2] = other;
-      const v = twoStageValue(problem, next);
+      const v = score(next);
       if (v >= bestVal - 1e-9) {
         best = next;
         bestVal = Math.max(bestVal, v);
@@ -205,11 +210,13 @@ function alignToCurrent(problem: LineupProblem, lineup: readonly number[], curre
 }
 
 /**
- * Lineup maximizing two-stage expected points: start from the static optimum (and the current
- * lineup), then hill-climb over single replacements and slot swaps among unlocked players.
+ * Lineup maximizing an objective (two-stage expected points by default): start from the static optimum,
+ * the current lineup and any `starts`, then hill-climb over single replacements and slot swaps among
+ * unlocked players.
  */
-export function optimizeLineup(problem: LineupProblem): LineupResult {
+export function optimizeLineup(problem: LineupProblem, opts: { score?: LineupObjective; starts?: ReadonlyArray<readonly number[]> } = {}): LineupResult {
   const { players, slots } = problem;
+  const score = opts.score ?? ((l: readonly number[]) => twoStageValue(problem, l));
   const current = [...problem.current];
   while (current.length < slots.length) current.push(-1);
 
@@ -219,9 +226,9 @@ export function optimizeLineup(problem: LineupProblem): LineupResult {
     return players.map((_, i) => i).filter((i) => !used.has(i) && !players[i]!.locked);
   };
 
-  const climb = (start: number[]): { lineup: number[]; value: number } => {
+  const climb = (start: readonly number[]): { lineup: number[]; value: number } => {
     let best = [...start];
-    let bestVal = twoStageValue(problem, best);
+    let bestVal = score(best);
     for (let iter = 0; iter < 60; iter++) {
       let improved = false;
       let candBest = best;
@@ -233,7 +240,7 @@ export function optimizeLineup(problem: LineupProblem): LineupResult {
           if (!canFill(slots[s]!, players[b]!.fpos)) continue;
           const next = [...best];
           next[s] = b;
-          const v = twoStageValue(problem, next);
+          const v = score(next);
           if (v > candVal + 1e-9) {
             candVal = v;
             candBest = next;
@@ -250,7 +257,7 @@ export function optimizeLineup(problem: LineupProblem): LineupResult {
           const next = [...best];
           next[s] = b;
           next[s2] = a;
-          const v = twoStageValue(problem, next);
+          const v = score(next);
           if (v > candVal + 1e-9) {
             candVal = v;
             candBest = next;
@@ -275,12 +282,16 @@ export function optimizeLineup(problem: LineupProblem): LineupResult {
     seen.add(idx);
     return idx;
   });
-  const fromStatic = climb(staticOptimalLineup({ ...problem, current: legalCurrent }));
-  const fromCurrent = climb(legalCurrent);
-  const winner = fromCurrent.value >= fromStatic.value - 1e-9 ? fromCurrent : fromStatic;
-  const lineup = alignToCurrent(problem, winner.lineup, legalCurrent);
+  // The current lineup wins ties, so an equally good alternative isn't presented as a change.
+  let winner = climb(legalCurrent);
+  for (const start of [staticOptimalLineup({ ...problem, current: legalCurrent }), ...(opts.starts ?? [])]) {
+    const r = climb(start);
+    if (r.value > winner.value + 1e-9) winner = r;
+  }
+  const lineup = alignToCurrent(problem, winner.lineup, legalCurrent, score);
   return {
     lineup,
+    score: score(lineup),
     expected: twoStageValue(problem, lineup),
     staticExpected: staticLineupValue(problem, lineup),
     currentExpected: twoStageValue(problem, legalCurrent),

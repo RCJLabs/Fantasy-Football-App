@@ -29,9 +29,9 @@ export function sumDists(ds: readonly Dist[]): Dist {
   return ds.reduce((acc, d) => ({ mean: acc.mean + d.mean, variance: acc.variance + d.variance }), { mean: 0, variance: 0 });
 }
 
-/** P(a > b) for independent normals. */
-export function winProbability(a: Dist, b: Dist): number {
-  const sd = Math.sqrt(Math.max(1e-9, a.variance + b.variance));
+/** P(a > b) for normals with covariance `cov` (players in the same NFL games move together). */
+export function winProbability(a: Dist, b: Dist, cov = 0): number {
+  const sd = Math.sqrt(Math.max(1e-9, a.variance + b.variance - 2 * cov));
   return normCdf((a.mean - b.mean) / sd);
 }
 

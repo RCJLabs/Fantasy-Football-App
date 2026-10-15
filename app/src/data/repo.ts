@@ -218,6 +218,11 @@ export async function loadRosWeeks(season: string, weeks: readonly number[], pos
   return { byWeek, missing };
 }
 
+/** One week's matchups (e.g. last week's final scores in a two-week playoff round). */
+export async function loadMatchups(leagueId: string, week: number, force = false): Promise<Matchup[]> {
+  return (await cached(`matchups:${leagueId}:${week}`, 10 * MIN, () => sleeperApi.matchups(leagueId, week), { force })).value.map(parseMatchup);
+}
+
 /** Matchup pairings for future weeks (Sleeper generates the whole regular-season schedule up front). */
 export async function loadSchedule(leagueId: string, weeks: readonly number[], force = false): Promise<Map<number, Matchup[]>> {
   const results = await Promise.allSettled(weeks.map((w) => cached(`matchups:${leagueId}:${w}`, 6 * HOUR, () => sleeperApi.matchups(leagueId, w), { force })));

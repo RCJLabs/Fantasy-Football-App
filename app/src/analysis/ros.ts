@@ -53,6 +53,33 @@ export function seasonEnd(league: League): number {
   return Math.min(LAST_WEEK, start + weeks - 1);
 }
 
+export interface PlayoffWeek {
+  /** 1 = first round; `rounds` = championship. */
+  round: number;
+  rounds: number;
+  /** Rounds can span two weeks (scores add up); this is the round's first or second week. */
+  weekInRound: 1 | 2;
+  roundWeeks: 1 | 2;
+}
+
+/** Where a week falls in the playoff bracket, or null outside the playoffs. */
+export function playoffWeekInfo(league: League, week: number): PlayoffWeek | null {
+  const { playoffWeekStart: start, playoffTeams = 0, playoffRoundType = 0 } = league.rules;
+  const rounds = playoffRounds(playoffTeams);
+  if (!start || !rounds || week < start) return null;
+  const k = week - start;
+  if (playoffRoundType === 2) {
+    const round = Math.floor(k / 2) + 1;
+    return round > rounds ? null : { round, rounds, weekInRound: k % 2 === 0 ? 1 : 2, roundWeeks: 2 };
+  }
+  if (playoffRoundType === 1 && k >= rounds - 1) {
+    // Two-week championship after one-week rounds.
+    const inFinal = k - (rounds - 1);
+    return inFinal > 1 ? null : { round: rounds, rounds, weekInRound: inFinal === 0 ? 1 : 2, roundWeeks: 2 };
+  }
+  return k + 1 > rounds ? null : { round: k + 1, rounds, weekInRound: 1, roundWeeks: 1 };
+}
+
 /**
  * Weight of each week in rest-of-season values: regular-season weeks count fully; playoff weeks count in
  * proportion to the team's playoff odds ("playoff mode" shifts value toward them as odds firm up). [design]

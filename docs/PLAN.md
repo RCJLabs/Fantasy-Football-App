@@ -35,8 +35,13 @@
   - DEF/K streaming table;
   - public accuracy ledger v0: aggregate projection error by position plus a calibration check of the app's spread (kicker spread widened from it).
 
+- **Playoff mode — built (2026-10-15):**
+  - Lineups maximize P(win the round): two-week rounds count both weeks; in median leagues the regular-season objective is H2H plus median wins.
+  - Same-game correlations come from 2026 weeks 1–5 projection misses: QB–WR +0.27, QB–TE +0.33, QB vs opposing DEF −0.37, same-team RBs −0.25.
+  - Opponents are assumed to replace starters who can't play.
+  - The win-chance lineup must beat the max-points lineup by ≥0.5 pp to be shown. On the owner's leagues in Week 6 it matched max points.
+
   **Not yet:**
-  - P(win)-maximizing lineups for playoff rounds (the plan's "playoff mode"; today's lineups maximize expected points);
   - bye grid and FantasyCalc market values in trades;
   - dynasty "long-term market" view;
   - our own predictions in the ledger with commit-reveal hashes;

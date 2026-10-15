@@ -65,6 +65,14 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(page.locator('.pl').filter({ hasText: 'Taylor Wideout' }).first()).toContainText('Live');
   await page.screenshot({ path: testInfo.outputPath('lineup.png'), fullPage: true });
 
+  // Lineup mode: switch to win chance and back; the choice is explained either way.
+  const mode = page.getByRole('group', { name: 'Optimize lineup for' });
+  await expect(mode.getByRole('button', { name: 'Max points' })).toHaveAttribute('aria-pressed', 'true');
+  await mode.getByRole('button', { name: 'Win chance' }).click();
+  await expect(mode.getByRole('button', { name: 'Win chance' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText(/Tuned for win chance|max-points lineup is also your best shot/)).toBeVisible();
+  await mode.getByRole('button', { name: 'Max points' }).click();
+
   // Matchup
   await page.getByRole('tab', { name: 'Matchup' }).click();
   await expect(page.locator('.versus')).toContainText('Rival Raiders');

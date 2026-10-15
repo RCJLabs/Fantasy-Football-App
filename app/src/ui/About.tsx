@@ -29,7 +29,13 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             later. Players whose games have started are locked.
           </li>
           <li>
-            <strong>Win chance</strong> uses each player's expected points and a typical weekly spread. It's an estimate, not a guarantee.
+            <strong>Win chance</strong> uses each player's expected points, a typical weekly spread, and how players in the same NFL game move
+            together (a QB and his receivers; a QB and the defense he faces). It's an estimate, not a guarantee.
+          </li>
+          <li>
+            <strong>Playoff mode</strong>: in playoff weeks the lineup maximizes your chance to win the round (both weeks of a two-week round),
+            not expected points. Favorites narrow the range of outcomes, underdogs widen it. It only departs from the max-points lineup when the
+            edge is at least half a percentage point. You can switch modes in any week.
           </li>
           <li>
             <strong>Rest of season</strong> (waivers, trades, playoff odds) uses Sleeper's projections for every remaining week, so byes and expected

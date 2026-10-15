@@ -33,7 +33,7 @@ export function Problems({ problems, limit }: { problems: readonly Problem[]; li
 }
 
 /** One player in a lineup/bench list; tap to see why. */
-export function PlayerLine({ row, slot, now, highlight }: { row: PlayerRow | null; slot?: string; now: number; highlight?: 'in' | 'out' }) {
+export function PlayerLine({ row, slot, now, highlight, note }: { row: PlayerRow | null; slot?: string; now: number; highlight?: 'in' | 'out'; note?: string }) {
   const [open, setOpen] = useState(false);
   if (!row) {
     return (
@@ -56,6 +56,7 @@ export function PlayerLine({ row, slot, now, highlight }: { row: PlayerRow | nul
             {row.team ? `·${row.team}` : ''}
           </span>{' '}
           <InjuryBadge row={row} />
+          {note ? <Badge kind="info">{note}</Badge> : null}
           <span class="pl-game muted">{game}</span>
         </span>
         <span class="pl-num">
