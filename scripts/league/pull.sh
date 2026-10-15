@@ -103,6 +103,21 @@ for ((w = 1; w <= week; w++)); do
   slim "stats_w$ww.json" "$SLIM_ROWS"
 done
 
+# FantasyCalc market values in each league's format, redraft and dynasty (public data, for local tests).
+nearest() { jq -nr --argjson x "$1" --argjson opts "$2" '$opts | min_by((. - $x) | fabs)'; }
+mapfile -t formats < <(jq -r '.[] | "\(.total_rosters // 12) \(.scoring_settings.rec // 0) \([.roster_positions[]? | select(. == "QB" or . == "SUPER_FLEX")] | length)"' "$out/leagues.json" 2>/dev/null | sort -u)
+for f in "${formats[@]}"; do
+  read -r teams rec qbslots <<<"$f"
+  teams=$(nearest "$teams" '[8,10,12,14]')
+  ppr=$(nearest "$rec" '[0,0.5,1]')
+  qbs=1
+  [ "$qbslots" -ge 2 ] && qbs=2
+  for dyn in false true; do
+    fetch "fantasycalc/${dyn}_${qbs}_${teams}_${ppr}.json" \
+      "https://api.fantasycalc.com/values/current?isDynasty=$dyn&numQbs=$qbs&numTeams=$teams&ppr=$ppr"
+  done
+done
+
 echo "Fetched $oks files ($fails failed) for ${#league_ids[@]} league(s), season $season week $week."
 [ "$oks" -gt 3 ] || { echo "Too few fetches succeeded; not uploading." >&2; exit 1; }
 
