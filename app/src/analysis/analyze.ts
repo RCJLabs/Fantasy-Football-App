@@ -257,6 +257,9 @@ export function analyzeLineup(
 
 function lineupProblems(a: LineupAnalysis, reshuffled: boolean, league: League, roster: Roster): Problem[] {
   const out: Problem[] = [];
+  // The summary leads: it's the actionable line when a card shows only the top few problems.
+  if (a.gain >= 0.5) out.push({ level: 'warn', text: `Better lineup available: +${a.gain.toFixed(1)} expected points` });
+  else if (reshuffled && a.gain > 0.05) out.push({ level: 'info', text: `Slot reshuffle adds +${a.gain.toFixed(1)} via late-swap flexibility` });
   a.current.forEach((row, s) => {
     const slot = a.slots[s]!;
     if (!row) out.push({ level: 'error', text: `Empty ${slot} slot` });
@@ -265,8 +268,6 @@ function lineupProblems(a: LineupAnalysis, reshuffled: boolean, league: League, 
     else if (row.p === 0) out.push({ level: 'error', text: `${row.name} (${slot}) is ${row.injury ?? 'not expected to play'}` });
     else if (row.p < 0.95) out.push({ level: 'warn', text: `${row.name} (${slot}) is ${row.injury}${row.practice ? `, ${row.practice} practice` : ''} — ${Math.round(row.p * 100)}% to play` });
   });
-  if (a.gain >= 0.5) out.push({ level: 'warn', text: `Better lineup available: +${a.gain.toFixed(1)} expected points` });
-  else if (reshuffled && a.gain > 0.05) out.push({ level: 'info', text: `Slot reshuffle adds +${a.gain.toFixed(1)} via late-swap flexibility` });
   const freeIr = league.rules.reserveSlots - roster.reserve.length;
   if (freeIr > 0) {
     const irEligible = a.bench.filter((r) => r.injury && ['IR', 'Out', 'PUP', 'Sus', 'NA', 'DNR', 'COV', 'Doubtful'].includes(r.injury) && league.rules.reserveAllow[irKey(r.injury)] !== false);

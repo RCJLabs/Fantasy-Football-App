@@ -1,6 +1,28 @@
 # Fantasy Football Assistant — Plan & Roadmap
 
-**Status:** DRAFT v2, awaiting your confirmation · **Date:** 2026-10-15 (NFL Week 6, TNF tonight) · **Repo:** RCJLabs/Fantasy-Football-App (public)
+**Status:** v2, confirmed 2026-10-15 · Phase 0 done, Phase 1 MVP built (see "Progress" below) · **Repo:** RCJLabs/Fantasy-Football-App (public)
+
+**Decisions (2026-10-15):**
+- Free and non-commercial for 2026, mainly personal use, kept publishable.
+- Effort: as many hours as needed; Claude implements, you review.
+- Leagues are imported by Sleeper username.
+- Stack: TypeScript (Vite + Preact); Node pipeline now, Python later if needed.
+- `main` was created.
+- The private archive repo couldn't be created by the integration, so the archive runs in this repo instead, age-encrypted (only the key holder can read it).
+
+**Progress:**
+- **Phase 0 — done.**
+  - Archive running since Week 6 (pre-TNF).
+  - Spikes recorded in [spikes.md](spikes.md): all Sleeper endpoints are CORS-open; projections cover all positions with past and future weeks.
+- **Phase 1 MVP — built:**
+  - username import and all-leagues dashboard
+  - league rescoring and P(play) from designation plus practice report
+  - two-stage optimizer with kickoff locks
+  - K/DEF, win and median probability
+  - waivers v0, explanations, PWA
+  - CI and Pages deploy
+
+  **Still to do:** league-specific spikes (c)(h)(i), the engine golden test against real league points, and the DST v0 model.
 
 v2 incorporates an adversarial review of v1 by four independent critics: evidence consistency, solo-dev feasibility, completeness, and football methodology.
 

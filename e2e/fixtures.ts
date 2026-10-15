@@ -1,0 +1,108 @@
+// Mock Sleeper responses and pipeline data files for the end-to-end test. Shapes follow the live
+// responses recorded in docs/spikes.md; names and numbers are invented.
+import type { CompactPlayer, PlayersFile, ScheduleFile } from '../app/src/data/contracts';
+import type { RawLeague, RawMatchup, RawProjection, RawRoster } from '../app/src/sleeper/raw';
+
+const H = 3_600_000;
+export const now = Date.now();
+const iso = (h: number) => new Date(now + h * H).toISOString();
+
+export const state = { week: 6, leg: 6, season: '2026', season_type: 'regular', league_season: '2026', display_week: 6 };
+export const user = { user_id: 'u1', username: 'testuser', display_name: 'Test User' };
+
+export const league: RawLeague = {
+  league_id: '1001',
+  name: 'Saturday Night Gridiron',
+  season: '2026',
+  status: 'in_season',
+  total_rosters: 4,
+  roster_positions: ['QB', 'RB', 'RB', 'WR', 'WR', 'TE', 'FLEX', 'K', 'DEF', 'BN', 'BN', 'BN', 'BN'],
+  scoring_settings: { pass_yd: 0.04, pass_td: 4, pass_int: -1, rush_yd: 0.1, rush_td: 6, rec: 0.5, rec_yd: 0.1, rec_td: 6, fum_lost: -2, bonus_rec_te: 0.5, fgm: 3, xpm: 1, sack: 1, int: 2, fum_rec: 2, pts_allow_0: 10, pts_allow_1_6: 7, pts_allow_7_13: 4, pts_allow_14_20: 1, pts_allow_28_34: -1, pts_allow_35p: -4 },
+  settings: { type: 0, num_teams: 4, league_average_match: 1, playoff_week_start: 15, trade_deadline: 11, reserve_slots: 1, reserve_allow_out: 1, waiver_budget: 100, waiver_type: 2 },
+};
+export const otherLeague: RawLeague = { ...league, league_id: '1002', name: 'Dynasty Startup', status: 'pre_draft', settings: { ...league.settings, type: 2 } };
+
+// Teams: AAA@BBB live (kicked off 1h ago), CCC@DDD in 5h, EEE@FFF in 8h; GGG is on bye.
+export const schedule: ScheduleFile = {
+  schemaVersion: 1,
+  generatedAt: iso(-2),
+  season: '2026',
+  games: [
+    { id: '2026_06_AAA_BBB', week: 6, away: 'AAA', home: 'BBB', kickoff: iso(-1), spread: 3, total: 44, homeImplied: 23.5, awayImplied: 20.5 },
+    { id: '2026_06_CCC_DDD', week: 6, away: 'CCC', home: 'DDD', kickoff: iso(5), spread: -6.5, total: 48.5, homeImplied: 21, awayImplied: 27.5 },
+    { id: '2026_06_EEE_FFF', week: 6, away: 'EEE', home: 'FFF', kickoff: iso(8), spread: 1, total: 41, homeImplied: 21, awayImplied: 20 },
+  ],
+};
+
+type P = [id: string, name: string, pos: string, team: string, stats: Record<string, number>, injury?: string];
+const PLAYERS: P[] = [
+  ['q1', 'Casey Quarterback', 'QB', 'CCC', { pass_yd: 265, pass_td: 1.9, pass_int: 0.7, rush_yd: 18 }],
+  ['r1', 'Riley Runner', 'RB', 'CCC', { rush_yd: 82, rush_td: 0.65, rec: 3, rec_yd: 22 }, 'Out'],
+  ['r2', 'Morgan Halfback', 'RB', 'EEE', { rush_yd: 64, rush_td: 0.45, rec: 2.5, rec_yd: 18 }],
+  ['r3', 'Jordan Back', 'RB', 'GGG', { rush_yd: 70, rush_td: 0.5 }],
+  ['r4', 'Casey Depth', 'RB', 'EEE', { rush_yd: 40, rush_td: 0.3, rec: 1.5, rec_yd: 10 }],
+  ['w1', 'Taylor Wideout', 'WR', 'AAA', { rec: 6, rec_yd: 82, rec_td: 0.5 }],
+  ['w2', 'Drew Flanker', 'WR', 'DDD', { rec: 5, rec_yd: 66, rec_td: 0.4 }, 'Questionable'],
+  ['w3', 'Sam Slot', 'WR', 'FFF', { rec: 4.5, rec_yd: 55, rec_td: 0.35 }],
+  ['t1', 'Avery Tightend', 'TE', 'DDD', { rec: 4, rec_yd: 44, rec_td: 0.35, bonus_rec_te: 4 }],
+  ['k1', 'Kai Kicker', 'K', 'CCC', { fgm: 1.9, xpm: 2.6 }],
+  ['d1', 'Fff Defense', 'DEF', 'FFF', { sack: 2.6, int: 0.8, fum_rec: 0.6, pts_allow: 20.5 }],
+  ['ir', 'Pat Injured', 'WR', 'BBB', {}, 'IR'],
+  ['fa1', 'Free Agent Runner', 'RB', 'EEE', { rush_yd: 88, rush_td: 0.7, rec: 3, rec_yd: 24 }],
+  ['fa2', 'Waiver Receiver', 'WR', 'FFF', { rec: 3, rec_yd: 35, rec_td: 0.2 }],
+  ['o1', 'Opp Passer', 'QB', 'BBB', { pass_yd: 240, pass_td: 1.6, pass_int: 0.8 }],
+  ['o2', 'Opp Rusher', 'RB', 'DDD', { rush_yd: 75, rush_td: 0.55, rec: 2, rec_yd: 12 }],
+];
+
+export const projections: RawProjection[] = PLAYERS.map(([id, name, pos, team, stats, injury]) => ({
+  player_id: id,
+  stats: injury === 'Out' || injury === 'IR' ? {} : stats,
+  team,
+  company: 'rotowire',
+  player: { first_name: name.split(' ')[0], last_name: name.split(' ').slice(1).join(' '), position: pos, fantasy_positions: [pos], team, injury_status: injury ?? null },
+}));
+
+export const playersFile: PlayersFile = {
+  schemaVersion: 1,
+  generatedAt: iso(-3),
+  season: '2026',
+  week: 6,
+  injuryReportWeek: 6,
+  players: PLAYERS.map(([id, name, pos, team, , injury]): CompactPlayer => ({
+    id,
+    n: name,
+    pos,
+    t: team,
+    ...(injury ? { inj: injury } : {}),
+    ...(id === 'w2' ? { prac: 'Limited' as const, body: 'Hamstring' } : {}),
+  })),
+};
+
+export const manifest = { schemaVersion: 1, generatedAt: iso(-3), files: {} };
+
+const me: RawRoster = {
+  roster_id: 1,
+  owner_id: 'u1',
+  players: ['q1', 'r1', 'r2', 'r3', 'r4', 'w1', 'w2', 'w3', 't1', 'k1', 'd1', 'ir'],
+  starters: ['q1', 'r1', 'r3', 'w1', 'w2', 't1', 'w3', 'k1', 'd1'],
+  reserve: ['ir'],
+  settings: { wins: 4, losses: 1, fpts: 612 },
+};
+const opp: RawRoster = { roster_id: 2, owner_id: 'u2', players: ['o1', 'o2'], starters: ['o1', 'o2', '0', '0', '0', '0', '0', '0', '0'], settings: { wins: 3, losses: 2 } };
+export const rosters: RawRoster[] = [me, opp, { roster_id: 3, owner_id: 'u3', players: [], starters: [] }, { roster_id: 4, owner_id: 'u4', players: [], starters: [] }];
+export const users = [
+  { user_id: 'u1', display_name: 'Test User', metadata: { team_name: 'Test Titans' } },
+  { user_id: 'u2', display_name: 'Rival', metadata: { team_name: 'Rival Raiders' } },
+  { user_id: 'u3', display_name: 'Three' },
+  { user_id: 'u4', display_name: 'Four' },
+];
+export const matchups: RawMatchup[] = [
+  { roster_id: 1, matchup_id: 1, starters: me.starters, players: me.players, points: 11.4, players_points: { w1: 11.4 } },
+  { roster_id: 2, matchup_id: 1, starters: opp.starters, players: opp.players, points: 6.2, players_points: { o1: 6.2 } },
+  { roster_id: 3, matchup_id: 2, starters: [], players: [], points: 0 },
+  { roster_id: 4, matchup_id: 2, starters: [], players: [], points: 0 },
+];
+export const trending = [
+  { player_id: 'fa2', count: 1520 },
+  { player_id: 'fa1', count: 830 },
+];
