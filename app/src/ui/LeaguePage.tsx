@@ -1,14 +1,17 @@
 import type { LineupAnalysis, LineupChange } from '../analysis/analyze';
 import { ErrorBox, PlayerLine, Problems, slotLabel, Spinner } from './components';
-import { findLeague, loadLeagueBundle, loadWaivers, type LeagueBundle } from './data';
-import { ago, kickoffLabel, pct, pts, signed } from './format';
+import { findLeague, loadLeagueBundle } from './data';
+import { ago, pct, pts, signed } from './format';
 import { useAsync, useTick } from './hooks';
+import { SeasonTab, TradeTab, WaiversTab } from './SeasonTabs';
 import type { Session } from './session';
 
 const TABS = [
   ['lineup', 'Lineup'],
   ['matchup', 'Matchup'],
   ['waivers', 'Waivers'],
+  ['trade', 'Trade'],
+  ['season', 'Season'],
 ] as const;
 
 export function LeaguePage({ session, leagueId, tab }: { session: Session; leagueId: string; tab: string }) {
@@ -60,6 +63,10 @@ export function LeaguePage({ session, leagueId, tab }: { session: Session; leagu
         <MatchupTab a={b.lineup} now={now} />
       ) : tab === 'waivers' ? (
         <WaiversTab bundle={b} now={now} />
+      ) : tab === 'trade' ? (
+        <TradeTab bundle={b} />
+      ) : tab === 'season' ? (
+        <SeasonTab bundle={b} />
       ) : (
         <LineupTab a={b.lineup} bestBall={b.league.rules.bestBall} now={now} />
       )}
@@ -212,44 +219,3 @@ function MatchupTab({ a, now }: { a: LineupAnalysis; now: number }) {
   );
 }
 
-function WaiversTab({ bundle, now }: { bundle: LeagueBundle; now: number }) {
-  const w = useAsync(() => loadWaivers(bundle), [bundle]);
-  if (w.error) return <ErrorBox error={w.error} />;
-  if (!w.data) return <Spinner label="Scanning free agents…" />;
-  return (
-    <div class="card">
-      <h2>Free agents for week {bundle.week}</h2>
-      <p class="muted small">Ranked by how much each player would add to this week's best lineup. Trending = Sleeper adds in the last 24 h.</p>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Player</th>
-            <th class="num">Proj</th>
-            <th class="num">Gain</th>
-            <th class="num">Adds</th>
-          </tr>
-        </thead>
-        <tbody>
-          {w.data.map((r) => (
-            <tr>
-              <td>
-                <strong>{r.player.name}</strong>{' '}
-                <span class="muted small">
-                  {r.player.pos}
-                  {r.player.team ? `·${r.player.team}` : ''} {r.player.injury ? `(${r.player.injury})` : ''}
-                </span>
-                <div class="muted small">
-                  {r.player.opponent ? `${r.player.home ? 'vs' : '@'} ${r.player.opponent}` : ''} {kickoffLabel(r.player.kickoff, now)}
-                </div>
-              </td>
-              <td class="num">{pts(r.player.ev)}</td>
-              <td class="num">{r.gainThisWeek >= 0.05 ? signed(r.gainThisWeek) : '–'}</td>
-              <td class="num">{r.trendingAdds ?? ''}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p class="muted small">Rest-of-season value and FAAB bid suggestions are next on the roadmap.</p>
-    </div>
-  );
-}

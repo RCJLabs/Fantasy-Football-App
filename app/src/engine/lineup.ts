@@ -171,6 +171,40 @@ export function staticOptimalLineup(problem: LineupProblem): number[] {
 }
 
 /**
+ * Keep the recommended starters but put each one back in his current slot wherever that costs
+ * nothing, so equal-value reshuffles (RB1 ↔ RB2) don't show up as changes to make.
+ */
+function alignToCurrent(problem: LineupProblem, lineup: readonly number[], current: readonly number[]): number[] {
+  const { players, slots } = problem;
+  const movable = (l: number[], s: number) => l[s]! < 0 || !players[l[s]!]!.locked;
+  let best = [...lineup];
+  let bestVal = twoStageValue(problem, best);
+  // Each accepted swap puts one more player in his current slot, so this ends within slots.length passes.
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (let s = 0; s < slots.length; s++) {
+      const want = current[s] ?? -1;
+      if (want < 0 || best[s] === want) continue;
+      const s2 = best.indexOf(want);
+      if (s2 < 0 || !movable(best, s) || !movable(best, s2)) continue;
+      const other = best[s]!;
+      if (!canFill(slots[s]!, players[want]!.fpos)) continue;
+      if (other >= 0 && !canFill(slots[s2]!, players[other]!.fpos)) continue;
+      const next = [...best];
+      next[s] = want;
+      next[s2] = other;
+      const v = twoStageValue(problem, next);
+      if (v >= bestVal - 1e-9) {
+        best = next;
+        bestVal = Math.max(bestVal, v);
+        changed = true;
+      }
+    }
+  }
+  return best;
+}
+
+/**
  * Lineup maximizing two-stage expected points: start from the static optimum (and the current
  * lineup), then hill-climb over single replacements and slot swaps among unlocked players.
  */
@@ -243,11 +277,12 @@ export function optimizeLineup(problem: LineupProblem): LineupResult {
   });
   const fromStatic = climb(staticOptimalLineup({ ...problem, current: legalCurrent }));
   const fromCurrent = climb(legalCurrent);
-  const winner = fromCurrent.value > fromStatic.value + 1e-9 ? fromCurrent : fromStatic;
+  const winner = fromCurrent.value >= fromStatic.value - 1e-9 ? fromCurrent : fromStatic;
+  const lineup = alignToCurrent(problem, winner.lineup, legalCurrent);
   return {
-    lineup: winner.lineup,
-    expected: winner.value,
-    staticExpected: staticLineupValue(problem, winner.lineup),
+    lineup,
+    expected: twoStageValue(problem, lineup),
+    staticExpected: staticLineupValue(problem, lineup),
     currentExpected: twoStageValue(problem, legalCurrent),
     currentStatic: staticLineupValue(problem, legalCurrent),
   };

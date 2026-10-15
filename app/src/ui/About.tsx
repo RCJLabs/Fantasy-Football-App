@@ -1,12 +1,14 @@
 import { useState } from 'preact/hooks';
 import { clearCache } from '../data/cache';
-import { loadManifest } from '../data/repo';
-import { dateTime } from './format';
+import type { AccuracyFile } from '../data/contracts';
+import { loadAccuracy, loadManifest } from '../data/repo';
+import { dateTime, pct } from './format';
 import { reportProblemUrl } from './errorLog';
 import { useAsync } from './hooks';
 
 export function About({ onSignOut }: { onSignOut?: () => void }) {
   const manifest = useAsync(() => loadManifest(), []);
+  const accuracy = useAsync(() => loadAccuracy(), []);
   const [cleared, setCleared] = useState(false);
 
   return (
@@ -29,11 +31,20 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           <li>
             <strong>Win chance</strong> uses each player's expected points and a typical weekly spread. It's an estimate, not a guarantee.
           </li>
+          <li>
+            <strong>Rest of season</strong> (waivers, trades, playoff odds) uses Sleeper's projections for every remaining week, so byes and expected
+            injury returns are built in. Each team's best lineup is valued week by week, with a small allowance for new injuries and for bench players
+            covering them. Playoff weeks count in proportion to your playoff odds.
+          </li>
+          <li>
+            <strong>FAAB bids</strong> follow what your league has actually paid for players at the same position this season, scaled by your remaining
+            budget.
+          </li>
         </ul>
-        <p class="muted small">
-          Coming next: rest-of-season trade values, FAAB bids, usage trends and matchup adjustments, each added only after backtests show it helps.
-        </p>
+        <p class="muted small">Coming next: usage trends and matchup adjustments, each added only after backtests show it helps.</p>
       </div>
+
+      {accuracy.data ? <AccuracyCard file={accuracy.data} /> : null}
 
       <div class="card">
         <h2>Data and credits</h2>
@@ -82,5 +93,45 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
         </div>
       </div>
     </section>
+  );
+}
+
+/** How past weeks' projections did against actual PPR points (published aggregates). */
+function AccuracyCard({ file }: { file: AccuracyFile }) {
+  const weeks = file.weeks.length > 1 ? `weeks ${file.weeks[0]}–${file.weeks.at(-1)}` : `week ${file.weeks[0]}`;
+  return (
+    <div class="card">
+      <h2>How accurate are the projections?</h2>
+      <p class="muted small">
+        {file.season} {weeks}, PPR, players projected for at least {file.minProjected} points who played. “Within ±1 SD” checks the spread the app
+        uses for win chances: about 68% means it's well calibrated.
+      </p>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Pos</th>
+              <th class="num">Games</th>
+              <th class="num">Avg miss</th>
+              <th class="num">Bias</th>
+              <th class="num">Corr</th>
+              <th class="num">±1 SD</th>
+            </tr>
+          </thead>
+          <tbody>
+            {file.rows.map((r) => (
+              <tr class={r.pos === 'ALL' ? 'mine' : ''}>
+                <td>{r.pos === 'ALL' ? 'All' : r.pos}</td>
+                <td class="num">{r.n}</td>
+                <td class="num">{r.mae.toFixed(1)}</td>
+                <td class="num">{(r.bias >= 0 ? '+' : '') + r.bias.toFixed(1)}</td>
+                <td class="num">{r.corr.toFixed(2)}</td>
+                <td class="num">{pct(r.within1)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

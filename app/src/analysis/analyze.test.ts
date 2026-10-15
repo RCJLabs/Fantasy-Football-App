@@ -77,6 +77,10 @@ describe('league rules', () => {
     expect(league.rules).toMatchObject({ type: 'redraft', medianGame: true, numTeams: 4, playoffWeekStart: 15, tradeDeadline: 11, reserveSlots: 1, waiverBudget: 100 });
     expect(league.rules.reserveAllow.out).toBe(true);
   });
+  it('treats playoff_week_start 0 as a league without playoffs', () => {
+    const noPlayoffs = parseLeague({ ...rawLeague, settings: { ...rawLeague.settings, playoff_week_start: 0 } });
+    expect(noPlayoffs.rules.playoffWeekStart).toBeUndefined();
+  });
 });
 
 describe('playerRow', () => {
@@ -135,14 +139,22 @@ describe('analyzeLineup', () => {
 describe('lineupChanges', () => {
   const row = (id: string) => ({ id, name: id }) as PlayerRow;
   const rows = ['X', 'Y', 'Z', 'W'].map(row);
+  const show = (cs: ReturnType<typeof lineupChanges>) => cs.map((c) => `${c.kind}:${c.slot}:${c.in?.id ?? ''}:${c.out?.id ?? ''}`);
   it('describes swaps, starts, benchings and moves', () => {
-    // RB: X → Y (Y moved from FLEX), FLEX: Y → Z (new), K: W stays.
-    const changes = lineupChanges(['RB', 'FLEX', 'K'], [0, 1, 3], [1, 2, 3], rows);
-    expect(changes.map((c) => `${c.kind}:${c.slot}:${c.in?.id ?? ''}:${c.out?.id ?? ''}`)).toEqual(['start:FLEX:Z:', 'bench:RB::X', 'move:RB:Y:']);
+    // RB: X → Y (Y moved from FLEX), FLEX: Y → Z (new), K: W stays. Z comes in for X.
+    expect(show(lineupChanges(['RB', 'FLEX', 'K'], [0, 1, 3], [1, 2, 3], rows))).toEqual(['swap:FLEX:Z:X', 'move:RB:Y:']);
+    // An empty slot filled, and a starter dropped with nobody replacing him.
+    expect(show(lineupChanges(['RB', 'K'], [-1, 3], [2, 3], rows))).toEqual(['start:RB:Z:']);
+    expect(show(lineupChanges(['RB', 'K'], [0, 3], [-1, 3], rows))).toEqual(['bench:RB::X']);
   });
   it('pairs a new starter with the benched player in the same slot', () => {
     const changes = lineupChanges(['RB'], [0], [2], rows);
     expect(changes).toEqual([{ kind: 'swap', slot: 'RB', in: rows[2], out: rows[0] }]);
+  });
+  it('ignores reshuffles between slots of the same type', () => {
+    expect(lineupChanges(['RB', 'RB', 'FLEX'], [0, 1, 2], [1, 0, 2], rows)).toEqual([]);
+    // Same-type pairing wins over a different slot: Z replaces Y (RB), not W (FLEX).
+    expect(show(lineupChanges(['RB', 'RB', 'FLEX'], [0, 1, 3], [0, 2, 3], rows))).toEqual(['swap:RB:Z:Y']);
   });
 });
 

@@ -6,7 +6,7 @@
 //   (e) are past weeks served, and are they pre-game snapshots?
 //   (f) are future weeks projected?
 //   (g) stats endpoint shape (for the scoring golden test)
-//   (c)(h)(i) league checks when SLEEPER_USERNAME is set: settings, waiver bids, future matchups
+// League checks (c)(h)(i) run on encrypted data from scripts/league/pull.sh instead.
 import { gzipSync } from 'node:zlib';
 
 const API = 'https://api.sleeper.app/v1';
@@ -176,44 +176,7 @@ async function main() {
   log(`### Schedule (web): HTTP ${sch.status}, ${schRows.length} rows, keys \`${keysOf(schRows).join(', ')}\``);
   log('');
 
-  // League checks (optional)
-  const username = process.env.SLEEPER_USERNAME?.trim();
-  if (username) await leagueChecks(username, season, week);
-  else log('_League checks skipped (no SLEEPER_USERNAME)._');
-
   console.log(out.join('\n'));
-}
-
-async function leagueChecks(username, season, week) {
-  const u = await get(`${API}/user/${encodeURIComponent(username)}`);
-  if (!u.body?.user_id) { log(`### Leagues: user lookup HTTP ${u.status}, not found`); return; }
-  const leagues = asRows(await get(`${API}/user/${u.body.user_id}/leagues/nfl/${season}`));
-  log(`### Leagues: ${leagues.length} for ${season}`);
-  log(`- league keys: \`${keysOf(leagues).join(', ')}\``);
-  log(`- settings keys: \`${keysOf(leagues.map((l) => l.settings)).join(', ')}\``);
-  const pick = ['type', 'best_ball', 'num_teams', 'waiver_type', 'waiver_budget', 'trade_deadline', 'playoff_week_start', 'playoff_teams', 'playoff_round_type', 'playoff_type', 'league_average_match', 'reserve_slots', 'taxi_slots', 'start_week', 'leg', 'last_scored_leg'];
-  for (const [i, L] of leagues.entries()) {
-    const s = Object.fromEntries(pick.filter((k) => L.settings?.[k] !== undefined).map((k) => [k, L.settings[k]]));
-    log(`#### L${i + 1} (status ${L.status}, ${L.total_rosters} rosters)`);
-    log(`- settings: \`${JSON.stringify(s)}\``);
-    log(`- reserve_allow_*: \`${JSON.stringify(Object.fromEntries(Object.entries(L.settings ?? {}).filter(([k]) => k.startsWith('reserve_allow'))))}\``);
-    log(`- roster_positions: \`${(L.roster_positions ?? []).join(' ')}\``);
-    log(`- scoring (non-zero): \`${Object.entries(L.scoring_settings ?? {}).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join(' ')}\``);
-    const rosters = asRows(await get(`${API}/league/${L.league_id}/rosters`));
-    log(`- roster keys: \`${keysOf(rosters).join(', ')}\`; roster.settings keys: \`${keysOf(rosters.map((r) => r.settings)).join(', ')}\`; with co_owners: ${rosters.filter((r) => r.co_owners?.length).length}`);
-    for (const w of [week - 1, week - 2].filter((x) => x >= 1)) {
-      const tx = asRows(await get(`${API}/league/${L.league_id}/transactions/${w}`));
-      const waivers = tx.filter((t) => t.type === 'waiver');
-      const failed = waivers.filter((t) => t.status === 'failed');
-      log(`- transactions w${w}: ${JSON.stringify(countBy(tx, (t) => `${t.type}:${t.status}`))}; waiver settings keys \`${keysOf(waivers.map((t) => t.settings)).join(', ')}\`; failed waivers with waiver_bid: ${failed.filter((t) => t.settings?.waiver_bid != null).length}/${failed.length}; metadata keys \`${keysOf(tx.map((t) => t.metadata)).join(', ')}\``);
-    }
-    const mNow = asRows(await get(`${API}/league/${L.league_id}/matchups/${week}`));
-    log(`- matchup keys: \`${keysOf(mNow).join(', ')}\``);
-    for (const w of [week + 1, week + 2]) {
-      const m = asRows(await get(`${API}/league/${L.league_id}/matchups/${w}`));
-      log(`- matchups w${w}: ${m.length} rows, ${m.filter((r) => r.matchup_id != null).length} with matchup_id`);
-    }
-  }
 }
 
 function groupBy(xs, f) { const g = {}; for (const x of xs) (g[f(x)] ??= []).push(x); return g; }

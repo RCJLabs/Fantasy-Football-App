@@ -1,0 +1,40 @@
+name: league-pull
+
+# Private pull of one Sleeper user's leagues for testing against real data (scripts/league/pull.sh).
+# The username is read from the event payload inside the script and masked; the bundle is age-encrypted
+# before upload, so neither the log nor the release asset shows anything readable.
+on:
+  workflow_dispatch:
+    inputs:
+      username:
+        description: 'Sleeper username (masked in logs; the output is encrypted)'
+        required: true
+
+permissions:
+  contents: write # upload the encrypted bundle to the league-pull prerelease
+
+concurrency:
+  group: league-pull
+  cancel-in-progress: false
+
+jobs:
+  pull:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install age
+        run: |
+          curl -sSL -o "$RUNNER_TEMP/age.tgz" https://github.com/FiloSottile/age/releases/download/v1.2.1/age-v1.2.1-linux-amd64.tar.gz
+          echo "7df45a6cc87d4da11cc03a539a7470c15b1041ab2b396af088fe9990f7c79d50  $RUNNER_TEMP/age.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/age.tgz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/age" >> "$GITHUB_PATH"
+
+      - name: Pull, encrypt, upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash scripts/league/pull.sh

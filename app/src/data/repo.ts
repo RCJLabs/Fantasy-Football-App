@@ -1,10 +1,10 @@
-import type { Game, League, LeagueUser, Matchup, Player, Roster } from '../domain/types';
+import type { Game, League, LeagueUser, Matchup, Player, Roster, StatLine } from '../domain/types';
 import { gamesByTeam, type WeekContext } from '../analysis/analyze';
 import { sleeperApi, SleeperError } from '../sleeper/api';
-import { indexProjections, parseLeague, parseMatchup, parsePlayersDump, parseRoster, parseUser } from '../sleeper/parse';
-import type { RawState, RawUser } from '../sleeper/raw';
+import { indexProjections, parseLeague, parseMatchup, parsePlayersDump, parseRoster, parseUser, type ProjectionIndex } from '../sleeper/parse';
+import type { RawProjection, RawState, RawTransaction, RawUser } from '../sleeper/raw';
 import { cached } from './cache';
-import { DATA_SCHEMA_VERSION, type CompactPlayer, type Manifest, type PlayersFile, type ScheduleFile } from './contracts';
+import { DATA_SCHEMA_VERSION, type AccuracyFile, type CompactPlayer, type Manifest, type PlayersFile, type ScheduleFile } from './contracts';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -156,12 +156,118 @@ function approximateGames(rows: ReadonlyArray<{ team?: string | null; opponent?:
   return [...seen.values()];
 }
 
+/** Projection row trimmed for the rest-of-season cache: no player object, no zero or ranking stats. */
+export interface CompactProjection {
+  id: string;
+  s: StatLine;
+  t?: string;
+  o?: string;
+}
+
+const RANKING_KEY = /^(adp_|pos_adp_|rank_|pos_rank_)/;
+
+export function compactProjections(rows: readonly RawProjection[]): CompactProjection[] {
+  const out: CompactProjection[] = [];
+  for (const r of rows) {
+    const stats = r.stats ?? {};
+    // Offense, K and DEF rows carry pts_*; skip deep reserves projected for (almost) nothing. IDP rows lack pts_*.
+    const pts = stats.pts_ppr ?? stats.pts_half_ppr ?? stats.pts_std;
+    if (pts !== undefined && pts < 0.2) continue;
+    const s: StatLine = {};
+    let any = false;
+    for (const k in stats) {
+      const v = stats[k];
+      if (typeof v !== 'number' || v === 0 || RANKING_KEY.test(k)) continue;
+      s[k] = v;
+      any = true;
+    }
+    if (any) out.push({ id: r.player_id, s, ...(r.team ? { t: r.team } : {}), ...(r.opponent ? { o: r.opponent } : {}) });
+  }
+  return out;
+}
+
+export function indexCompact(rows: readonly CompactProjection[], week: number): ProjectionIndex {
+  const byPlayer: ProjectionIndex['byPlayer'] = new Map();
+  const statKeys = new Set<string>();
+  for (const r of rows) {
+    for (const k in r.s) statKeys.add(k);
+    byPlayer.set(r.id, { playerId: r.id, week, stats: r.s, ...(r.t ? { team: r.t } : {}), ...(r.o ? { opponent: r.o } : {}) });
+  }
+  return { byPlayer, players: new Map(), statKeys };
+}
+
+export interface RosWeeks {
+  byWeek: Map<number, ProjectionIndex>;
+  /** Weeks that couldn't be loaded (valued as zero). */
+  missing: number[];
+}
+
+/** Future weeks' projections for rest-of-season values. Future projections move slowly: refresh twice a day. */
+export async function loadRosWeeks(season: string, weeks: readonly number[], positions: readonly string[], force = false): Promise<RosWeeks> {
+  const results = await Promise.allSettled(
+    weeks.map((w) =>
+      cached(`ros:${season}:${w}:${positions.join('.')}`, 12 * HOUR, async () => compactProjections(await sleeperApi.projections(season, w, positions)), { force }),
+    ),
+  );
+  const byWeek = new Map<number, ProjectionIndex>();
+  const missing: number[] = [];
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') byWeek.set(weeks[i]!, indexCompact(r.value.value, weeks[i]!));
+    else missing.push(weeks[i]!);
+  });
+  return { byWeek, missing };
+}
+
+/** Matchup pairings for future weeks (Sleeper generates the whole regular-season schedule up front). */
+export async function loadSchedule(leagueId: string, weeks: readonly number[], force = false): Promise<Map<number, Matchup[]>> {
+  const results = await Promise.allSettled(weeks.map((w) => cached(`matchups:${leagueId}:${w}`, 6 * HOUR, () => sleeperApi.matchups(leagueId, w), { force })));
+  const out = new Map<number, Matchup[]>();
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') out.set(weeks[i]!, r.value.value.map(parseMatchup));
+  });
+  return out;
+}
+
+/** This season's waiver claims (won and lost, with bids) for FAAB pricing. */
+export async function loadWaiverClaims(leagueId: string, throughWeek: number, force = false): Promise<RawTransaction[]> {
+  const weeks = Array.from({ length: Math.max(0, throughWeek) }, (_, i) => i + 1);
+  const results = await Promise.allSettled(
+    weeks.map((w) =>
+      cached(
+        `waivers:${leagueId}:${w}`,
+        w < throughWeek ? 24 * HOUR : HOUR,
+        async () =>
+          (await sleeperApi.transactions(leagueId, w))
+            .filter((t) => t.type === 'waiver')
+            .map((t): RawTransaction => ({
+              type: t.type,
+              status: t.status,
+              leg: t.leg,
+              adds: t.adds ?? null,
+              ...(t.settings?.waiver_bid !== undefined ? { settings: { waiver_bid: t.settings.waiver_bid } } : {}),
+              ...(t.metadata?.notes ? { metadata: { notes: t.metadata.notes } } : {}),
+            })),
+        { force },
+      ),
+    ),
+  );
+  return results.flatMap((r) => (r.status === 'fulfilled' ? r.value.value : []));
+}
+
 export async function loadTrending(): Promise<Map<string, number>> {
   try {
     const res = await cached('trending:add', HOUR, () => sleeperApi.trending('add', 24, 200));
     return new Map(res.value.map((t) => [t.player_id, t.count]));
   } catch {
     return new Map();
+  }
+}
+
+export async function loadAccuracy(): Promise<AccuracyFile | null> {
+  try {
+    return (await cached('data:accuracy', 6 * HOUR, () => fetchDataFile<AccuracyFile>('accuracy.json'))).value;
+  } catch {
+    return null;
   }
 }
 

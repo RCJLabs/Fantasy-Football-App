@@ -12,11 +12,16 @@ async function mockBackends(page: Page) {
       : path === '/league/1001/rosters' ? fx.rosters
       : path === '/league/1001/users' ? fx.users
       : path === '/league/1001/matchups/6' ? fx.matchups
+      : path.startsWith('/league/1001/matchups/') ? fx.futureMatchups(Number(path.split('/').pop()))
+      : path.startsWith('/league/1001/transactions/') ? fx.transactions.filter((t) => t.leg === Number(path.split('/').pop()))
       : path.startsWith('/players/nfl/trending/add') ? fx.trending
       : undefined;
     return body === undefined ? route.fulfill({ status: 404, body: 'not mocked' }) : route.fulfill({ json: body });
   });
-  await page.route('https://api.sleeper.com/projections/nfl/2026/6**', (route) => route.fulfill({ json: fx.projections }));
+  await page.route(/^https:\/\/api\.sleeper\.com\/projections\/nfl\/2026\/\d+\?/, (route) => {
+    const week = Number(new URL(route.request().url()).pathname.split('/').pop());
+    return route.fulfill({ json: week === 6 ? fx.projections : fx.futureProjections(week) });
+  });
   await page.route('**/data/players.json', (route) => route.fulfill({ json: fx.playersFile }));
   await page.route('**/data/schedule.json', (route) => route.fulfill({ json: fx.schedule }));
   await page.route('**/data/manifest.json', (route) => route.fulfill({ json: fx.manifest }));
@@ -65,10 +70,34 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(page.locator('.versus')).toContainText('Rival Raiders');
   await expect(page.getByText('Win chance with the recommended lineup')).toBeVisible();
 
-  // Waivers: the free-agent RB improves this week's lineup most.
+  // Waivers: the free-agent RB helps most this week and for the rest of the season, with a FAAB bid.
   await page.getByRole('tab', { name: 'Waivers' }).click();
-  const first = page.locator('table.table tbody tr').first();
+  const board = page.locator('table.table').first();
+  const first = board.locator('tbody tr').first();
   await expect(first).toContainText('Free Agent Runner');
-  await expect(page.locator('table.table')).toContainText('1520');
+  await expect(board.locator('thead')).toContainText('ROS');
+  await expect(board.locator('thead')).toContainText('Bid');
+  await expect(first.locator('td').nth(3)).toHaveText(/^\$\d+$/);
+  await expect(board).toContainText('1520');
+  await expect(page.getByText('FAAB: you have $70 of $100 left.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Streaming' })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('waivers.png'), fullPage: true });
+
+  // Season: standings with playoff odds and my remaining schedule.
+  await page.getByRole('tab', { name: 'Season' }).click();
+  const standings = page.locator('table.table').first();
+  await expect(standings.locator('thead')).toContainText('Playoffs');
+  await expect(standings.locator('tr.mine')).toContainText('Test Titans');
+  await expect(page.getByRole('heading', { name: 'Your schedule' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('season.png'), fullPage: true });
+
+  // Trade: give a WR for their RB and see both sides.
+  await page.getByRole('tab', { name: 'Trade' }).click();
+  await page.getByLabel('Trade with').selectOption({ label: 'Rival Raiders' });
+  await page.locator('fieldset', { hasText: 'You give' }).getByText('Sam Slot').click();
+  await page.locator('fieldset', { hasText: 'You get' }).getByText('Opp Rusher').click();
+  await expect(page.locator('.trade-side').first()).toContainText('rest of season');
+  await expect(page.locator('.trade-side').nth(1)).toContainText('Rival Raiders');
+  await expect(page.locator('.card h2').last()).toContainText(/for you/);
+  await page.screenshot({ path: testInfo.outputPath('trade.png'), fullPage: true });
 });

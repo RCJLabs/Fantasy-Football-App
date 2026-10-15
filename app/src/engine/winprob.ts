@@ -5,9 +5,13 @@ export interface Dist {
   variance: number;
 }
 
-/** Weekly points spread given position and projected mean (CV rises as the mean falls). [design] */
-const CV: Record<string, number> = { QB: 0.42, RB: 0.6, WR: 0.66, TE: 0.7, K: 0.55, DEF: 0.8 };
-const MIN_SD: Record<string, number> = { QB: 6, RB: 4, WR: 4, TE: 3.5, K: 3, DEF: 4 };
+/**
+ * Weekly points spread given position and projected mean. [design] values, checked by the accuracy
+ * ledger: on 2026 weeks 1–5, 66% of outcomes fell within ±1 SD and 95% within ±2 SD (ideal 68/95).
+ * Kickers came out too narrow (z-score SD 1.14), so their spread is ~13% wider than first set.
+ */
+const CV: Record<string, number> = { QB: 0.42, RB: 0.6, WR: 0.66, TE: 0.7, K: 0.62, DEF: 0.8 };
+const MIN_SD: Record<string, number> = { QB: 6, RB: 4, WR: 4, TE: 3.5, K: 3.4, DEF: 4 };
 
 export function pointSd(pos: string, mu: number): number {
   const cv = CV[pos] ?? 0.5; // IDP and others

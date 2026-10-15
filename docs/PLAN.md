@@ -1,6 +1,6 @@
 # Fantasy Football Assistant — Plan & Roadmap
 
-**Status:** v2, confirmed 2026-10-15 · Phase 0 done, Phase 1 MVP built (see "Progress" below) · **Repo:** RCJLabs/Fantasy-Football-App (public)
+**Status:** v2, confirmed 2026-10-15 · Phase 0 done, Phase 1 MVP built and validated on real leagues, Phase 2 core built early (see "Progress" below) · **Repo:** RCJLabs/Fantasy-Football-App (public)
 
 **Decisions (2026-10-15):**
 - Free and non-commercial for 2026, mainly personal use, kept publishable.
@@ -22,7 +22,25 @@
   - waivers v0, explanations, PWA
   - CI and Pages deploy
 
-  **Still to do:** league-specific spikes (c)(h)(i), the engine golden test against real league points, and the DST v0 model.
+  **Validated on the owner's leagues (2026-10-15):**
+  - spikes (c)(h)(i) answered;
+  - golden test: 1,706/1,706 player-weeks match Sleeper's points;
+  - three real-data bugs fixed (spurious slot moves, kicker keys, no-playoff leagues).
+- **Phase 2 — core built early (PR #2):**
+  - ROS values from Sleeper's weekly projections for every remaining week;
+  - season simulation over the real schedule: playoff, bye and 1st-place odds;
+  - playoff weeks weighted by playoff odds;
+  - waivers with ROS gain, drop suggestion and a FAAB bid priced from the league's own winning bids by position;
+  - stripped trade analyzer (both sides' ROS and playoff odds, forced drops, refilled spots, deadline);
+  - DEF/K streaming table;
+  - public accuracy ledger v0: aggregate projection error by position plus a calibration check of the app's spread (kicker spread widened from it).
+
+  **Not yet:**
+  - P(win)-maximizing lineups for playoff rounds (the plan's "playoff mode"; today's lineups maximize expected points);
+  - bye grid and FantasyCalc market values in trades;
+  - dynasty "long-term market" view;
+  - our own predictions in the ledger with commit-reveal hashes;
+  - P(play) calibration from the archive, from Week 6 results on.
 
 v2 incorporates an adversarial review of v1 by four independent critics: evidence consistency, solo-dev feasibility, completeness, and football methodology.
 
