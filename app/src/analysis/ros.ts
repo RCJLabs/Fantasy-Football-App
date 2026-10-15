@@ -137,6 +137,28 @@ export class RosModel {
     return (w === undefined ? undefined : this.input.byWeek.get(w)?.byPlayer.keys()) ?? [];
   }
 
+  private readonly playing = new Map<number, Set<string>>();
+
+  /** NFL teams with projections in week index `i`; teams missing from a loaded week are on bye. */
+  teamsPlaying(i: number): Set<string> | undefined {
+    const w = this.weeks[i];
+    const index = w === undefined ? undefined : this.input.byWeek.get(w);
+    if (!index) return undefined;
+    let set = this.playing.get(i);
+    if (!set) {
+      set = new Set([...index.byPlayer.values()].map((p) => p.team).filter((t): t is string => !!t));
+      this.playing.set(i, set);
+    }
+    return set;
+  }
+
+  /** True when the player's NFL team has no game in week index `i` (unknown week or team: false). */
+  onBye(id: string, i: number): boolean {
+    const team = this.input.players.get(id)?.team;
+    const playing = this.teamsPlaying(i);
+    return !!team && !!playing && playing.size > 0 && !playing.has(team);
+  }
+
   fpos(id: string): readonly string[] {
     const p = this.input.players.get(id);
     return p?.fpos.length ? p.fpos : p ? [p.pos] : [];
@@ -190,25 +212,37 @@ export class RosModel {
    * (first order: one absence at a time). Without it, depth would be worth nothing outside bye weeks.
    */
   bestWeek(ids: readonly string[], i: number): Dist {
+    const { mean, variance } = this.lineupWeek(ids, i);
+    return { mean, variance };
+  }
+
+  /** `bestWeek` plus who starts and how many slots nobody with a projection can fill. */
+  lineupWeek(ids: readonly string[], i: number): Dist & { starters: string[]; open: number } {
     const { assignment, total } = bestAssignment(this.slots.length, ids.length, (s, k) =>
       canFill(this.slots[s]!, this.fpos(ids[k]!)) ? this.ev(ids[k]!)[i]! : null,
     );
     const starting = new Set(assignment.filter((k) => k >= 0));
+    const starters: string[] = [];
+    let open = 0;
     let variance = 0;
     let insurance = 0;
     assignment.forEach((k, s) => {
-      if (k < 0) return;
+      if (k < 0 || this.ev(ids[k]!)[i]! === 0) {
+        open++;
+        return;
+      }
       const id = ids[k]!;
+      starters.push(id);
       variance += this.variance(id)[i]!;
       const miss = 1 - this.play(id);
-      if (miss <= 0 || this.ev(id)[i]! === 0) return;
+      if (miss <= 0) return;
       let backup = 0;
       ids.forEach((b, j) => {
         if (!starting.has(j) && canFill(this.slots[s]!, this.fpos(b))) backup = Math.max(backup, this.ev(b)[i]!);
       });
       insurance += miss * backup;
     });
-    return { mean: total + insurance, variance };
+    return { mean: total + insurance, variance, starters, open };
   }
 
   /** Σ over weeks of weight × best-lineup expected points. */

@@ -41,8 +41,11 @@
   - Opponents are assumed to replace starters who can't play.
   - The win-chance lineup must beat the max-points lineup by ≥0.5 pp to be shown. On the owner's leagues in Week 6 it matched max points.
 
+- **Trade bye grid and market values — built (2026-10-15):**
+  - Week by week, lineup points before and after the trade, empty starting slots, and which regular starters are on bye. Byes come from teams missing in each week's projections.
+  - FantasyCalc market value for each side, shown apart from the lineup verdict. It uses the league's format (redraft or dynasty, 1QB or superflex, team count, PPR) and is fetched and cached by the browser, with attribution.
+
   **Not yet:**
-  - bye grid and FantasyCalc market values in trades;
   - dynasty "long-term market" view;
   - our own predictions in the ledger with commit-reveal hashes;
   - P(play) calibration from the archive, from Week 6 results on.

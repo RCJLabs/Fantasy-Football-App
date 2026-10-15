@@ -213,9 +213,44 @@ function fposOf(o: LeagueOutlook, ctx: WeekContext, id: string): readonly string
 
 // ---- Trades ------------------------------------------------------------------------------------
 
+export interface ByeWeek {
+  week: number;
+  /** Regular starters on the roster after the trade whose NFL team is off this week. */
+  byes: string[];
+  /** Best-lineup expected points before and after the trade. */
+  before: number;
+  after: number;
+  /** Starting slots nobody with a game can fill. */
+  openBefore: number;
+  openAfter: number;
+}
+
+/** Players who start in at least half the weeks they play: their bye weeks are the ones that hurt. */
+export function regularStarters(model: RosModel, ids: readonly string[]): Set<string> {
+  const starts = new Map<string, number>();
+  const plays = new Map<string, number>();
+  for (let i = 0; i < model.weeks.length; i++) {
+    for (const id of model.lineupWeek(ids, i).starters) starts.set(id, (starts.get(id) ?? 0) + 1);
+    for (const id of ids) if (model.ev(id)[i]! > 0) plays.set(id, (plays.get(id) ?? 0) + 1);
+  }
+  return new Set(ids.filter((id) => (plays.get(id) ?? 0) > 0 && (starts.get(id) ?? 0) / plays.get(id)! >= 0.5));
+}
+
+/** Week by week: who's on bye, and the lineup before and after a roster change. */
+export function byeGrid(model: RosModel, before: readonly string[], after: readonly string[]): ByeWeek[] {
+  const regulars = [...regularStarters(model, after)];
+  return model.weeks.map((week, i) => {
+    const b = model.lineupWeek(before, i);
+    const a = model.lineupWeek(after, i);
+    return { week, byes: regulars.filter((id) => model.onBye(id, i)), before: b.mean, after: a.mean, openBefore: b.open, openAfter: a.open };
+  });
+}
+
 export interface TradeSideResult {
   rosterId: number;
   name: string;
+  /** Week-by-week byes and lineup points before and after. */
+  byes: ByeWeek[];
   /** Weighted rest-of-season points before and after (incl. forced drops and open-spot adds). */
   before: number;
   after: number;
@@ -271,6 +306,7 @@ export function evaluateTrade(o: LeagueOutlook, ctx: WeekContext, myId: number, 
     const res: TradeSideResult = {
       rosterId: t.rosterId,
       name: t.name,
+      byes: byeGrid(o.model, before, after),
       before: beforeVal,
       after: afterVal,
       delta: afterVal - beforeVal,

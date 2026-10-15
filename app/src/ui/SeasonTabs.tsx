@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'preact/hooks';
 import { analyzeWaivers, type PlayerRow } from '../analysis/analyze';
 import { marketPrice } from '../analysis/faab';
-import { evaluateTrade, freeAgentPool, scheduleOutlook, streamers, waiverBoard, type LeagueOutlook, type TradeSideResult } from '../analysis/outlook';
+import { evaluateTrade, freeAgentPool, scheduleOutlook, streamers, waiverBoard, type ByeWeek, type LeagueOutlook, type TradeSideResult } from '../analysis/outlook';
+import { FANTASYCALC_URL, loadMarketValues, marketParams, marketTotals, type MarketValue } from '../data/fantasycalc';
 import { loadTrending } from '../data/repo';
 import { InjuryBadge, ErrorBox, Spinner } from './components';
 import { loadSeason, type LeagueBundle, type SeasonBundle } from './data';
@@ -299,6 +300,8 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
   const [give, setGive] = useState<string[]>([]);
   const [get, setGet] = useState<string[]>([]);
   const freeAgents = useMemo(() => freeAgentPool(o, bundle.ctx), [o, bundle.ctx]);
+  const market = useAsync(() => loadMarketValues(marketParams(bundle.league)), [bundle.league.id]);
+  const values = market.data ?? null;
   const result = useMemo(
     () => (partnerId >= 0 && (give.length || get.length) ? evaluateTrade(o, bundle.ctx, myId, partnerId, give, get, freeAgents) : null),
     [o, bundle.ctx, myId, partnerId, give, get, freeAgents],
@@ -323,7 +326,10 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
             <span>
               {name(id)} <span class="muted small">{p ? `${p.pos}${p.team ? `·${p.team}` : ''}` : ''}</span>
             </span>
-            <span class="muted small num">{pts(perWeek(id))}/wk</span>
+            <span class="muted small num">
+              {pts(perWeek(id))}/wk
+              {values?.get(id) ? <span class="mv"> · {shortValue(values.get(id)!.value)}</span> : null}
+            </span>
           </label>
         );
       })}
@@ -349,7 +355,10 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
             ))}
           </select>
         </label>
-        <p class="muted small">Numbers are expected points per week over {weekSpan(o.weeks)} on their own; the verdict below accounts for each lineup.</p>
+        <p class="muted small">
+          Expected points per week over {weekSpan(o.weeks)} on their own{values ? ', then FantasyCalc market value' : ''}. The verdict below accounts for each
+          lineup.
+        </p>
         <div class="pickers">
           {picker('You give', myId, give, (id) => toggle(give, setGive, id))}
           {picker('You get', partnerId, get, (id) => toggle(get, setGet, id))}
@@ -360,11 +369,18 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
           <h2>{verdict(result.me.delta, result.them.delta)}</h2>
           <TradeSide label="You" side={result.me} name={name} />
           <TradeSide label={result.them.name} side={result.them} name={name} />
+          {values ? <MarketLine values={values} give={give} get={get} dynasty={marketParams(bundle.league).dynasty} /> : null}
           <WeeklyBars weeks={o.weeks} deltas={result.me.weekly} />
           <p class="muted small">
             Rest-of-season points from each team's best lineup by week (playoff weeks weighted by that team's playoff odds), including the drops a full roster
             forces and free agents for spots the trade opens.
           </p>
+        </div>
+      ) : null}
+      {result ? (
+        <div class="card">
+          <h2>Your weeks after the trade</h2>
+          <ByeGrid weeks={result.me.byes} name={name} incoming={new Set(get)} />
         </div>
       ) : (
         <p class="muted small">Pick players on either side to see how the trade changes both teams.</p>
@@ -418,5 +434,89 @@ function WeeklyBars({ weeks, deltas }: { weeks: readonly number[]; deltas: reado
         })}
       </div>
     </div>
+  );
+}
+
+/** FantasyCalc values read like 4,512: show 4.5k. */
+const shortValue = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n)}`);
+
+/** Market value of each side, shown apart from what the trade does for your lineup. */
+function MarketLine({ values, give, get, dynasty }: { values: ReadonlyMap<string, MarketValue>; give: string[]; get: string[]; dynasty: boolean }) {
+  const t = marketTotals(values, give, get);
+  const credit = (
+    <>
+      Values from{' '}
+      <a href={FANTASYCALC_URL} target="_blank" rel="noopener">
+        FantasyCalc
+      </a>
+      .
+    </>
+  );
+  if (!t.give && !t.get) return <p class="muted small">No market value for these players (FantasyCalc doesn't value K, DEF or deep reserves). {credit}</p>;
+  const diff = t.get - t.give;
+  const share = Math.abs(diff) / Math.max(t.give, t.get);
+  const lean = share < 0.05 ? 'about even' : `${Math.round(share * 100)}% in ${diff > 0 ? 'your' : 'their'} favor`;
+  return (
+    <p class="small">
+      <strong>Market value</strong> ({dynasty ? 'dynasty' : 'this season'}): you give {shortValue(t.give)}, you get {shortValue(t.get)}, {lean}.
+      {t.unvalued.length ? ` ${t.unvalued.length} player${t.unvalued.length > 1 ? 's have' : ' has'} no value.` : ''}{' '}
+      <span class="muted">
+        Simple sums: FantasyCalc's own calculator adds a premium for the best player in uneven trades. {credit}
+      </span>
+    </p>
+  );
+}
+
+/** Week by week: lineup points before and after, empty slots, and which regular starters are on bye. */
+function ByeGrid({ weeks, name, incoming }: { weeks: readonly ByeWeek[]; name: (id: string) => string; incoming: ReadonlySet<string> }) {
+  const open = (n: number) => (n ? <span class="bad"> · {n} empty</span> : null);
+  return (
+    <>
+      <table class="table byes">
+        <thead>
+          <tr>
+            <th>Wk</th>
+            <th class="num">Before</th>
+            <th class="num">After</th>
+            <th>Starters on bye</th>
+          </tr>
+        </thead>
+        <tbody>
+          {weeks.map((w) => {
+            const d = w.after - w.before;
+            const tone = w.openAfter > w.openBefore || d <= -2 ? 'worse' : w.openAfter < w.openBefore || d >= 2 ? 'better' : '';
+            return (
+              <tr class={tone}>
+                <td>{w.week}</td>
+                <td class="num">
+                  {pts(w.before)}
+                  {open(w.openBefore)}
+                </td>
+                <td class="num">
+                  {pts(w.after)}
+                  {open(w.openAfter)}
+                </td>
+                <td>
+                  {w.byes.length ? (
+                    w.byes.map((id, k) => (
+                      <>
+                        {k ? ', ' : ''}
+                        {incoming.has(id) ? <strong>{name(id)}</strong> : name(id)}
+                      </>
+                    ))
+                  ) : (
+                    <span class="muted">–</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p class="muted small">
+        Best-lineup expected points each week. Red rows get 2+ points worse or leave a starting slot empty; green rows improve. Byes list players who
+        start most weeks; those arriving in the trade are in bold.
+      </p>
+    </>
   );
 }

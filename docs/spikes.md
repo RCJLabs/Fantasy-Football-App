@@ -84,6 +84,17 @@ Run on 2026-10-15 against the owner's three Sleeper leagues (two in season, one 
 - **Golden test ✅** For weeks 1–5, scoring every rostered player's Sleeper stat line with the engine and each league's `scoring_settings` reproduces Sleeper's `players_points` for 1,706 of 1,706 player-weeks (within 0.01) and 110 of 110 team totals (within 0.05).
 - **Projection gaps found:** kicker projections lack `fgmiss`, `fgm_50_59` and `fgm_60p`, which these leagues score. They are now derived (`fga − fgm`, and a 94/6 split of `fgm_50p`). Special-teams return and fumble-recovery TDs (`def_st_td`, `st_td`, `fum_rec_td`, …) stay unprojected. They're worth a few tenths of a point a game and no longer trigger a warning.
 
+## FantasyCalc market values (2026-10-15)
+
+- **CORS:** `api.fantasycalc.com/values/current` returns `access-control-allow-origin: *` with `cache-control: max-age=1200`. The browser fetches it directly and caches it for an hour; nothing is republished.
+- **Coverage:**
+  - Redraft returns ~197 players (QB 33, RB 61, WR 76, TE 27), all with `sleeperId`, ~150 KB.
+  - Dynasty returns ~420 players, including 24 draft picks.
+  - No K or DEF values in either.
+  - `numQbs=2` changes values, not coverage.
+- **Fields:** `value`, `redraftValue`, `combinedValue`, `overallRank`, `positionRank`, `trend30Day`, `maybeTier`, plus a `player` object with cross-site IDs (`sleeperId`, `espnId`, `mflId`, …).
+- **Terms** `[reported]`: non-commercial use with attribution and a link to fantasycalc.com.
+
 ## Still open
 
 - **(j) When does Sleeper's `injury_status` flip for game-day inactives?** Check on Sunday 10-18 using the archive snapshots.
