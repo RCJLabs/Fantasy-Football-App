@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compactPlayers, csvRecords, easternToUtcIso, gamesFromCsv, isEasternDst, latestInjuryReport, parseCsv, practiceStatus, sleeperToGsis, toSleeperTeam } from './lib';
+import { compactPlayers, csvRecords, easternToUtcIso, gamesFromCsv, isEasternDst, latestInjuryReport, parseCsv, practiceStatus, projectionAccuracy, sleeperToGsis, toSleeperTeam } from './lib';
 
 describe('csv', () => {
   it('handles quotes, escaped quotes, empty quoted fields and CRLF', () => {
@@ -96,5 +96,24 @@ describe('injury report', () => {
     expect(map.get('30')).toBe('00-3');
     const players = compactPlayers(dump, latestInjuryReport(csvRecords(csv), 6), map);
     expect(players.find((p) => p.id === '20')).toMatchObject({ gsis: '00-2', prac: 'Full' });
+  });
+});
+
+describe('accuracy ledger', () => {
+  const row = (id: string, pos: string, stats: Record<string, number>) => ({ player_id: id, stats, player: { position: pos } });
+  it('scores projections of players who played, by position, against the app spread', () => {
+    const rows = projectionAccuracy([
+      {
+        proj: [row('a', 'WR', { pts_ppr: 10 }), row('b', 'WR', { pts_ppr: 20 }), row('c', 'WR', { pts_ppr: 12 }), row('d', 'WR', { pts_ppr: 3 }), row('e', 'DEF', { pts_ppr: 8 })],
+        stats: [row('a', 'WR', { pts_ppr: 14, gp: 1 }), row('b', 'WR', { pts_ppr: 10, gp: 1 }), row('c', 'WR', { pts_ppr: 0 }), row('d', 'WR', { pts_ppr: 30, gp: 1 }), row('e', 'DEF', { pts_ppr: 8, pts_allow: 17 })],
+      },
+    ]);
+    // c didn't play and d was projected under 5: both excluded.
+    const wr = rows.find((r) => r.pos === 'WR')!;
+    expect(wr).toMatchObject({ n: 2, mae: 7, bias: -3, rmse: Math.round(Math.sqrt((16 + 100) / 2) * 100) / 100 });
+    // a: |4| ≤ sd(10)=6.6 ✓; b: |10| ≤ sd(20)=13.2 ✓.
+    expect(wr.within1).toBe(1);
+    expect(rows.find((r) => r.pos === 'DEF')).toMatchObject({ n: 1, mae: 0 });
+    expect(rows.at(-1)).toMatchObject({ pos: 'ALL', n: 3 });
   });
 });

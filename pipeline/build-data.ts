@@ -1,13 +1,14 @@
 // Build the static data files the app reads from GitHub Pages:
 //   data/players.json   Sleeper player DB (trimmed) + official practice status (nflverse injuries)
 //   data/schedule.json  kickoff times (UTC), lines and implied team totals (nflverse nfldata)
+//   data/accuracy.json  projection accuracy by position over completed weeks (aggregates only)
 //   data/manifest.json  timestamps, sources and licences
 // Usage: tsx pipeline/build-data.ts [--out dist/data] [--cache .cache]
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { DATA_SCHEMA_VERSION, type Manifest, type PlayersFile, type ScheduleFile } from '../app/src/data/contracts';
+import { DATA_SCHEMA_VERSION, type AccuracyFile, type Manifest, type PlayersFile, type ScheduleFile } from '../app/src/data/contracts';
 import type { RawPlayer, RawState } from '../app/src/sleeper/raw';
-import { compactPlayers, csvRecords, gamesFromCsv, latestInjuryReport, sleeperToGsis } from './lib';
+import { compactPlayers, csvRecords, gamesFromCsv, latestInjuryReport, projectionAccuracy, sleeperToGsis, type PointsRow } from './lib';
 
 const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i += 2) args.set(process.argv[i]!.replace(/^--/, ''), process.argv[i + 1] ?? '');
@@ -40,6 +41,26 @@ async function sleeperPlayers(): Promise<Record<string, RawPlayer>> {
     await mkdir(CACHE, { recursive: true });
     await writeFile(file, text);
     return JSON.parse(text) as Record<string, RawPlayer>;
+  }
+}
+
+const LEDGER_MIN_PROJECTED = 5;
+
+/** Past weeks' projections (frozen around kickoff, see docs/spikes.md (e)) against actual stats. */
+async function accuracyLedger(season: string, week: number, now: string): Promise<AccuracyFile | null> {
+  const weeks = Array.from({ length: Math.max(0, week - 1) }, (_, i) => i + 1);
+  if (!weeks.length) return null;
+  const qs = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'].map((p) => `position[]=${p}`).join('&');
+  const get = async (kind: 'projections' | 'stats', w: number) =>
+    JSON.parse(await fetchText(`https://api.sleeper.com/${kind}/nfl/${season}/${w}?season_type=regular&${qs}`)) as PointsRow[];
+  try {
+    const data = [];
+    for (const w of weeks) data.push({ proj: await get('projections', w), stats: await get('stats', w) });
+    const rows = projectionAccuracy(data, LEDGER_MIN_PROJECTED);
+    return rows.length ? { schemaVersion: DATA_SCHEMA_VERSION, generatedAt: now, season, weeks, minProjected: LEDGER_MIN_PROJECTED, rows } : null;
+  } catch (e) {
+    console.warn(`accuracy ledger skipped: ${e}`);
+    return null;
   }
 }
 
@@ -100,13 +121,25 @@ async function main() {
   if (playersFile.players.length < 1500) throw new Error(`players.json looks wrong: ${playersFile.players.length} players`);
   if (scheduleFile.games.length < 250) throw new Error(`schedule.json looks wrong: ${scheduleFile.games.length} games`);
 
+  const accuracy = await accuracyLedger(season, week, now);
+  if (accuracy) {
+    manifest.files['accuracy.json'] = {
+      updatedAt: now,
+      source: 'Sleeper projections (RotoWire) for completed weeks vs Sleeper stats, PPR',
+      license: 'Aggregate error statistics only; no projections or stats are republished',
+    };
+  }
+
   await mkdir(OUT, { recursive: true });
   await writeFile(join(OUT, 'players.json'), JSON.stringify(playersFile));
   await writeFile(join(OUT, 'schedule.json'), JSON.stringify(scheduleFile));
+  if (accuracy) await writeFile(join(OUT, 'accuracy.json'), JSON.stringify(accuracy));
   await writeFile(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2));
   const withPractice = playersFile.players.filter((p) => p.prac).length;
+  const all = accuracy?.rows.find((r) => r.pos === 'ALL');
   console.log(
-    `season ${season} week ${week}: ${playersFile.players.length} players (${withPractice} with practice status, report week ${report?.week ?? '-'}), ${scheduleFile.games.length} games → ${OUT}`,
+    `season ${season} week ${week}: ${playersFile.players.length} players (${withPractice} with practice status, report week ${report?.week ?? '-'}), ${scheduleFile.games.length} games` +
+      `${all ? `, accuracy weeks ${accuracy!.weeks.join(',')} n=${all.n} MAE ${all.mae} within±1sd ${Math.round(all.within1 * 100)}%` : ''} → ${OUT}`,
   );
 }
 

@@ -1,6 +1,7 @@
 // Pure helpers for the data pipeline (tested in lib.test.ts).
-import type { CompactPlayer } from '../app/src/data/contracts';
+import type { AccuracyRow, CompactPlayer } from '../app/src/data/contracts';
 import type { Game, PracticeStatus } from '../app/src/domain/types';
+import { pointSd } from '../app/src/engine/winprob';
 import type { RawPlayer } from '../app/src/sleeper/raw';
 
 /** RFC 4180-ish CSV parser: quoted fields, escaped quotes, CRLF. Returns rows of strings. */
@@ -185,4 +186,90 @@ export function compactPlayers(dump: Record<string, RawPlayer>, report?: InjuryR
     out.push(cp);
   }
   return out.sort((a, b) => (a.rk ?? 1e9) - (b.rk ?? 1e9) || a.id.localeCompare(b.id));
+}
+
+/** Projection or stats row from api.sleeper.com (only the fields the ledger reads). */
+export interface PointsRow {
+  player_id: string;
+  stats?: Record<string, number> | null;
+  player?: { position?: string | null } | null;
+}
+
+const LEDGER_POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
+
+/**
+ * Accuracy of past weeks' projections against actual PPR points, by position, for players projected at
+ * least `minProjected` who played. Also checks the app's spread model: the share of outcomes inside
+ * ±1 and ±2 × pointSd(pos, projection).
+ */
+export function projectionAccuracy(weeks: ReadonlyArray<{ proj: readonly PointsRow[]; stats: readonly PointsRow[] }>, minProjected = 5): AccuracyRow[] {
+  type Acc = { n: number; abs: number; err: number; sq: number; in1: number; in2: number; xs: number[]; ys: number[] };
+  const acc = new Map<string, Acc>();
+  const add = (pos: string, proj: number, actual: number) => {
+    const a = acc.get(pos) ?? acc.set(pos, { n: 0, abs: 0, err: 0, sq: 0, in1: 0, in2: 0, xs: [], ys: [] }).get(pos)!;
+    const e = actual - proj;
+    const sd = pointSd(pos, proj);
+    a.n++;
+    a.abs += Math.abs(e);
+    a.err += e;
+    a.sq += e * e;
+    if (Math.abs(e) <= sd) a.in1++;
+    if (Math.abs(e) <= 2 * sd) a.in2++;
+    a.xs.push(proj);
+    a.ys.push(actual);
+  };
+  for (const { proj, stats } of weeks) {
+    const byId = new Map(stats.map((r) => [r.player_id, r]));
+    for (const p of proj) {
+      const pos = p.player?.position ?? '';
+      const projected = p.stats?.pts_ppr ?? 0;
+      if (!LEDGER_POSITIONS.includes(pos) || projected < minProjected) continue;
+      const s = byId.get(p.player_id)?.stats;
+      // DEF rows have no games-played stat; any points-allowed line means the team played.
+      const played = pos === 'DEF' ? s?.pts_allow !== undefined : (s?.gp ?? s?.gms_active ?? 0) > 0;
+      if (!played) continue;
+      add(pos, projected, s?.pts_ppr ?? 0);
+    }
+  }
+  // 'ALL' pools the positions (each outcome was judged against its own position's band).
+  const all: Acc = { n: 0, abs: 0, err: 0, sq: 0, in1: 0, in2: 0, xs: [], ys: [] };
+  for (const a of acc.values()) {
+    all.n += a.n;
+    all.abs += a.abs;
+    all.err += a.err;
+    all.sq += a.sq;
+    all.in1 += a.in1;
+    all.in2 += a.in2;
+    all.xs.push(...a.xs);
+    all.ys.push(...a.ys);
+  }
+  const round = (x: number, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
+  const row = (pos: string, a: Acc): AccuracyRow => ({
+    pos,
+    n: a.n,
+    mae: round(a.abs / a.n),
+    bias: round(a.err / a.n),
+    rmse: round(Math.sqrt(a.sq / a.n)),
+    corr: round(correlation(a.xs, a.ys)),
+    within1: round(a.in1 / a.n, 3),
+    within2: round(a.in2 / a.n, 3),
+  });
+  const rows = LEDGER_POSITIONS.filter((p) => acc.get(p)?.n).map((p) => row(p, acc.get(p)!));
+  return all.n ? [...rows, row('ALL', all)] : rows;
+}
+
+function correlation(xs: readonly number[], ys: readonly number[]): number {
+  const n = xs.length;
+  if (n < 3) return 0;
+  const mx = xs.reduce((a, b) => a + b, 0) / n;
+  const my = ys.reduce((a, b) => a + b, 0) / n;
+  let sxy = 0;
+  let sxx = 0;
+  let syy = 0;
+  for (let i = 0; i < n; i++) {
+    sxy += (xs[i]! - mx) * (ys[i]! - my);
+    sxx += (xs[i]! - mx) ** 2;
+    syy += (ys[i]! - my) ** 2;
+  }
+  return sxx && syy ? sxy / Math.sqrt(sxx * syy) : 0;
 }

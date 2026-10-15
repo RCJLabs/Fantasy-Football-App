@@ -37,6 +37,31 @@ export interface ScheduleFile {
   games: Game[];
 }
 
+/** Projection accuracy for one position (or 'ALL') over completed weeks, PPR scoring. */
+export interface AccuracyRow {
+  pos: string;
+  /** Player-weeks: projected at least `minProjected` and played. */
+  n: number;
+  mae: number;
+  /** Mean of actual − projected. */
+  bias: number;
+  rmse: number;
+  corr: number;
+  /** Share of outcomes inside the app's ±1 and ±2 SD bands (well calibrated: ~68% and ~95%). */
+  within1: number;
+  within2: number;
+}
+
+/** data/accuracy.json: aggregates only; no per-player projections are published. */
+export interface AccuracyFile {
+  schemaVersion: number;
+  generatedAt: string;
+  season: string;
+  weeks: number[];
+  minProjected: number;
+  rows: AccuracyRow[];
+}
+
 export interface ManifestEntry {
   updatedAt: string;
   source: string;

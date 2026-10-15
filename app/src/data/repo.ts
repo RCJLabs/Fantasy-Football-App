@@ -4,7 +4,7 @@ import { sleeperApi, SleeperError } from '../sleeper/api';
 import { indexProjections, parseLeague, parseMatchup, parsePlayersDump, parseRoster, parseUser, type ProjectionIndex } from '../sleeper/parse';
 import type { RawProjection, RawState, RawTransaction, RawUser } from '../sleeper/raw';
 import { cached } from './cache';
-import { DATA_SCHEMA_VERSION, type CompactPlayer, type Manifest, type PlayersFile, type ScheduleFile } from './contracts';
+import { DATA_SCHEMA_VERSION, type AccuracyFile, type CompactPlayer, type Manifest, type PlayersFile, type ScheduleFile } from './contracts';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -260,6 +260,14 @@ export async function loadTrending(): Promise<Map<string, number>> {
     return new Map(res.value.map((t) => [t.player_id, t.count]));
   } catch {
     return new Map();
+  }
+}
+
+export async function loadAccuracy(): Promise<AccuracyFile | null> {
+  try {
+    return (await cached('data:accuracy', 6 * HOUR, () => fetchDataFile<AccuracyFile>('accuracy.json'))).value;
+  } catch {
+    return null;
   }
 }
 
