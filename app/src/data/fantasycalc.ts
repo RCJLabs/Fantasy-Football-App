@@ -27,7 +27,16 @@ interface RawValue {
   value?: number;
   trend30Day?: number;
   positionRank?: number;
-  player?: { sleeperId?: string | null; maybeAge?: number | null } | null;
+  player?: { sleeperId?: string | null; name?: string | null; position?: string | null; maybeAge?: number | null } | null;
+}
+
+/**
+ * One league format's market: players by Sleeper id, and dynasty rookie picks keyed `season:round`
+ * (e.g. "2028:1") or, for next year's draft, also `season:round:tier` ("2027:1:Early").
+ */
+export interface Market {
+  players: Map<string, MarketValue>;
+  picks: Map<string, number>;
 }
 
 /** 'season' = this season's market (redraft values); 'long' = beyond it (dynasty values). */
@@ -61,7 +70,7 @@ export function parseMarketValues(rows: readonly RawValue[]): Map<string, Market
   const out = new Map<string, MarketValue>();
   for (const r of rows) {
     const id = r.player?.sleeperId;
-    if (!id || typeof r.value !== 'number') continue;
+    if (!id || typeof r.value !== 'number' || r.player?.position === 'PICK') continue;
     const v: MarketValue = { value: r.value };
     if (typeof r.trend30Day === 'number') v.trend = r.trend30Day;
     if (typeof r.positionRank === 'number') v.posRank = r.positionRank;
@@ -71,12 +80,25 @@ export function parseMarketValues(rows: readonly RawValue[]): Map<string, Market
   return out;
 }
 
+const PICK_NAME = /^(\d{4}) (\d+)(?:st|nd|rd|th)(?: \((Early|Mid|Late)\))?$/;
+
+/** Rookie-pick values from FantasyCalc's dynasty list, named like "2027 1st (Early)" or "2028 2nd" (verified 2026-10-15). */
+export function parsePickValues(rows: readonly RawValue[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    const m = r.player?.position === 'PICK' ? PICK_NAME.exec(r.player.name ?? '') : null;
+    if (!m || typeof r.value !== 'number') continue;
+    out.set(m[3] ? `${m[1]}:${Number(m[2])}:${m[3]}` : `${m[1]}:${Number(m[2])}`, r.value);
+  }
+  return out;
+}
+
 /** Market values for a league's format, cached for an hour. Null when FantasyCalc can't be reached. */
-export async function loadMarketValues(p: MarketParams, force = false): Promise<Map<string, MarketValue> | null> {
+export async function loadMarketValues(p: MarketParams, force = false): Promise<Market | null> {
   const url = `https://api.fantasycalc.com/values/current?isDynasty=${p.dynasty}&numQbs=${p.qbs}&numTeams=${p.teams}&ppr=${p.ppr}`;
   try {
     const res = await cached(`fc:${p.dynasty}:${p.qbs}:${p.teams}:${p.ppr}`, 60 * 60_000, async () => (await getJson<RawValue[]>(url)) ?? [], { force });
-    return parseMarketValues(res.value);
+    return { players: parseMarketValues(res.value), picks: parsePickValues(res.value) };
   } catch {
     return null;
   }

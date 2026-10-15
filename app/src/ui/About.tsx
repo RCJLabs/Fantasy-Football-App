@@ -45,7 +45,9 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           </li>
           <li>
             <strong>Keeper and dynasty leagues</strong> also get a long-term view. Trades show market value this season and beyond it (FantasyCalc
-            dynasty values). The Season tab ranks teams by the value of the players they carry forward and lists your likely keepers.
+            dynasty values). In dynasty leagues you can add draft picks: next year's are priced by the original team's projected finish (worst record
+            picks first), later years at the round's price. The Season tab ranks teams by the value of the players (and picks) they carry forward and
+            lists your likely keepers.
           </li>
           <li>
             <strong>FAAB bids</strong> follow what your league has actually paid for players at the same position this season, scaled by your remaining

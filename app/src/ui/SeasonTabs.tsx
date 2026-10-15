@@ -3,7 +3,8 @@ import { analyzeWaivers, type PlayerRow } from '../analysis/analyze';
 import { marketPrice } from '../analysis/faab';
 import { evaluateTrade, freeAgentPool, scheduleOutlook, streamers, waiverBoard, type ByeWeek, type LeagueOutlook, type TradeSideResult } from '../analysis/outlook';
 import { carriedForward, longTermRanking } from '../analysis/longterm';
-import { FANTASYCALC_URL, horizons, loadMarketValues, marketParams, marketTotals, type Horizon, type MarketValue } from '../data/fantasycalc';
+import { pickAssets, pickLabel, pickTotals, type PickAsset } from '../analysis/picks';
+import { FANTASYCALC_URL, horizons, loadMarketValues, marketParams, marketTotals, type Horizon, type Market } from '../data/fantasycalc';
 import { loadTrending } from '../data/repo';
 import { InjuryBadge, ErrorBox, Spinner } from './components';
 import { loadSeason, type LeagueBundle, type SeasonBundle } from './data';
@@ -277,20 +278,22 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
           </table>
         </div>
       ) : null}
-      {bundle.league.rules.type !== 'redraft' ? <LongTermCard bundle={bundle} outlook={o} /> : null}
+      {bundle.league.rules.type !== 'redraft' ? <LongTermCard bundle={bundle} season={s.data} /> : null}
     </div>
   );
 }
 
-/** Keeper and dynasty leagues: who's built for beyond this season, and which of your players carry forward. */
-function LongTermCard({ bundle, outlook }: { bundle: LeagueBundle; outlook: LeagueOutlook }) {
+/** Keeper and dynasty leagues: who's built for beyond this season, and which of your players (and picks) carry forward. */
+function LongTermCard({ bundle, season }: { bundle: LeagueBundle; season: SeasonBundle }) {
+  const outlook = season.outlook;
   const lt = useAsync(() => loadMarketValues(marketParams(bundle.league, 'long')), [bundle.league.id]);
   if (lt.data === undefined) return lt.error ? null : <Spinner label="Loading long-term values…" />;
   if (!lt.data) return <p class="muted small">Long-term values unavailable (FantasyCalc didn't respond).</p>;
-  const values = lt.data;
+  const values = lt.data.players;
   const keep = carriedForward(bundle.league);
   const rosters = [...outlook.teams.values()].map((t) => t.roster);
-  const ranking = longTermRanking(rosters, values, keep);
+  const picks = season.tradedPicks ? pickAssets(bundle.league, rosters, season.tradedPicks, lt.data.picks, outlook.odds) : null;
+  const ranking = longTermRanking(rosters, values, keep, picks ? pickTotals(picks) : undefined);
   // This season: average best-lineup points over the remaining regular season.
   const nowScore = (rosterId: number) => {
     const t = outlook.teams.get(rosterId);
@@ -302,6 +305,7 @@ function LongTermCard({ bundle, outlook }: { bundle: LeagueBundle; outlook: Leag
   const mine = ranking.find((t) => t.rosterId === myId);
   const name = (id: string) => bundle.ctx.players.get(id)?.name ?? outlook.model.player(id)?.name ?? id;
   const pos = (id: string) => bundle.ctx.players.get(id)?.pos ?? '';
+  const myPicks = (picks ?? []).filter((p) => p.ownerRosterId === myId && p.valued).sort((a, b) => b.value - a.value);
   const n = rosters.length;
   const outlookOf = (rid: number) => {
     const now = nowRank.get(rid)! <= n / 2;
@@ -312,16 +316,19 @@ function LongTermCard({ bundle, outlook }: { bundle: LeagueBundle; outlook: Leag
     <div class="card">
       <h2>Long-term outlook</h2>
       <p class="muted small">
-        {keep === undefined ? 'Whole rosters' : `Each team's best ${keep} keeper${keep > 1 ? 's' : ''}`} valued with FantasyCalc dynasty values, a proxy for worth
-        beyond this season{bundle.league.rules.type === 'keeper' ? ' (keeper costs aren’t in Sleeper’s data, so they aren’t counted)' : ''}. “Now” ranks
-        projected lineup strength for the rest of the regular season.
+        {keep === undefined ? `Whole rosters${picks ? ' and draft picks' : ''}` : `Each team's best ${keep} keeper${keep > 1 ? 's' : ''}`} valued with
+        FantasyCalc dynasty values, a proxy for worth beyond this season
+        {bundle.league.rules.type === 'keeper' ? ' (keeper costs aren’t in Sleeper’s data, so they aren’t counted)' : ''}. “Now” ranks projected lineup
+        strength for the rest of the regular season.
       </p>
+      {season.tradedPicks === null ? <p class="note">Draft picks didn't load from Sleeper, so they aren't counted.</p> : null}
       <div class="table-wrap">
         <table class="table">
           <thead>
             <tr>
               <th>Team</th>
               <th class="num">Value</th>
+              {picks ? <th class="num">Picks</th> : null}
               <th class="num">Later</th>
               <th class="num">Now</th>
               <th>Outlook</th>
@@ -332,6 +339,7 @@ function LongTermCard({ bundle, outlook }: { bundle: LeagueBundle; outlook: Leag
               <tr class={t.rosterId === myId ? 'mine' : ''}>
                 <td>{outlook.teams.get(t.rosterId)?.name ?? t.rosterId}</td>
                 <td class="num">{shortValue(t.total)}</td>
+                {picks ? <td class="num">{shortValue(t.picks)}</td> : null}
                 <td class="num">{t.rank}</td>
                 <td class="num">{nowRank.get(t.rosterId)}</td>
                 <td class="muted small">{outlookOf(t.rosterId)}</td>
@@ -353,8 +361,13 @@ function LongTermCard({ bundle, outlook }: { bundle: LeagueBundle; outlook: Leag
           </ol>
         </>
       ) : null}
+      {myPicks.length ? (
+        <p class="small">
+          <strong>Your picks:</strong> {myPicks.map((p) => `${pickLabel(p)}${p.originalRosterId !== myId ? ` (${outlook.teams.get(p.originalRosterId)?.name ?? 'other'})` : ''} ${shortValue(p.value)}`).join(' · ')}
+        </p>
+      ) : null}
       <p class="muted small">
-        Values from{' '}
+        {picks ? `${PICK_NOTE} ` : ''}Values from{' '}
         <a href={FANTASYCALC_URL} target="_blank" rel="noopener">
           FantasyCalc
         </a>
@@ -383,6 +396,8 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
   const [partnerId, setPartnerId] = useState(partners[0]?.rosterId ?? -1);
   const [give, setGive] = useState<string[]>([]);
   const [get, setGet] = useState<string[]>([]);
+  const [givePicks, setGivePicks] = useState<string[]>([]);
+  const [getPicks, setGetPicks] = useState<string[]>([]);
   const freeAgents = useMemo(() => freeAgentPool(o, bundle.ctx), [o, bundle.ctx]);
   const market = useAsync(async () => {
     const hs = horizons(bundle.league);
@@ -390,8 +405,18 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
     return hs.flatMap((h, i) => (loaded[i] ? [{ horizon: h, values: loaded[i]! }] : []));
   }, [bundle.league.id]);
   const markets = market.data ?? [];
-  const values = markets.find((m) => m.horizon === 'season')?.values ?? null;
-  const longValues = markets.find((m) => m.horizon === 'long')?.values ?? null;
+  const values = markets.find((m) => m.horizon === 'season')?.values.players ?? null;
+  const longMarket = markets.find((m) => m.horizon === 'long')?.values ?? null;
+  const longValues = longMarket?.players ?? null;
+  // Dynasty leagues: every team's future picks, valued on the long-term market once it loads.
+  const picks = useMemo(
+    () => (season.tradedPicks ? pickAssets(bundle.league, [...o.teams.values()].map((t) => t.roster), season.tradedPicks, longMarket?.picks ?? new Map(), o.odds) : []),
+    [bundle.league, o, season.tradedPicks, longMarket],
+  );
+  const picksOf = (rosterId: number) =>
+    picks.filter((p) => p.ownerRosterId === rosterId).sort((a, b) => a.season.localeCompare(b.season) || a.round - b.round || b.value - a.value);
+  const chosen = (keys: string[]) => picks.filter((p) => keys.includes(p.key));
+  const anyPicks = givePicks.length + getPicks.length > 0;
   const result = useMemo(
     () => (partnerId >= 0 && (give.length || get.length) ? evaluateTrade(o, bundle.ctx, myId, partnerId, give, get, freeAgents) : null),
     [o, bundle.ctx, myId, partnerId, give, get, freeAgents],
@@ -405,7 +430,7 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
     [...(o.teams.get(rosterId)?.roster.players ?? [])].filter((id) => !o.teams.get(rosterId)!.roster.taxi.includes(id)).sort((a, b) => perWeek(b) - perWeek(a));
 
   // A render helper, not a component: a component defined here would remount (and drop focus) on every render.
-  const picker = (title: string, rosterId: number, picked: string[], onPick: (id: string) => void) => (
+  const picker = (title: string, rosterId: number, picked: string[], onPick: (id: string) => void, pickedPicks: string[], onPickPick: (key: string) => void) => (
     <fieldset class="picker">
       <legend>{title}</legend>
       {roster(rosterId).map((id) => {
@@ -424,6 +449,20 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
           </label>
         );
       })}
+      {picksOf(rosterId).length ? <p class="muted small picks-head">Draft picks</p> : null}
+      {picksOf(rosterId).map((p) => (
+        <label class={pickedPicks.includes(p.key) ? 'picked' : ''}>
+          <input type="checkbox" checked={pickedPicks.includes(p.key)} onChange={() => onPickPick(p.key)} />
+          <span>
+            {pickLabel(p)}{' '}
+            <span class="muted small">
+              {p.originalRosterId === rosterId ? 'own' : (o.teams.get(p.originalRosterId)?.name ?? 'other team')}
+              {p.tier ? ` · proj. ${p.tier}` : ''}
+            </span>
+          </span>
+          <span class="muted small num">{p.valued ? <span class="mv">LT {shortValue(p.value)}</span> : '–'}</span>
+        </label>
+      ))}
     </fieldset>
   );
 
@@ -439,6 +478,7 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
             onChange={(e) => {
               setPartnerId(Number((e.target as HTMLSelectElement).value));
               setGet([]);
+              setGetPicks([]);
             }}
           >
             {partners.map((t) => (
@@ -448,24 +488,36 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
         </label>
         <p class="muted small">
           Expected points per week over {weekSpan(o.weeks)} on their own{values ? ', then FantasyCalc market value' : ''}
-          {longValues ? ' and long-term (LT, dynasty) value' : ''}. The verdict below accounts for each lineup.
+          {longValues ? ' and long-term (LT, dynasty) value' : ''}. The verdict below accounts for each lineup
+          {picks.length ? '; draft picks only carry long-term value' : ''}.
         </p>
+        {season.tradedPicks === null ? <p class="note">Draft picks didn't load from Sleeper.</p> : null}
         <div class="pickers">
-          {picker('You give', myId, give, (id) => toggle(give, setGive, id))}
-          {picker('You get', partnerId, get, (id) => toggle(get, setGet, id))}
+          {picker('You give', myId, give, (id) => toggle(give, setGive, id), givePicks, (k) => toggle(givePicks, setGivePicks, k))}
+          {picker('You get', partnerId, get, (id) => toggle(get, setGet, id), getPicks, (k) => toggle(getPicks, setGetPicks, k))}
         </div>
       </div>
-      {result ? (
+      {result || anyPicks ? (
         <div class="card" aria-live="polite">
-          <h2>{verdict(result.me.delta, result.them.delta)}</h2>
-          <TradeSide label="You" side={result.me} name={name} />
-          <TradeSide label={result.them.name} side={result.them} name={name} />
-          {markets.length ? <MarketLine markets={markets} give={give} get={get} /> : null}
-          <WeeklyBars weeks={o.weeks} deltas={result.me.weekly} />
-          <p class="muted small">
-            Rest-of-season points from each team's best lineup by week (playoff weeks weighted by that team's playoff odds), including the drops a full roster
-            forces and free agents for spots the trade opens.
-          </p>
+          {result ? (
+            <>
+              <h2>{verdict(result.me.delta, result.them.delta)}</h2>
+              <TradeSide label="You" side={result.me} name={name} />
+              <TradeSide label={result.them.name} side={result.them} name={name} />
+            </>
+          ) : (
+            <h2>Picks only: no change to this season's lineups</h2>
+          )}
+          {markets.length ? <MarketLine markets={markets} give={give} get={get} picks={{ give: chosen(givePicks), get: chosen(getPicks) }} /> : null}
+          {result ? (
+            <>
+              <WeeklyBars weeks={o.weeks} deltas={result.me.weekly} />
+              <p class="muted small">
+                Rest-of-season points from each team's best lineup by week (playoff weeks weighted by that team's playoff odds), including the drops a full
+                roster forces and free agents for spots the trade opens.
+              </p>
+            </>
+          ) : null}
         </div>
       ) : null}
       {result ? (
@@ -473,8 +525,8 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
           <h2>Your weeks after the trade</h2>
           <ByeGrid weeks={result.me.byes} name={name} incoming={new Set(get)} />
         </div>
-      ) : (
-        <p class="muted small">Pick players on either side to see how the trade changes both teams.</p>
+      ) : anyPicks ? null : (
+        <p class="muted small">Pick players{picks.length ? ' or draft picks' : ''} on either side to see how the trade changes both teams.</p>
       )}
       <MissingWeeks season={season} />
     </div>
@@ -531,10 +583,23 @@ function WeeklyBars({ weeks, deltas }: { weeks: readonly number[]; deltas: reado
 /** FantasyCalc values read like 4,512: show 4.5k. */
 const shortValue = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n)}`);
 
+const PICK_NOTE =
+  "Next year's picks are priced by the original team's projected finish (worst record picks first, as in many leagues; yours may differ), later years at FantasyCalc's price for the round.";
+
 const HORIZON_LABEL: Record<Horizon, string> = { season: 'This season', long: 'Long term (dynasty values)' };
 
-/** Market value of each side, per horizon, shown apart from what the trade does for your lineup. */
-function MarketLine({ markets, give, get }: { markets: ReadonlyArray<{ horizon: Horizon; values: ReadonlyMap<string, MarketValue> }>; give: string[]; get: string[] }) {
+/** Market value of each side, per horizon, shown apart from what the trade does for your lineup. Picks count long term only. */
+function MarketLine({
+  markets,
+  give,
+  get,
+  picks = { give: [], get: [] },
+}: {
+  markets: ReadonlyArray<{ horizon: Horizon; values: Market }>;
+  give: string[];
+  get: string[];
+  picks?: { give: PickAsset[]; get: PickAsset[] };
+}) {
   const credit = (
     <>
       Values from{' '}
@@ -544,15 +609,24 @@ function MarketLine({ markets, give, get }: { markets: ReadonlyArray<{ horizon: 
       .
     </>
   );
+  const pickSum = (ps: readonly PickAsset[]) => ps.reduce((a, p) => a + p.value, 0);
+  const anyPicks = picks.give.length + picks.get.length > 0;
   const lines = markets.map(({ horizon, values }) => {
-    const t = marketTotals(values, give, get);
-    if (!t.give && !t.get) return { horizon, text: 'no values for these players', unvalued: t.unvalued.length };
-    const diff = t.get - t.give;
-    const share = Math.abs(diff) / Math.max(t.give, t.get);
+    const t = marketTotals(values.players, give, get);
+    const long = horizon === 'long';
+    const giveTotal = t.give + (long ? pickSum(picks.give) : 0);
+    const getTotal = t.get + (long ? pickSum(picks.get) : 0);
+    if (!giveTotal && !getTotal) {
+      const text = !give.length && !get.length ? 'picks have no value' : 'no values for these players';
+      return { horizon, text, unvalued: t.unvalued.length };
+    }
+    const diff = getTotal - giveTotal;
+    const share = Math.abs(diff) / Math.max(giveTotal, getTotal);
     const lean = share < 0.05 ? 'about even' : `${Math.round(share * 100)}% in ${diff > 0 ? 'your' : 'their'} favor`;
-    return { horizon, text: `you give ${shortValue(t.give)}, you get ${shortValue(t.get)}, ${lean}`, unvalued: t.unvalued.length };
+    return { horizon, text: `you give ${shortValue(giveTotal)}, you get ${shortValue(getTotal)}, ${lean}`, unvalued: t.unvalued.length };
   });
   const unvalued = Math.max(...lines.map((l) => l.unvalued));
+  const unpricedPicks = [...picks.give, ...picks.get].filter((p) => !p.valued).length;
   return (
     <div class="small market">
       <p>
@@ -566,8 +640,9 @@ function MarketLine({ markets, give, get }: { markets: ReadonlyArray<{ horizon: 
         ))}
       </ul>
       <p class="muted">
-        {unvalued ? `${unvalued} player${unvalued > 1 ? 's have' : ' has'} no value (FantasyCalc doesn't value K, DEF or deep reserves). ` : ''}Simple sums:
-        FantasyCalc's own calculator adds a premium for the best player in uneven trades. {credit}
+        {unvalued ? `${unvalued} player${unvalued > 1 ? 's have' : ' has'} no value (FantasyCalc doesn't value K, DEF or deep reserves). ` : ''}
+        {unpricedPicks ? `${unpricedPicks} pick${unpricedPicks > 1 ? 's have' : ' has'} no FantasyCalc price (it prices rounds 1–4). ` : ''}
+        {anyPicks ? `${PICK_NOTE} ` : ''}Simple sums: FantasyCalc's own calculator adds a premium for the best player in uneven trades. {credit}
       </p>
     </div>
   );

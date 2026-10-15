@@ -1,19 +1,26 @@
 import { expect, test, type Page } from '@playwright/test';
 import * as fx from './fixtures';
 
+/** The keeper (1001) and dynasty (1003) leagues share teams, schedule and claims; only the dynasty one has traded picks. */
+const leagueBody = (id: string, rest: string): unknown =>
+  rest === 'rosters' ? fx.rosters
+  : rest === 'users' ? fx.users
+  : rest === 'matchups/6' ? fx.matchups
+  : rest.startsWith('matchups/') ? fx.futureMatchups(Number(rest.split('/').pop()))
+  : rest.startsWith('transactions/') ? fx.transactions.filter((t) => t.leg === Number(rest.split('/').pop()))
+  : rest === 'traded_picks' ? (id === '1003' ? fx.tradedPicks : [])
+  : undefined;
+
 async function mockBackends(page: Page) {
   await page.route('https://api.sleeper.app/v1/**', (route) => {
     const path = new URL(route.request().url()).pathname.replace('/v1/', '/');
+    const league = /^\/league\/(1001|1003)\/(.+)$/.exec(path);
     const body =
       path === '/state/nfl' ? fx.state
       : path === '/user/testuser' ? fx.user
       : path === '/user/nobody' ? null
-      : path === '/user/u1/leagues/nfl/2026' ? [fx.league, fx.otherLeague]
-      : path === '/league/1001/rosters' ? fx.rosters
-      : path === '/league/1001/users' ? fx.users
-      : path === '/league/1001/matchups/6' ? fx.matchups
-      : path.startsWith('/league/1001/matchups/') ? fx.futureMatchups(Number(path.split('/').pop()))
-      : path.startsWith('/league/1001/transactions/') ? fx.transactions.filter((t) => t.leg === Number(path.split('/').pop()))
+      : path === '/user/u1/leagues/nfl/2026' ? [fx.league, fx.otherLeague, fx.dynastyLeague]
+      : league ? leagueBody(league[1]!, league[2]!)
       : path.startsWith('/players/nfl/trending/add') ? fx.trending
       : undefined;
     return body === undefined ? route.fulfill({ status: 404, body: 'not mocked' }) : route.fulfill({ json: body });
@@ -22,7 +29,10 @@ async function mockBackends(page: Page) {
     const week = Number(new URL(route.request().url()).pathname.split('/').pop());
     return route.fulfill({ json: week === 6 ? fx.projections : fx.futureProjections(week) });
   });
-  await page.route('https://api.fantasycalc.com/**', (route) => route.fulfill({ json: fx.marketValues }));
+  await page.route('https://api.fantasycalc.com/**', (route) => {
+    const dynasty = new URL(route.request().url()).searchParams.get('isDynasty') === 'true';
+    return route.fulfill({ json: dynasty ? [...fx.marketValues, ...fx.pickValues] : fx.marketValues });
+  });
   await page.route('**/data/players.json', (route) => route.fulfill({ json: fx.playersFile }));
   await page.route('**/data/schedule.json', (route) => route.fulfill({ json: fx.schedule }));
   await page.route('**/data/manifest.json', (route) => route.fulfill({ json: fx.manifest }));
@@ -119,4 +129,38 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(page.getByRole('heading', { name: 'Your weeks after the trade' })).toBeVisible();
   await expect(page.locator('table.byes tbody tr')).toHaveCount(9); // weeks 7–15
   await page.screenshot({ path: testInfo.outputPath('trade.png'), fullPage: true });
+});
+
+test('dynasty league: draft picks in trades and the long-term outlook', async ({ page }, testInfo) => {
+  await page.goto('./');
+  await page.getByLabel('Sleeper username').fill('testuser');
+  await page.getByRole('button', { name: 'Find my leagues' }).click();
+  await page.locator('.league-card').filter({ hasText: 'Gridiron Dynasty' }).getByRole('link').first().click();
+
+  // Trade: I own Rival Raiders' 2027 1st, priced by their projected finish. A picks-only deal still gets a value.
+  await page.getByRole('tab', { name: 'Trade' }).click();
+  await page.getByLabel('Trade with').selectOption({ label: 'Rival Raiders' });
+  const give = page.locator('fieldset', { hasText: 'You give' });
+  const theirFirst = give.locator('label').filter({ hasText: '2027 1st' }).filter({ hasText: 'Rival Raiders' });
+  await expect(theirFirst).toContainText(/proj\. (Early|Mid|Late)/);
+  await expect(theirFirst).toContainText(/LT \d/);
+  await theirFirst.click();
+  const card = page.locator('.card[aria-live]');
+  await expect(card).toContainText("Picks only: no change to this season's lineups");
+  await expect(card.locator('.market')).toContainText('This season: picks have no value');
+  await expect(card.locator('.market')).toContainText(/Long term \(dynasty values\): you give \d/);
+  // They hold my 2028 2nd (FantasyCalc's flat price for the round).
+  const get = page.locator('fieldset', { hasText: 'You get' });
+  await expect(get.locator('label').filter({ hasText: '2028 2nd' }).filter({ hasText: 'Test Titans' })).toContainText('LT 1.3k');
+  // Adding a player brings back the lineup verdict.
+  await get.getByText('Opp Rusher').click();
+  await expect(card).toContainText(/for you/);
+  await page.screenshot({ path: testInfo.outputPath('dynasty-trade.png'), fullPage: true });
+
+  // Season: the long-term ranking counts each team's picks.
+  await page.getByRole('tab', { name: 'Season' }).click();
+  await expect(page.getByRole('heading', { name: 'Long-term outlook' })).toBeVisible();
+  await expect(page.locator('table.table thead').filter({ hasText: 'Picks' })).toBeVisible();
+  await expect(page.getByText('Your picks:')).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('dynasty-season.png'), fullPage: true });
 });

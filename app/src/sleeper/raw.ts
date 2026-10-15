@@ -62,6 +62,17 @@ export interface RawTransaction {
   metadata?: { notes?: string } | null;
 }
 
+/** Row of /league/{id}/traded_picks (verified on a real league 2026-10-15). Only picks that changed hands are listed. */
+export interface RawTradedPick {
+  season: string;
+  round: number;
+  /** The pick's original team: its finish sets the draft slot. */
+  roster_id: number;
+  /** Current owner (roster id). */
+  owner_id: number;
+  previous_owner_id?: number | null;
+}
+
 export interface RawMatchup {
   roster_id: number;
   matchup_id: number | null;

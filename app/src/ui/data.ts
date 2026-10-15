@@ -9,13 +9,14 @@ import {
   loadRosWeeks,
   loadSchedule,
   loadState,
+  loadTradedPicks,
   loadWaiverClaims,
   loadWeek,
   type DataNotes,
   type LeagueData,
 } from '../data/repo';
 import { findUserRoster } from '../sleeper/parse';
-import type { RawTransaction } from '../sleeper/raw';
+import type { RawTradedPick, RawTransaction } from '../sleeper/raw';
 import { objectivePref, type Phase } from './prefs';
 import type { Session } from './session';
 
@@ -115,6 +116,8 @@ export interface SeasonBundle {
   /** Future weeks whose projections couldn't be loaded (valued as zero). */
   missingWeeks: number[];
   claims: RawTransaction[];
+  /** Dynasty leagues that trade picks: the picks that changed hands (null when Sleeper didn't answer). */
+  tradedPicks?: RawTradedPick[] | null;
 }
 
 const range = (from: number, to: number) => Array.from({ length: Math.max(0, to - from + 1) }, (_, i) => from + i);
@@ -134,14 +137,16 @@ export function loadSeason(bundle: LeagueBundle): Promise<SeasonBundle> {
 async function buildSeason(bundle: LeagueBundle): Promise<SeasonBundle> {
   const { league, week, data, ctx } = bundle;
   const weeks = range(week + 1, seasonEnd(league));
-  const [ros, schedule, claims] = await Promise.all([
+  const withPicks = league.rules.type === 'dynasty' && league.rules.pickTrading;
+  const [ros, schedule, claims, tradedPicks] = await Promise.all([
     loadRosWeeks(league.season, weeks, projectionPositions(league)),
     loadSchedule(league.id, weeks.filter((w) => w <= regularSeasonEnd(league))),
     league.rules.waiverType === 2 ? loadWaiverClaims(league.id, week).catch(() => []) : Promise.resolve([]),
+    withPicks ? loadTradedPicks(league.id).catch(() => null) : Promise.resolve(undefined),
   ]);
   if (weeks.length && ros.missing.length === weeks.length) throw new Error('Could not load future-week projections from Sleeper.');
   const outlook = buildOutlook({ league, rosters: data.rosters, users: data.users, matchups: data.matchups, ctx, byWeek: ros.byWeek, schedule });
-  return { outlook, missingWeeks: ros.missing, claims };
+  return { outlook, missingWeeks: ros.missing, claims, ...(tradedPicks !== undefined ? { tradedPicks } : {}) };
 }
 
 export async function findLeague(session: Session, leagueId: string, force: boolean): Promise<{ overview: Overview; league: League }> {

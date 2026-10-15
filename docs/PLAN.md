@@ -62,8 +62,24 @@
     now sets the odds only from the player's final report of the current week. Before that, the overall Questionable rate applies and the
     player card says so.
 
+- **Draft picks in dynasty trades — built (2026-10-15):**
+  - **Ownership:** each team keeps its own picks for the next three drafts unless Sleeper's `traded_picks` lists them as moved. Traded rounds
+    beyond `draft_rounds` extend the round count; a real keeper league has a traded 4th with `draft_rounds` = 3.
+  - **Values:** FantasyCalc dynasty prices.
+    - Next year's picks blend the Early/Mid/Late prices by the original team's finish in the season simulation.
+    - Worst record picks first. That's an assumption `[design]`; leagues can set their own order.
+    - Later years use the round's flat price. Rounds past the 4th have no price.
+  - **UI:** the trade builder lists each side's picks in dynasty leagues with pick trading on.
+    - Picks count only in the long-term market line, and picks-only trades work.
+    - The Season tab's long-term ranking adds each team's pick value and lists your picks.
+  - **Smoke test** on the owner's keeper league, run through the dynasty path:
+    - The 5-0 team's 2027 1st prices at 2.5k (86% Late); the 1-4 team's at 4.5k (96% Early).
+    - The six traded picks resolve to the right owners; the 2026 ones are already drafted.
+    - The owner's dynasty league is still pre-draft, so nothing shows there yet.
+
   **Not yet:**
-  - draft picks in dynasty trades: FantasyCalc values picks by year, round and early/mid/late (e.g. "2027 1st (Early)"), and Sleeper's `traded_picks` gives ownership;
+  - keeper-league picks: Sleeper lets them be traded, but FantasyCalc's rookie-pick prices don't fit a keeper draft;
+  - draft order from playoff results or a league-set order (picks follow reverse regular-season standings);
   - keeper costs: draft-round prices aren't in Sleeper's API;
   - our own predictions in the ledger with commit-reveal hashes;
   - mid-week P(play) (practice before the final report, Sleeper's pre-report tags), from the archive's twice-daily snapshots once a few weeks are final;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseLeague } from '../sleeper/parse';
 import type { RawLeague } from '../sleeper/raw';
-import { marketParams, marketTotals, parseMarketValues } from './fantasycalc';
+import { marketParams, marketTotals, parseMarketValues, parsePickValues } from './fantasycalc';
 
 const base: RawLeague = {
   league_id: 'L',
@@ -34,5 +34,22 @@ describe('FantasyCalc market', () => {
     expect([...values.keys()]).toEqual(['a', 'b']);
     expect(values.get('a')).toEqual({ value: 6000, trend: 250, posRank: 3 });
     expect(marketTotals(values, ['a'], ['b', 'k1'])).toEqual({ give: 6000, get: 2500, unvalued: ['k1'] });
+  });
+
+  it('reads rookie picks by season, round and third of the round, apart from players', () => {
+    const rows = [
+      { value: 4593, player: { sleeperId: 'FP_2027_early_0', name: '2027 1st (Early)', position: 'PICK' } },
+      { value: 2768, player: { sleeperId: 'FP_2027_0', name: '2027 1st', position: 'PICK' } },
+      { value: 1285, player: { sleeperId: 'FP_2028_1', name: '2028 2nd', position: 'PICK' } },
+      { value: 742, player: { sleeperId: 'FP_2027_late_3', name: '2027 4th (Late)', position: 'PICK' } },
+      { value: 9000, player: { sleeperId: 'p1', name: 'Some Player', position: 'WR' } },
+    ];
+    expect([...parsePickValues(rows)]).toEqual([
+      ['2027:1:Early', 4593],
+      ['2027:1', 2768],
+      ['2028:2', 1285],
+      ['2027:4:Late', 742],
+    ]);
+    expect([...parseMarketValues(rows).keys()]).toEqual(['p1']);
   });
 });
