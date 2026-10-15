@@ -36,6 +36,7 @@ async function mockBackends(page: Page) {
   await page.route('**/data/players.json', (route) => route.fulfill({ json: fx.playersFile }));
   await page.route('**/data/schedule.json', (route) => route.fulfill({ json: fx.schedule }));
   await page.route('**/data/manifest.json', (route) => route.fulfill({ json: fx.manifest }));
+  await page.route('**/data/usage.json', (route) => route.fulfill({ json: fx.usage }));
 }
 
 test.beforeEach(async ({ page }) => {
@@ -73,6 +74,12 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await flanker.getByRole('button').click();
   await expect(flanker).toContainText('Chance to play: 71%');
   await expect(flanker).toContainText('limited practice on the final report');
+  // Recent usage from nflverse: weeks 2–5, a missed game shown as a dash.
+  const usage = flanker.locator('table.usage');
+  await expect(usage).toContainText('Recent usage');
+  await expect(usage.locator('tr', { hasText: 'Snaps' })).toContainText('80%85%–90%');
+  await expect(usage.locator('tr', { hasText: 'Targets' })).toContainText('9 (25%)');
+  await expect(usage).not.toContainText('Carries');
   await expect(page.locator('.pl').filter({ hasText: 'Taylor Wideout' }).first()).toContainText('Live');
   await page.screenshot({ path: testInfo.outputPath('lineup.png'), fullPage: true });
 
@@ -94,6 +101,7 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   const board = page.locator('table.table').first();
   const first = board.locator('tbody tr').first();
   await expect(first).toContainText('Free Agent Runner');
+  await expect(first).toContainText('snaps 45→61→84% · 62% of carries');
   await expect(board.locator('thead')).toContainText('ROS');
   await expect(board.locator('thead')).toContainText('Bid');
   await expect(first.locator('td').nth(3)).toHaveText(/^\$\d+$/);

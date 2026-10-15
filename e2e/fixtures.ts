@@ -1,6 +1,6 @@
 // Mock Sleeper responses and pipeline data files for the end-to-end test. Shapes follow the live
 // responses recorded in docs/spikes.md; names and numbers are invented.
-import type { CompactPlayer, PlayersFile, ScheduleFile } from '../app/src/data/contracts';
+import type { CompactPlayer, PlayersFile, ScheduleFile, UsageFile } from '../app/src/data/contracts';
 import type { RawLeague, RawMatchup, RawProjection, RawRoster, RawTradedPick, RawTransaction } from '../app/src/sleeper/raw';
 
 const H = 3_600_000;
@@ -107,6 +107,18 @@ export const playersFile: PlayersFile = {
 };
 
 export const manifest = { schemaVersion: 1, generatedAt: iso(-3), files: {} };
+
+/** Recent usage (nflverse-shaped, numbers invented): the free-agent RB's role is growing. */
+export const usage: UsageFile = {
+  schemaVersion: 1,
+  generatedAt: iso(-3),
+  season: '2026',
+  weeks: [2, 3, 4, 5],
+  players: {
+    fa1: { snap: [30, 45, 61, 84], tgt: [1, 2, 2, 3], car: [5, 8, 12, 18], tshare: [3, 6, 6, 9], cshare: [20, 30, 45, 62] },
+    w2: { snap: [80, 85, null, 90], tgt: [6, 7, null, 9], car: [0, 0, null, 0], tshare: [20, 22, null, 25], cshare: [0, 0, null, 0] },
+  },
+};
 
 const me: RawRoster = {
   roster_id: 1,

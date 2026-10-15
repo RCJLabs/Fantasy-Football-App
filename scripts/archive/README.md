@@ -1,6 +1,12 @@
 # Input archive
 
-`.github/workflows/archive.yml` runs `snapshot.sh` every 4 hours, before Thursday and Monday night games, and twice on Sunday mornings. Each run saves the inputs we can't recreate later:
+`.github/workflows/archive.yml` runs `snapshot.sh` on this schedule:
+- every 4 hours;
+- before Thursday, Sunday and Monday night games;
+- twice on Sunday mornings;
+- once before Sunday's 4 pm games, after their inactives are announced.
+
+Each run saves the inputs we can't recreate later:
 
 - **Sleeper projections:** the current and next week on every run. All remaining weeks are also saved on the 12:xx UTC run.
 - **Sleeper trending adds and drops.**

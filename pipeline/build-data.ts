@@ -2,6 +2,7 @@
 //   data/players.json   Sleeper player DB (trimmed) + official practice status (nflverse injuries)
 //   data/schedule.json  kickoff times (UTC), lines and implied team totals (nflverse nfldata)
 //   data/accuracy.json  projection accuracy by position over completed weeks (aggregates only)
+//   data/usage.json     recent snap share, targets and carries (nflverse), shown as context only
 //   data/manifest.json  timestamps, sources and licences
 // Usage: tsx pipeline/build-data.ts [--out dist/data] [--cache .cache]
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -9,6 +10,7 @@ import { join } from 'node:path';
 import { DATA_SCHEMA_VERSION, type AccuracyFile, type Manifest, type PlayersFile, type ScheduleFile } from '../app/src/data/contracts';
 import type { RawPlayer, RawState } from '../app/src/sleeper/raw';
 import { compactPlayers, csvRecords, gamesFromCsv, latestInjuryReport, projectionAccuracy, sleeperToGsis, type PointsRow } from './lib';
+import { buildUsage, invert } from './usage';
 
 const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i += 2) args.set(process.argv[i]!.replace(/^--/, ''), process.argv[i + 1] ?? '');
@@ -76,15 +78,18 @@ async function main() {
       return '';
     });
   const nflverse = 'https://github.com/nflverse/nflverse-data/releases/download';
-  const [dump, injuriesCsv, rostersCsv, gamesCsv] = await Promise.all([
+  const [dump, injuriesCsv, rostersCsv, gamesCsv, snapsCsv, statsCsv] = await Promise.all([
     sleeperPlayers(),
     optional(`${nflverse}/injuries/injuries_${season}.csv`),
     optional(`${nflverse}/weekly_rosters/roster_weekly_${season}.csv`),
     fetchText('https://raw.githubusercontent.com/nflverse/nfldata/master/data/games.csv'),
+    optional(`${nflverse}/snap_counts/snap_counts_${season}.csv`),
+    optional(`${nflverse}/stats_player/stats_player_week_${season}.csv`),
   ]);
 
   const report = injuriesCsv ? latestInjuryReport(csvRecords(injuriesCsv), week) : undefined;
-  const gsisBySleeper = sleeperToGsis(dump, rostersCsv ? csvRecords(rostersCsv) : []);
+  const rosterRecords = rostersCsv ? csvRecords(rostersCsv) : [];
+  const gsisBySleeper = sleeperToGsis(dump, rosterRecords);
   const playersFile: PlayersFile = {
     schemaVersion: DATA_SCHEMA_VERSION,
     generatedAt: now,
@@ -121,6 +126,26 @@ async function main() {
   if (playersFile.players.length < 1500) throw new Error(`players.json looks wrong: ${playersFile.players.length} players`);
   if (scheduleFile.games.length < 250) throw new Error(`schedule.json looks wrong: ${scheduleFile.games.length} games`);
 
+  const usage =
+    snapsCsv || statsCsv
+      ? buildUsage({
+          season,
+          now,
+          snaps: snapsCsv ? csvRecords(snapsCsv) : [],
+          stats: statsCsv ? csvRecords(statsCsv) : [],
+          rosters: rosterRecords,
+          sleeperByGsis: invert(gsisBySleeper),
+        })
+      : null;
+  if (usage) {
+    manifest.files['usage.json'] = {
+      updatedAt: now,
+      source: 'nflverse snap counts (compiled by Pro Football Reference) and weekly player stats, joined via nflverse weekly rosters',
+      license: 'nflverse data CC-BY 4.0; snap shares, targets and carries for recent weeks only',
+      credits: 'Usage via nflverse',
+    };
+  }
+
   const accuracy = await accuracyLedger(season, week, now);
   if (accuracy) {
     manifest.files['accuracy.json'] = {
@@ -134,12 +159,14 @@ async function main() {
   await writeFile(join(OUT, 'players.json'), JSON.stringify(playersFile));
   await writeFile(join(OUT, 'schedule.json'), JSON.stringify(scheduleFile));
   if (accuracy) await writeFile(join(OUT, 'accuracy.json'), JSON.stringify(accuracy));
+  if (usage) await writeFile(join(OUT, 'usage.json'), JSON.stringify(usage));
   await writeFile(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2));
   const withPractice = playersFile.players.filter((p) => p.prac).length;
   const all = accuracy?.rows.find((r) => r.pos === 'ALL');
   console.log(
     `season ${season} week ${week}: ${playersFile.players.length} players (${withPractice} with practice status, report week ${report?.week ?? '-'}), ${scheduleFile.games.length} games` +
-      `${all ? `, accuracy weeks ${accuracy!.weeks.join(',')} n=${all.n} MAE ${all.mae} within±1sd ${Math.round(all.within1 * 100)}%` : ''} → ${OUT}`,
+      `${all ? `, accuracy weeks ${accuracy!.weeks.join(',')} n=${all.n} MAE ${all.mae} within±1sd ${Math.round(all.within1 * 100)}%` : ''}` +
+      `${usage ? `, usage weeks ${usage.weeks.join(',')} for ${Object.keys(usage.players).length} players` : ''} → ${OUT}`,
   );
 }
 

@@ -62,6 +62,28 @@ export interface AccuracyFile {
   rows: AccuracyRow[];
 }
 
+/** One player's recent usage, each array aligned with `UsageFile.weeks`; null = didn't play (or no data yet). */
+export interface PlayerUsage {
+  /** Offensive snap share, whole percent. */
+  snap: Array<number | null>;
+  tgt: Array<number | null>;
+  car: Array<number | null>;
+  /** Share of the team's targets and carries, whole percent. */
+  tshare: Array<number | null>;
+  cshare: Array<number | null>;
+}
+
+/** data/usage.json: recent usage of QBs, RBs, WRs and TEs from nflverse (display only). */
+export interface UsageFile {
+  schemaVersion: number;
+  generatedAt: string;
+  season: string;
+  /** The most recent weeks with data, ascending. */
+  weeks: number[];
+  /** By Sleeper player id. */
+  players: Record<string, PlayerUsage>;
+}
+
 export interface ManifestEntry {
   updatedAt: string;
   source: string;
