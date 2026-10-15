@@ -19,7 +19,8 @@ export const league: RawLeague = {
   roster_positions: ['QB', 'RB', 'RB', 'WR', 'WR', 'TE', 'FLEX', 'K', 'DEF', 'BN', 'BN', 'BN', 'BN'],
   scoring_settings: { pass_yd: 0.04, pass_td: 4, pass_int: -1, rush_yd: 0.1, rush_td: 6, rec: 0.5, rec_yd: 0.1, rec_td: 6, fum_lost: -2, bonus_rec_te: 0.5, fgm: 3, xpm: 1, sack: 1, int: 2, fum_rec: 2, pts_allow_0: 10, pts_allow_1_6: 7, pts_allow_7_13: 4, pts_allow_14_20: 1, pts_allow_28_34: -1, pts_allow_35p: -4 },
   settings: {
-    type: 0,
+    type: 1, // keeper: exercises the long-term views
+    max_keepers: 2,
     num_teams: 4,
     league_average_match: 1,
     playoff_week_start: 15,

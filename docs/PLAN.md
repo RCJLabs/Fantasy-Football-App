@@ -45,8 +45,14 @@
   - Week by week, lineup points before and after the trade, empty starting slots, and which regular starters are on bye. Byes come from teams missing in each week's projections.
   - FantasyCalc market value for each side, shown apart from the lineup verdict. It uses the league's format (redraft or dynasty, 1QB or superflex, team count, PPR) and is fetched and cached by the browser, with attribution.
 
+- **Keeper/dynasty long-term view — built (2026-10-15):**
+  - In keeper and dynasty leagues the Trade tab shows this-season (redraft) and long-term (FantasyCalc dynasty) market values side by side.
+  - The Season tab ranks teams by the long-term value of what they carry forward (their best `max_keepers` in keeper leagues, whole rosters in dynasty) next to their strength this season, and lists your likely keepers with ages.
+  - On the owner's keeper league the ranking matches intuition; the owner's team is 5th of 10.
+
   **Not yet:**
-  - dynasty "long-term market" view;
+  - draft picks in dynasty trades: FantasyCalc values picks by year, round and early/mid/late (e.g. "2027 1st (Early)"), and Sleeper's `traded_picks` gives ownership;
+  - keeper costs: draft-round prices aren't in Sleeper's API;
   - our own predictions in the ledger with commit-reveal hashes;
   - P(play) calibration from the archive, from Week 6 results on.
 

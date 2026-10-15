@@ -614,3 +614,22 @@ h3 {
 .table.byes tr.better td {
   background: color-mix(in srgb, var(--good) 13%, transparent);
 }
+
+/* Market values and long-term outlook */
+.market p,
+.market ul {
+  margin: 0.25rem 0;
+}
+.market ul {
+  padding-left: 1.1rem;
+}
+.core {
+  padding-left: 1.3rem;
+  margin: 0.4rem 0;
+}
+.core li {
+  padding: 0.2rem 0;
+}
+.core li .num {
+  float: right;
+}

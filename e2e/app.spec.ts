@@ -98,6 +98,10 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(standings.locator('thead')).toContainText('Playoffs');
   await expect(standings.locator('tr.mine')).toContainText('Test Titans');
   await expect(page.getByRole('heading', { name: 'Your schedule' })).toBeVisible();
+  // Keeper league: long-term outlook from (mocked) FantasyCalc dynasty values, with my two likely keepers.
+  await expect(page.getByRole('heading', { name: 'Long-term outlook' })).toBeVisible();
+  await expect(page.locator('ol.core li')).toHaveCount(2);
+  await expect(page.locator('ol.core li').first()).toContainText('Casey Quarterback');
   await page.screenshot({ path: testInfo.outputPath('season.png'), fullPage: true });
 
   // Trade: give a WR for their RB and see both sides.
@@ -109,7 +113,8 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(page.locator('.trade-side').nth(1)).toContainText('Rival Raiders');
   await expect(page.locator('.card[aria-live]')).toContainText(/for you/);
   // Market value (FantasyCalc, mocked) shown apart from the lineup verdict, and the week-by-week bye grid.
-  await expect(page.locator('.card[aria-live]')).toContainText('you give 2.1k, you get 3.4k');
+  await expect(page.locator('.card[aria-live] .market')).toContainText('This season: you give 2.1k, you get 3.4k');
+  await expect(page.locator('.card[aria-live] .market')).toContainText('Long term (dynasty values): you give 2.1k, you get 3.4k');
   await expect(page.getByRole('link', { name: 'FantasyCalc' }).first()).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Your weeks after the trade' })).toBeVisible();
   await expect(page.locator('table.byes tbody tr')).toHaveCount(9); // weeks 7–15
