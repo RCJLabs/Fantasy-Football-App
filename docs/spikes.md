@@ -72,5 +72,5 @@ Weeks 7–18 each return ~7,660 rows with stats, so rest-of-season values can us
 
 ## Still open
 
-- **(c) Do failed waiver claims expose `waiver_bid`?** **(h) Do future matchups return pairings?** **(i) What are the league settings?** These need a league. The `spike` workflow takes an optional Sleeper username (Actions → spike → Run workflow) and prints only aggregates.
+- **(c) Do failed waiver claims expose `waiver_bid`?** **(h) Do future matchups return pairings?** **(i) What are the league settings?** These need a league. `league-pull.yml` fetches one user's leagues, encrypts the bundle to the archive key and uploads it to the `league-pull` prerelease; the checks run locally on the decrypted copy.
 - **(j) When does Sleeper's `injury_status` flip for game-day inactives?** Check on Sunday 10-18 using the archive snapshots.
