@@ -36,6 +36,8 @@ export interface PlayerRow {
   injury: string | null;
   injuryBody?: string;
   practice?: PracticeStatus;
+  /** `practice` is from the week's final report, so it sets the odds. */
+  practiceFinal?: boolean;
   /** P(active). */
   p: number;
   /** League points if active. */
@@ -146,6 +148,8 @@ export function playerRow(id: string, league: League, ctx: WeekContext, actualPo
   // The pipeline's player file has fresher injury data than projection rows; prefer it.
   const injury = base?.injury ?? fromProj?.injury ?? null;
   const practice = base?.practice;
+  // The practice odds are calibrated on final reports; before that the overall Questionable rate applies.
+  const finalPractice = base?.practiceFinal ? practice : undefined;
   const game = team ? ctx.gamesByTeam.get(team) : undefined;
   const kickoff = game ? Date.parse(game.kickoff) : null;
   const locked = kickoff !== null && kickoff <= ctx.now;
@@ -154,7 +158,7 @@ export function playerRow(id: string, league: League, ctx: WeekContext, actualPo
   const hasProjection = Object.keys(stats).length > 0;
   const expected = hasProjection ? expectedStats(stats, pos) : {};
   const projected = hasProjection ? scoreStats(expected, league.scoring) : 0;
-  const p = game ? playProbability(injury, practice) : 0;
+  const p = game ? playProbability(injury, finalPractice) : 0;
   const mu = Math.max(0, conditionalMean(projected, injury));
 
   const row: PlayerRow = {
@@ -175,6 +179,7 @@ export function playerRow(id: string, league: League, ctx: WeekContext, actualPo
   };
   if (base?.injuryBody) row.injuryBody = base.injuryBody;
   if (practice) row.practice = practice;
+  if (finalPractice) row.practiceFinal = true;
   if (game && team) {
     row.home = game.home === team;
     row.opponent = row.home ? game.away : game.home;
@@ -451,7 +456,7 @@ function lineupProblems(a: LineupAnalysis, reshuffled: boolean, league: League, 
     else if (row.locked) return;
     else if (row.kickoff === null) out.push({ level: 'error', text: `${row.name} (${slot}) has no game this week` });
     else if (row.p === 0) out.push({ level: 'error', text: `${row.name} (${slot}) is ${row.injury ?? 'not expected to play'}` });
-    else if (row.p < 0.95) out.push({ level: 'warn', text: `${row.name} (${slot}) is ${row.injury}${row.practice ? `, ${row.practice} practice` : ''} — ${Math.round(row.p * 100)}% to play` });
+    else if (row.p < 0.95) out.push({ level: 'warn', text: `${row.name} (${slot}) is ${row.injury}${row.practice ? `, ${row.practice} practice${row.practiceFinal ? '' : ' so far'}` : ''} — ${Math.round(row.p * 100)}% to play` });
   });
   const freeIr = league.rules.reserveSlots - roster.reserve.length;
   if (freeIr > 0) {

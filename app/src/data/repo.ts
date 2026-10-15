@@ -65,16 +65,27 @@ export async function loadLeagueData(leagueId: string, week: number, force = fal
   };
 }
 
-function playersFromFile(file: PlayersFile): Map<string, Player> {
+/** Game statuses appear only on a team's final injury report of the week. */
+const GAME_STATUSES = new Set(['Questionable', 'Doubtful', 'Out']);
+
+/**
+ * Players from the pipeline file. Practice statuses count only when the report is for `week` (early
+ * in the week the file still holds last week's) and are final once the player has a game status.
+ */
+export function playersFromFile(file: PlayersFile, week: number): Map<string, Player> {
+  const current = file.injuryReportWeek === week;
   const out = new Map<string, Player>();
-  for (const c of file.players) out.set(c.id, fromCompact(c));
+  for (const c of file.players) out.set(c.id, fromCompact(c, current));
   return out;
 }
 
-function fromCompact(c: CompactPlayer): Player {
+function fromCompact(c: CompactPlayer, currentReport: boolean): Player {
   const p: Player = { id: c.id, name: c.n, pos: c.pos, fpos: c.fp ?? [c.pos], team: c.t ?? null, injury: c.inj ?? null };
   if (c.body) p.injuryBody = c.body;
-  if (c.prac) p.practice = c.prac;
+  if (c.prac && currentReport) {
+    p.practice = c.prac;
+    if (c.rpt && GAME_STATUSES.has(c.rpt)) p.practiceFinal = true;
+  }
   if (c.dp) p.depthPos = c.dp;
   if (c.do !== undefined) p.depthOrder = c.do;
   if (c.rk !== undefined) p.rank = c.rk;
@@ -94,7 +105,7 @@ export async function loadWeek(season: string, week: number, force = false): Pro
   let players = new Map<string, Player>();
   try {
     const file = await cached('data:players', 3 * HOUR, () => fetchDataFile<PlayersFile>('players.json'), { force });
-    players = playersFromFile(file.value);
+    players = playersFromFile(file.value, week);
     asOf = Math.min(asOf, Date.parse(file.value.generatedAt) || asOf);
   } catch {
     try {
@@ -113,7 +124,10 @@ export async function loadWeek(season: string, week: number, force = false): Pro
       const merged: Player = { ...cur, injury: pp.injury, team: pp.team ?? cur.team };
       if (pp.injuryBody) merged.injuryBody = pp.injuryBody;
       else if (!pp.injury) delete merged.injuryBody;
-      if (!pp.injury) delete merged.practice;
+      if (!pp.injury) {
+        delete merged.practice;
+        delete merged.practiceFinal;
+      }
       players.set(id, merged);
     }
   }

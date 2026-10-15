@@ -94,7 +94,7 @@ export const playersFile: PlayersFile = {
     pos,
     t: team,
     ...(injury ? { inj: injury } : {}),
-    ...(id === 'w2' ? { prac: 'Limited' as const, body: 'Hamstring' } : {}),
+    ...(id === 'w2' ? { prac: 'Limited' as const, rpt: 'Questionable', body: 'Hamstring' } : {}),
   })),
 };
 

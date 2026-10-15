@@ -88,11 +88,13 @@ describe('scoring', () => {
 });
 
 describe('availability', () => {
-  it('maps designations and practice status to P(active)', () => {
+  it('maps designations and final practice status to P(active) (2023–25 calibration)', () => {
     expect(playProbability(null)).toBeCloseTo(0.99);
-    expect(playProbability('Questionable')).toBeCloseTo(0.7);
-    expect(playProbability('Questionable', 'Full')).toBeGreaterThan(playProbability('Questionable', 'DNP'));
-    expect(playProbability('Doubtful')).toBeLessThan(0.1);
+    expect(playProbability('Questionable')).toBeCloseTo(0.72);
+    expect(playProbability('Questionable', 'Full')).toBeCloseTo(0.92);
+    expect(playProbability('Questionable', 'Limited')).toBeCloseTo(0.71);
+    expect(playProbability('Questionable', 'DNP')).toBeCloseTo(0.56);
+    expect(playProbability('Doubtful')).toBeCloseTo(0.02);
     expect(playProbability('Out')).toBe(0);
     expect(playProbability('IR')).toBe(0);
   });

@@ -101,8 +101,11 @@ export function Explain({ row }: { row: PlayerRow }) {
       <p>
         Chance to play: <strong>{pct(row.p)}</strong>
         {row.injury ? ` — ${row.injury}${row.injuryBody ? ` (${row.injuryBody})` : ''}` : ' — no injury designation'}
-        {row.practice ? `, ${row.practice === 'DNP' ? 'did not practice' : `${row.practice.toLowerCase()} practice`} on the final report` : ''}.
+        {row.practice ? `, ${row.practice === 'DNP' ? 'did not practice' : `${row.practice.toLowerCase()} practice`} on the ${row.practiceFinal ? 'final' : 'latest'} report` : ''}.
       </p>
+      {row.injury === 'Questionable' && row.practice && !row.practiceFinal ? (
+        <p class="muted">The final injury report isn't out yet, so this is the rate for all Questionable players.</p>
+      ) : null}
       {row.teamImplied !== undefined ? <p>Vegas implied team total: {row.teamImplied.toFixed(1)}.</p> : null}
       <p class="muted">
         Expected {pts(row.ev)} = {pts(row.mu)} × {pct(row.p)}. Weekly spread ±{pts(row.sd)}.

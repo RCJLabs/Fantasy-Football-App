@@ -21,8 +21,9 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             first downs, bonuses, IDP). Yardage bonuses and defense points-allowed tiers are priced from a spread around the projection.
           </li>
           <li>
-            <strong>Chance to play</strong> comes from the injury designation and the final practice report: Questionable players have been active about 70%
-            of the time in 2026, Doubtful almost never.
+            <strong>Chance to play</strong> comes from the injury designation and the final practice report. Over 2023–2025, fantasy-relevant players
+            listed Questionable were active 92% of the time after a full final practice, 71% after a limited one and 56% after missing it (72% overall,
+            used until the final report is out). Doubtful players played 1 time in 69.
           </li>
           <li>
             <strong>Lineup advice</strong> maximizes expected points, including the option to swap out a Questionable starter for a backup who kicks off

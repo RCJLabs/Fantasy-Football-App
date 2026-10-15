@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Game, League, Roster } from '../domain/types';
+import { playProbability } from '../engine/availability';
 import { indexProjections, parseLeague, parseMatchup, parseRoster } from '../sleeper/parse';
 import type { RawLeague, RawMatchup, RawProjection } from '../sleeper/raw';
 import { analyzeLineup, analyzeWaivers, gamesByTeam, lineupChanges, playerRow, type PlayerRow, type WeekContext } from './analyze';
@@ -101,6 +102,19 @@ describe('playerRow', () => {
     expect(r.locked).toBe(true);
     expect(r.actual).toBe(14.2);
   });
+  it('uses practice odds only once the final report is out', () => {
+    const ctx = context();
+    const wr3 = ctx.players.get('wr3')!;
+    ctx.players.set('wr3', { ...wr3, practice: 'Full' });
+    const midweek = playerRow('wr3', league, ctx);
+    expect(midweek.p).toBeCloseTo(playProbability('Questionable'));
+    expect(midweek.practice).toBe('Full');
+    expect(midweek.practiceFinal).toBeUndefined();
+    ctx.players.set('wr3', { ...wr3, practice: 'Full', practiceFinal: true });
+    const final = playerRow('wr3', league, ctx);
+    expect(final.p).toBeCloseTo(playProbability('Questionable', 'Full'));
+    expect(final.practiceFinal).toBe(true);
+  });
 });
 
 describe('analyzeLineup', () => {
@@ -117,7 +131,7 @@ describe('analyzeLineup', () => {
   it('flags the Out and Questionable starters', () => {
     const texts = a.problems.map((p) => p.text).join('\n');
     expect(texts).toMatch(/rb1 RB \(RB\) is Out/);
-    expect(texts).toMatch(/wr3 WR \(FLEX\) is Questionable — 70% to play/);
+    expect(texts).toMatch(/wr3 WR \(FLEX\) is Questionable — 72% to play/);
     expect(texts).toMatch(/Better lineup available/);
   });
 
