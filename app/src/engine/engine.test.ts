@@ -200,6 +200,14 @@ describe('lineup', () => {
     expect(res.expected).toBe(7);
   });
 
+  it('never recommends a player in a slot he cannot fill, even if the current lineup does', () => {
+    const players = [pl('wr', ['WR'], 25, 1, at(5)), pl('k', ['K'], 8, 1, at(5)), pl('qb', ['QB'], 20, 1, at(5))];
+    // Current lineup puts the WR in the K slot and the QB in the WR slot.
+    const res = optimizeLineup({ slots: ['K', 'WR'], players, current: [0, 2], now });
+    expect(res.lineup).toEqual([1, 0]);
+    res.lineup.forEach((i, s) => expect(canFill(['K', 'WR'][s]!, players[i]!.fpos)).toBe(true));
+  });
+
   it('skips players on bye and fills empty slots', () => {
     const players = [pl('bye', ['TE'], 9, 1, null), pl('te2', ['TE'], 5, 1, at(5))];
     const res = optimizeLineup({ slots: ['TE'], players, current: [0], now });

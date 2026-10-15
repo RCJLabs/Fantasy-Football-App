@@ -56,7 +56,12 @@ export interface Problem {
   text: string;
 }
 
+/**
+ * swap: start `in` over `out` in `slot`; start: `in` fills `slot` (nobody benched there);
+ * bench: `out` leaves the lineup; move: `in` changes slot (already starting).
+ */
 export interface LineupChange {
+  kind: 'swap' | 'start' | 'bench' | 'move';
   slot: string;
   out: PlayerRow | null;
   in: PlayerRow | null;
@@ -193,19 +198,10 @@ export function analyzeLineup(
   const pick = (lineup: readonly number[]) => lineup.map((i) => (i >= 0 ? rows[i]! : null));
   const currentRows = pick(current);
   const recommendedRows = pick(result.lineup);
-  const changes: LineupChange[] = [];
-  const currentSet = new Set(current.filter((i) => i >= 0));
+  const changes = lineupChanges(slots, current, result.lineup, rows);
   const recommendedSet = new Set(result.lineup.filter((i) => i >= 0));
-  slots.forEach((slot, s) => {
-    const before = current[s]!;
-    const after = result.lineup[s]!;
-    if (before === after) return;
-    const out = before >= 0 && !recommendedSet.has(before) ? rows[before]! : null;
-    const into = after >= 0 && !currentSet.has(after) ? rows[after]! : null;
-    if (out || into) changes.push({ slot, out, in: into });
-  });
   // Moves between slots (same players, different positions) without anyone entering or leaving.
-  const reshuffled = changes.length === 0 && current.some((c, s) => c !== result.lineup[s]);
+  const reshuffled = changes.length > 0 && changes.every((c) => c.kind === 'move');
 
   const bench = rows.filter((_, i) => !recommendedSet.has(i)).sort((a, b) => b.ev - a.ev);
   const reserve = [...myRoster.reserve, ...myRoster.taxi].map((id) => playerRow(id, league, ctx, points[id]));
@@ -253,6 +249,31 @@ export function analyzeLineup(
   }
   analysis.problems = lineupProblems(analysis, reshuffled, league, myRoster);
   return analysis;
+}
+
+/** Describe how to get from the current lineup to the recommended one, slot by slot. */
+export function lineupChanges(slots: readonly string[], current: readonly number[], next: readonly number[], rows: readonly PlayerRow[]): LineupChange[] {
+  const curSet = new Set(current.filter((i) => i >= 0));
+  const nextSet = new Set(next.filter((i) => i >= 0));
+  const benched = new Set([...curSet].filter((i) => !nextSet.has(i)));
+  const changes: LineupChange[] = [];
+  slots.forEach((slot, s) => {
+    const after = next[s]!;
+    const before = current[s] ?? -1;
+    if (after === before || after < 0) return;
+    if (!curSet.has(after)) {
+      if (before >= 0 && benched.has(before)) {
+        changes.push({ kind: 'swap', slot, in: rows[after]!, out: rows[before]! });
+        benched.delete(before);
+      } else changes.push({ kind: 'start', slot, in: rows[after]!, out: null });
+    } else changes.push({ kind: 'move', slot, in: rows[after]!, out: null });
+  });
+  for (const i of benched) {
+    const s = current.indexOf(i);
+    changes.push({ kind: 'bench', slot: slots[s] ?? 'BN', in: null, out: rows[i]! });
+  }
+  const order = { swap: 0, start: 1, bench: 2, move: 3 };
+  return changes.sort((a, b) => order[a.kind] - order[b.kind]);
 }
 
 function lineupProblems(a: LineupAnalysis, reshuffled: boolean, league: League, roster: Roster): Problem[] {

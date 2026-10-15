@@ -231,14 +231,24 @@ export function optimizeLineup(problem: LineupProblem): LineupResult {
     return { lineup: best, value: bestVal };
   };
 
-  const fromStatic = climb(staticOptimalLineup(problem));
-  const fromCurrent = climb(current);
+  // Search only from legal lineups: drop unlocked players sitting in slots they can't fill
+  // (e.g. after a position change) and duplicates; the current lineup's own value is still reported as-is.
+  const seen = new Set<number>();
+  const legalCurrent = current.map((idx, s) => {
+    if (idx < 0) return -1;
+    const pl = players[idx]!;
+    if (seen.has(idx) || (!pl.locked && !canFill(slots[s]!, pl.fpos))) return -1;
+    seen.add(idx);
+    return idx;
+  });
+  const fromStatic = climb(staticOptimalLineup({ ...problem, current: legalCurrent }));
+  const fromCurrent = climb(legalCurrent);
   const winner = fromCurrent.value > fromStatic.value + 1e-9 ? fromCurrent : fromStatic;
   return {
     lineup: winner.lineup,
     expected: winner.value,
     staticExpected: staticLineupValue(problem, winner.lineup),
-    currentExpected: twoStageValue(problem, current),
-    currentStatic: staticLineupValue(problem, current),
+    currentExpected: twoStageValue(problem, legalCurrent),
+    currentStatic: staticLineupValue(problem, legalCurrent),
   };
 }

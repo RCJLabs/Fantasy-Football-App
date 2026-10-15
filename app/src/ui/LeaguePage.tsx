@@ -1,5 +1,5 @@
-import type { LineupAnalysis } from '../analysis/analyze';
-import { ErrorBox, PlayerLine, Problems, Spinner } from './components';
+import type { LineupAnalysis, LineupChange } from '../analysis/analyze';
+import { ErrorBox, PlayerLine, Problems, slotLabel, Spinner } from './components';
 import { findLeague, loadLeagueBundle, loadWaivers, type LeagueBundle } from './data';
 import { ago, kickoffLabel, pct, pts, signed } from './format';
 import { useAsync, useTick } from './hooks';
@@ -67,8 +67,35 @@ export function LeaguePage({ session, leagueId, tab }: { session: Session; leagu
   );
 }
 
+function ChangeLine({ c }: { c: LineupChange }) {
+  const slot = <span class="slot">{slotLabel(c.slot)}</span>;
+  if (c.kind === 'swap')
+    return (
+      <li>
+        {slot} Start <strong>{c.in!.name}</strong> over <strong>{c.out!.name}</strong>
+      </li>
+    );
+  if (c.kind === 'start')
+    return (
+      <li>
+        {slot} Start <strong>{c.in!.name}</strong>
+      </li>
+    );
+  if (c.kind === 'bench')
+    return (
+      <li>
+        <span class="slot">BN</span> Bench <strong>{c.out!.name}</strong>
+      </li>
+    );
+  return (
+    <li>
+      {slot} Move <strong>{c.in!.name}</strong> to {slotLabel(c.slot)}
+    </li>
+  );
+}
+
 function LineupTab({ a, bestBall, now }: { a: LineupAnalysis; bestBall: boolean; now: number }) {
-  const inIds = new Set(a.changes.map((c) => c.in?.id).filter(Boolean));
+  const inIds = new Set(a.changes.filter((c) => c.kind === 'swap' || c.kind === 'start').map((c) => c.in?.id));
   return (
     <div class="stack">
       <div class="card">
@@ -101,15 +128,7 @@ function LineupTab({ a, bestBall, now }: { a: LineupAnalysis; bestBall: boolean;
           <h2>Make these changes</h2>
           <ul class="changes">
             {a.changes.map((c) => (
-              <li>
-                <span class="slot">{c.slot}</span> Start <strong>{c.in?.name ?? '—'}</strong>
-                {c.out ? (
-                  <>
-                    {' '}
-                    over <strong>{c.out.name}</strong>
-                  </>
-                ) : null}
-              </li>
+              <ChangeLine c={c} />
             ))}
           </ul>
           <p class="muted small">

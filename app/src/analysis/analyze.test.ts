@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Game, League, Roster } from '../domain/types';
 import { indexProjections, parseLeague, parseMatchup, parseRoster } from '../sleeper/parse';
 import type { RawLeague, RawMatchup, RawProjection } from '../sleeper/raw';
-import { analyzeLineup, analyzeWaivers, gamesByTeam, playerRow, type WeekContext } from './analyze';
+import { analyzeLineup, analyzeWaivers, gamesByTeam, lineupChanges, playerRow, type PlayerRow, type WeekContext } from './analyze';
 
 const H = 3_600_000;
 const now = Date.UTC(2026, 9, 18, 12, 0); // Sun Oct 18, 08:00 ET
@@ -129,6 +129,20 @@ describe('analyzeLineup', () => {
   it('lists IR candidates and uncovered scoring keys', () => {
     expect(a.uncoveredKeys).toEqual([]);
     expect(a.reserve.map((r) => r.id)).toEqual(['ir1']);
+  });
+});
+
+describe('lineupChanges', () => {
+  const row = (id: string) => ({ id, name: id }) as PlayerRow;
+  const rows = ['X', 'Y', 'Z', 'W'].map(row);
+  it('describes swaps, starts, benchings and moves', () => {
+    // RB: X → Y (Y moved from FLEX), FLEX: Y → Z (new), K: W stays.
+    const changes = lineupChanges(['RB', 'FLEX', 'K'], [0, 1, 3], [1, 2, 3], rows);
+    expect(changes.map((c) => `${c.kind}:${c.slot}:${c.in?.id ?? ''}:${c.out?.id ?? ''}`)).toEqual(['start:FLEX:Z:', 'bench:RB::X', 'move:RB:Y:']);
+  });
+  it('pairs a new starter with the benched player in the same slot', () => {
+    const changes = lineupChanges(['RB'], [0], [2], rows);
+    expect(changes).toEqual([{ kind: 'swap', slot: 'RB', in: rows[2], out: rows[0] }]);
   });
 });
 
