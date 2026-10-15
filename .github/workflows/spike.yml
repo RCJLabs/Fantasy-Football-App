@@ -4,6 +4,12 @@ name: spike
 # and contains metadata and aggregates only, because logs of this public repo are public.
 on:
   workflow_dispatch: # league-specific checks run privately via league-pull.yml instead
+    inputs:
+      checks:
+        description: 'all = CORS + Sleeper data (fetches the players dump) + FantasyCalc; light = CORS + FantasyCalc only'
+        type: choice
+        options: [all, light]
+        default: light
 
 permissions:
   contents: read
@@ -23,4 +29,7 @@ jobs:
       - name: CORS checks
         run: bash scripts/spike/cors.sh | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Data checks
+        if: inputs.checks == 'all'
         run: node scripts/spike/sleeper-spike.mjs | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: FantasyCalc checks
+        run: node scripts/spike/fantasycalc-spike.mjs | tee -a "$GITHUB_STEP_SUMMARY"
