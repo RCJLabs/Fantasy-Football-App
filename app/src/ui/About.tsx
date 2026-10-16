@@ -71,6 +71,7 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           <li>
             <strong>Matchups</strong>, also context only: how many more (or fewer) PPR points players at a position have scored against this week's
             opponent than in their other games, pulled toward average while the sample is small, and which of the opponent's regular cornerbacks are out.
+            Tested on 2022–2025, neither predicted points better than RotoWire's projections, which already price matchups, so neither changes them.
           </li>
           <li>
             <strong>Second opinion</strong>: player details also show our own baseline, built from each player's recent expected usage
@@ -80,7 +81,6 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             projections are missing for a week, every position but kicker falls back to it, labelled.
           </li>
         </ul>
-        <p class="muted small">Coming next: matchup adjustments, added only after backtests show they help.</p>
       </div>
 
       {accuracy.data ? <AccuracyCard file={accuracy.data} /> : null}

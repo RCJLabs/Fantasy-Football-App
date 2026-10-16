@@ -34,6 +34,14 @@ case "$identity" in
     exit 1
     ;;
 esac
+# It must be the archive's key: its public key is the one the snapshots are encrypted to. The identity reaches
+# age-keygen on stdin only, and its errors (which can quote the key) are dropped.
+command -v age-keygen >/dev/null || { echo "age-keygen not found: install age." >&2; exit 1; }
+public="$(printf '%s\n' "$identity" | age-keygen -y 2>/dev/null)" || public=""
+if ! grep -qxF "$(cat "$here/../archive/recipient.txt")" <<<"$public"; then
+  echo "ARCHIVE_AGE_KEY isn't the archive's key: its public key doesn't match scripts/archive/recipient.txt (docs/ledger.md)." >&2
+  exit 1
+fi
 
 umask 077
 work="$(mktemp -d)"

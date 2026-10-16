@@ -5,7 +5,8 @@ Built 2026-10-16. Code:
 - `ros.ts` (`ROS_DRIFT`, `teamDrift`, `ROS_OFFSET`, `changeVariance`);
 - `outlook.ts` (wiring, trade odds and ranges);
 - `scripts/backtest/season-odds.ts` (the season backtest);
-- `scripts/calibrate/ros-ranges.ts` (the range calibration).
+- `scripts/calibrate/ros-ranges.ts` (the range calibration);
+- `scripts/calibrate/ros-realization.ts` (the realization check).
 
 ## The problem
 
@@ -142,6 +143,61 @@ Roster churn piles up over a season, so standings odds keep the walk. A single p
 - **Combining:** players are independent.
 - **Shown:** the 80% range of the change, and the chance it adds points (normal approximation).
 
+## Realization: do the values come true on average? `[measured on a proxy]` (2026-10-16, open)
+
+`scripts/calibrate/ros-realization.ts`, on the same population as the ranges: 1,243 player-seasons, 2022–2025.
+- **Expected** points k weeks ahead: this week's projection as a flat rate, times the availability curve, zero on byes.
+- **Actual** points: what was scored, missed games as zero.
+
+Actual ÷ expected points:
+
+| pos | this week | 1 week ahead | 2 | 4 | 8 | 12 | weeks 1–12 pooled (95% interval) | 2022–23 | 2024–25 |
+|---|---|---|---|---|---|---|---|---|---|
+| QB | 0.99 | 0.87 | 0.85 | 0.87 | 0.81 | 0.78 | 0.84 (0.78–0.89) | 0.81 | 0.88 |
+| RB | 1.02 | 0.90 | 0.91 | 0.94 | 0.94 | 1.01 | 0.93 (0.89–0.98) | 0.92 | 0.95 |
+| WR | 0.97 | 0.86 | 0.86 | 0.88 | 0.90 | 0.92 | 0.88 (0.84–0.92) | 0.88 | 0.88 |
+| TE | 1.06 | 0.94 | 0.94 | 0.95 | 0.94 | 1.05 | 0.94 (0.87–1.01) | 0.90 | 0.97 |
+
+Intervals are bootstrapped by player. Over all positions, weeks 1–12: 0.89.
+
+**Established:**
+- This week's projection comes true on average (0.97–1.06), even counting missed games as zero.
+- From next week on, the proxy runs high: by 6–16% depending on position, and about 11% over all. Both season halves agree; QBs most.
+
+**Not established: why.** Two likely causes, neither measured:
+- The availability curve counts game-day actives. A player who leaves a game hurt, loses snaps or is benched counts as fully available.
+- Players picked for a good projection this week may drift back toward their usual level later. For example, a role that grew because
+  a teammate is out.
+
+**The proxy is not what the app uses.** The app values each future week with Sleeper's own projection for it. The history bundle can't
+show what those were, because Sleeper's API returns each past week's projection as it stood that week. In the archive's one full 2026
+snapshot (week 6), for the same population:
+- Sleeper's future weeks average 0.97 of next week's projection.
+  - The typical player is flat: the median is 1.00.
+  - Players differ: the 10th to 90th percentiles are 0.87 and 1.09.
+- Week to week, a player's projection moves about 7%, mostly with the opponent.
+
+So about 3 of the 11 points may already be in the app's values. The per-player differences touch more than the bias:
+- **The ranges** were sized on the proxy. If Sleeper's per-player differences foresee real changes (a role growing, a return from
+  injury), the app's totals miss by less than the proxy's, and the ranges are too wide. If the differences are noise, the ranges are too
+  narrow.
+- **The drift** has the same question, through the season odds.
+
+**Decision: no correction yet.**
+- It's measured on a proxy, not on the app's values.
+- In a trade or a waiver claim both sides carry a lean, so much of it cancels. It doesn't cancel across positions: a QB's lean (0.84)
+  isn't a TE's (0.94).
+- A cut to each player's points would overstate a team's loss. When a player is benched or loses his role, his manager starts someone
+  else. The app's lineup values count a bench player stepping in only when a starter is inactive.
+
+**Plan:**
+- **Data:** the archive now saves every remaining week's Sleeper projections every day; the daily job no longer misses days when GitHub
+  starts a run late.
+- **Rerun on the app's real values:** this table, the ranges' coverage and the drift backtest, using Sleeper's future-week projections as
+  they stood at each anchor.
+- **When:** a first look after a few weeks; a real answer after the season, since one season is a small sample.
+- **If the lean holds:** test a factor per position for future weeks, with the same out-of-sample checks as the drift.
+
 ## What changes in the app
 
 - Playoff, bye, 1st-place and title odds are less extreme, most of all early in the season.
@@ -166,7 +222,10 @@ Roster churn piles up over a season, so standings odds keep the walk. A single p
 - **Ranges simplify.** They count only the players who move, in the weeks they'd start. Bench players who start more after a trade aren't
   counted, and players are treated as independent.
 - **Unmeasured positions.** K, DEF and IDP use the same offset.
-- **Bias left in.** The 5–12% lean in projected totals isn't corrected, because it largely cancels in a trade.
+- **Bias left in.** The 5–12% lean in projected totals isn't corrected. It largely cancels in a trade, and it's measured on a proxy
+  (Realization, above).
+- **A flat proxy.** The drift, the ranges and the lean were all measured with this week's projection as a flat rate for every later week.
+  The app uses Sleeper's own future-week projections, which differ per player (Realization, above).
 
 ## Reproduce
 
@@ -174,4 +233,5 @@ Roster churn piles up over a season, so standings odds keep the walk. A single p
 npx tsx scripts/backtest/season-odds.ts <decrypted history dir> --leagues 100 --sims 1000               # with waiver pickups
 npx tsx scripts/backtest/season-odds.ts <decrypted history dir> --leagues 100 --sims 1000 --no-waivers  # frozen rosters
 npx tsx scripts/calibrate/ros-ranges.ts <decrypted history dir>                                         # trade ranges
+npx tsx scripts/calibrate/ros-realization.ts <decrypted history dir>                                    # realization
 ```

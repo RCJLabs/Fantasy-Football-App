@@ -118,6 +118,14 @@
     injury tags. For example, DEN's Pat Surtain (81% of snaps) was Out on Thursday.
   - Both appear in player details, with sample sizes. Projections are unchanged.
 
+- **Matchup adjustment gate — decided (2026-10-16): no adjustment.** The Phase 3 DvP and CB-depletion backtests, brought forward;
+  details in [matchups-gate.md](matchups-gate.md). On 11,094 QB/RB/WR/TE player-games (2022–25), against RotoWire alone:
+  - **DvP** (what RotoWire missed against the opponent in earlier weeks, shrunk): tuned on 2022–23 and scored on 2024–25, MAE changed
+    −0.04% (interval spans zero). At full strength it made every position worse. The earlier misses correlate 0.047 with the next.
+  - **Cornerbacks out:** WRs beat RotoWire by about half a point when a regular corner sat (both season halves). But a factor for it beat a
+    single factor by 0.12% at best and lost on the other half; by squared error the gain is nil.
+  - Both stay context only.
+
 - **Baseline blend gate — decided (2026-10-16): no blend.** This is roadmap item 4; details in [baseline.md](baseline.md).
   - **Data:** Sleeper's stored weekly projections and stats for 2022–25 and 2026 weeks 1–5. A dispatch-only workflow pulls them,
     age-encrypted.
@@ -167,6 +175,26 @@
     noise (r ≈ 0.3 for both sources).
   - **Shipped** inside `baseline.json` (team codes): a labelled second opinion for defenses, and the DEF fallback for a week without Sleeper
     projections. Kickers stay Sleeper-only.
+
+- **Archive and ledger hardening — built (2026-10-16):**
+  - **Daily archive jobs survive late runs.** On Oct 16 GitHub started the 12:17 UTC run at 13:16 and skipped the 08:17 one.
+    - The day's all-weeks projections and players dump were tied to the 12:xx hour, so they were missed. Only a manual run saved them.
+    - Each daily job now runs in the first snapshot at or after its hour. Public no-data markers in the release track what's done
+      ([scripts/archive/README.md](../scripts/archive/README.md)).
+    - If the markers can't be read, the old hour rule applies.
+  - **The props "already fetched" list** pages through release assets too. Whether GitHub's release object truncates its asset list is
+    unverified; paging removes the question.
+  - **Ledger key check:** the job derives the secret's public key and compares it with `recipient.txt`. A wrong key now fails at once,
+    not when a week comes due.
+
+- **Realization of rest-of-season values — measured (2026-10-16), open:** details in [ros-uncertainty.md](ros-uncertainty.md).
+  - **Measured on a flat proxy** (this week's projection for every later week, times availability), 2022–25:
+    - from next week on, values came true at 0.89 of expected (QB 0.84, RB 0.93, WR 0.88, TE 0.94);
+    - this week's came true at about 1.0.
+  - **Unknown for the app's own values:** the app uses Sleeper's future-week projections. In the one full 2026 snapshot they average 0.97
+    of next week's, with players ranging from 0.87 to 1.09. So the app's lean is probably smaller, and the ranges and drift, also sized on
+    the proxy, need a recheck.
+  - **No correction yet.** The archive's daily all-weeks snapshots will measure it on the app's real values.
 
 - **Ranges on a trade's points — built (2026-10-16):** details in [ros-uncertainty.md](ros-uncertainty.md).
   - **Measured on 14,623 player-anchors (2022–25):** the app's weekly variance alone held only 39–69% of rest-of-season totals in 80%
@@ -246,7 +274,10 @@
     - depth is worth more: one team's gain from adding a free-agent TE rose 15–50%.
 
   **Not yet:**
-  - matchup or usage adjustments to projections — only if a backtest shows they beat RotoWire alone (RotoWire already prices matchups);
+  - usage adjustments to projections — only if a backtest shows they beat RotoWire alone (matchup adjustments were tested and don't:
+    [matchups-gate.md](matchups-gate.md));
+  - a correction for the lean in rest-of-season values, once the archive's own future-week projections can measure it
+    ([ros-uncertainty.md](ros-uncertainty.md));
   - scheme matchups (coverage shells, man/zone): FTN charting has them (CC-BY-SA), not yet joined;
   - the first scored week. The scorer (`scripts/ledger/score.ts`, below) is built. Week 6 can be scored once its games are in nflverse.
     Thursday's game alone is enough for a first check;
@@ -358,7 +389,7 @@ What we build instead is a **calculated consensus**: an average of independent *
 | **Waiver board** | Gain in this week's (and next week's, if projected) optimal lineup, plus "ROS-lite" value. Opportunity-shock flag from Sleeper depth order + injury status. Trending adds as a *demand* signal (with Sleeper attribution). | ROS-lite: Sleeper future-week projections if they exist (spike f), bye-aware; otherwise per-game value × remaining non-bye games, labelled "flat ROS estimate" `[design]` | MVP stretch → Phase 2 |
 | **FAAB** | Value-based max bid: dollars per unit of ROS value, calibrated from the league's own *winning* bids and scaled by remaining budget and weeks. Runner-up-bid model only if failed claims expose `waiver_bid`. | Losing-bid visibility unconfirmed `[unverified]`; spike (c). No cross-league prior (no league sample; §8). | Phase 2 |
 | **Trade analyzer** | **Stripped (Phase 2):** your optimal-lineup points by remaining week (regular season + playoffs) with ROS-lite, a bye grid, roster spots filled or dropped on both sides, and FantasyCalc market value shown separately. **Full (Phase 3):** future implied totals from team ratings fitted to market lines (plus win totals as a prior); a weekly injury hazard by position × age (built as one curve by weeks ahead, since position and age didn't hold up: [hazard.md](hazard.md)); weeks weighted by leverage from the season sim; playoff and title odds; ranges, not points. **Title odds and bye-aware playoff-week weights built 2026-10-16** ([title-odds.md](title-odds.md)). **Persistent drift in the season odds, and ranges on a trade's points, built 2026-10-16** ([ros-uncertainty.md](ros-uncertainty.md)). | `games.csv` currently has lines only through Week 7 `[verified]`, which is why ROS needs the team-rating model | Stripped: Phase 2 · title odds: built · rest of Full: Phase 3 |
-| **Matchup layer** | Vegas implied team total and spread are the primary environment signal (`home_itt = (total_line + spread_line)/2`; nflverse spread is positive when the **home** team is favored `[verified]`, unit-tested). **DvP:** the residual of position-level xFP allowed after conditioning on the opponent's implied total, used *only inside the in-house baseline*, never on the blend. Shrunk toward the league mean, with weight on last season equal to its measured year-over-year r. **CB depletion** flag (starting LCB/RCB/NB out, from injuries + depth chart). **Wind** only shifts the pass/rush split and K inside the baseline. Everything is display-only until a walk-forward backtest shows lift. | Defense-vs-position barely repeats (WR r≈0) `[reported]`. Vegas dominating feature importance comes from one unreviewed 2026 thesis `[unverified]`. Strong wind is already priced into game totals (residual +0.7 ± 2.0 pts at ≥20 mph, n=47) `[own calc]`. PFR per-CB stats are used only if their split-half reliability holds up `[design]`. | CB depletion + DvP display: Phase 2 stretch · rest: Phase 3 backtest |
+| **Matchup layer** | Vegas implied team total and spread are the primary environment signal (`home_itt = (total_line + spread_line)/2`; nflverse spread is positive when the **home** team is favored `[verified]`, unit-tested). **DvP:** the residual of position-level xFP allowed after conditioning on the opponent's implied total, used *only inside the in-house baseline*, never on the blend. Shrunk toward the league mean, with weight on last season equal to its measured year-over-year r. **CB depletion** flag (starting LCB/RCB/NB out, from injuries + depth chart). **Wind** only shifts the pass/rush split and K inside the baseline. Everything is display-only until a walk-forward backtest shows lift; DvP and CB depletion showed none on 2022–25 ([matchups-gate.md](matchups-gate.md)). | Defense-vs-position barely repeats (WR r≈0) `[reported]`. Vegas dominating feature importance comes from one unreviewed 2026 thesis `[unverified]`. Strong wind is already priced into game totals (residual +0.7 ± 2.0 pts at ≥20 mph, n=47) `[own calc]`. PFR per-CB stats are used only if their split-half reliability holds up `[design]`. | CB depletion + DvP display: Phase 2 stretch · rest: Phase 3 backtest |
 | **Injury context** | Population base rates: weekly hazard of a new missed-game injury by position × age, early-exit rates, games-missed distributions by injury type, all shown as labelled ranges. They feed the ROS availability multiplier. | Individual proneness isn't estimable `[reported]`. The cited hamstring recurrence rate (38%) conflicts with the most-cited study (16.5%), so trace it before showing it `[unverified]`. **Future-week availability built 2026-10-16** ([hazard.md](hazard.md)) `[own calc]`: a healthy QB/RB/WR/TE is active 94% a week later and 85% eight weeks later. One curve by weeks ahead; position and age didn't hold up on held-out seasons. **Games missed by injury built 2026-10-16** ([injuries.md](injuries.md)): shown in player details. | ROS availability, games missed: built (Phase 2) · early exits: Phase 3 |
 | **Explanations** | Show the blend as sources (RotoWire X, in-house Y → Z), then rescoring and P(play) applied visibly. Only the in-house component is broken into factors. An LLM, later, narrates this JSON only. | Breaking down RotoWire's black box would invent reasoning `[design]` | MVP |
 | **Accuracy ledger** | Walk-forward scoring of archived inputs and our recommendations: MAE by position, Spearman, interval coverage, Brier for P(play) and win probability. Before each lock, a SHA-256 of our prediction file is committed publicly (commit-reveal) so timestamps can be checked. Public comparisons only against sources we're allowed to name. A FantasyPros benchmark stays private unless licensed. | `[design]` | Archive: Phase 0 · ledger: Phase 2 private → Phase 3 public |
@@ -526,7 +557,8 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
 4. **Baseline blend gate:** backtest v0 on 2023–25 plus shadow weeks; blend only if it passes. **Done 2026-10-16:** no blend, v0 goes to shadow ([baseline.md](baseline.md)).
 5. **Accuracy ledger v0** (private) + commit-reveal hashes start.
 6. **Odds API props** as a second stat-level source, once its ToS is checked. **Pull built 2026-10-16** ([props.md](props.md)): props are fetched once per game, converted to stat means and scored in shadow in the ledger until they pass the gate.
-7. If time remains: DvP residual and CB-depletion flag, **display-only**, labelled.
+7. If time remains: DvP residual and CB-depletion flag, **display-only**, labelled. **Done 2026-10-16**; their backtest found no lift, so
+   they stay display-only ([matchups-gate.md](matchups-gate.md)).
 8. Pipeline grows: Python package, usage/env shards, JSON-Schema contracts, nflverse→Sleeper stat-mapping test (tolerance 0.1 pt; DEF/K/IDP and distance tiers excluded from the gate). **Done 2026-10-16** in TypeScript: usage shard, shard validators, last-good shards, stat mapping ([stat-mapping.md](stat-mapping.md)).
 
 **Checkpoint:** **Dec 6 feature freeze.** After that, only fixes until Week 17.
@@ -540,7 +572,8 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
   - in-house baseline v1 (team model, configuration-aware shares, vacated-share redistribution)
   - P(play) v1
   - injury hazard. **Future-week availability and games missed by injury type built 2026-10-16** ([hazard.md](hazard.md), [injuries.md](injuries.md)); early exits remain.
-  - DvP / CB depletion / coverage priors, each kept only if it shows residual lift
+  - DvP / CB depletion / coverage priors, each kept only if it shows residual lift. **DvP and CB depletion tested 2026-10-16 on 2022–25:
+    no lift** ([matchups-gate.md](matchups-gate.md)); coverage priors remain.
   - Then publish the calibration page and the public ledger.
 - **Full trade analyzer:** team-rating ROS projections, hazard, season sim, leverage-weighted playoff and title odds. Hazard, title odds, persistent drift and ranges built 2026-10-16; team ratings and leverage beyond bye weeks remain. **Dynasty mode.** **Best-ball valuation** (Δ E[max lineup]).
 - **Cloudflare Worker:** Cron Trigger scheduler; `/llm` proxy with Turnstile + an anonymous per-install quota (declared).
@@ -566,7 +599,8 @@ Play production release, public ledger, draft tools, more platforms; a paid tier
 - **Backtests** (Phase 2–3) with pre-registered bars `[design]`:
   - a source joins the blend only if within ~5–10% of RotoWire's MAE **and** blending it, with weights fit on earlier seasons, lowers MAE out of sample (pooled 95% interval below zero). The second test was added 2026-10-16: baseline v0 passed the first for RB/WR/TE but blending gained only 0–1% ([baseline.md](baseline.md))
   - P(play) Brier score better than the v0 table
-  - each matchup adjustment shows positive residual lift over the blend, or stays display-only
+  - each matchup adjustment shows positive residual lift over the blend, or stays display-only. DvP and CB depletion showed none
+    (2026-10-16, [matchups-gate.md](matchups-gate.md))
 - **Fixtures:** your leagues plus public Sleeper leagues covering missing formats (IDP, 2QB, best ball, median), stored anonymized. Raw league JSON stays in the private repo.
 
 ---
@@ -580,7 +614,7 @@ Play production release, public ledger, draft tools, more platforms; a paid tier
 | False precision (matchups, win %, injuries) | High | Display-only until backtested; labels; ranges; published calibration |
 | Sleeper terms or CORS change; licensing blocks monetization | High | Non-commercial launch; one fetch wrapper (proxy can be switched on); value comes from computation, not republished data |
 | Scoring mismatches in exotic leagues | Medium | Golden test + scoring coverage panel shown to users |
-| GitHub cron drops game-day runs | Medium | Data-as-of banner; duplicate staggered runs; Cloudflare Cron Trigger in Phase 3 |
+| GitHub cron drops game-day runs | Medium | Data-as-of banner; duplicate staggered runs; daily archive jobs run in the first run after their hour (2026-10-16); Cloudflare Cron Trigger in Phase 3 |
 | PFR-sourced nflverse data stalls (nflverse adopted a paid third-party scraping proxy 2026-09-10; workflows failed repeatedly that month, causes mixed `[verified]`) | Medium | Freshness badges; usage metrics that don't need snaps; Sleeper stats fallback only after spike (g) |
 | Play policy (ESPN access, AI content, gambling references) | Medium | ESPN out of the Play build; AI report button; implied totals only, no sportsbook anything |
 
