@@ -107,11 +107,31 @@ export function Explain({ row }: { row: PlayerRow }) {
         <p class="muted">The final injury report isn't out yet, so this is the rate for all Questionable players.</p>
       ) : null}
       {row.teamImplied !== undefined ? <p>Vegas implied team total: {row.teamImplied.toFixed(1)}.</p> : null}
+      {row.matchup && row.opponent ? <MatchupNote opponent={row.opponent} pos={row.pos} matchup={row.matchup} /> : null}
       <p class="muted">
         Expected {pts(row.ev)} = {pts(row.mu)} × {pct(row.p)}. Weekly spread ±{pts(row.sd)}.
       </p>
       {row.usage ? <UsageTable usage={row.usage} /> : null}
     </div>
+  );
+}
+
+/** The opponent's record against this position beyond players' usual, and its regular cornerbacks who are out. Context only. */
+function MatchupNote({ opponent, pos, matchup }: { opponent: string; pos: string; matchup: NonNullable<PlayerRow['matchup']> }) {
+  const d = matchup.defense;
+  return (
+    <p class="small">
+      {d ? (
+        <>
+          Matchup: {pos}s facing {opponent} have scored{' '}
+          <strong>
+            {Math.abs(d.pg).toFixed(1)} PPR {d.pg >= 0 ? 'more' : 'fewer'}
+          </strong>{' '}
+          a game than their usual ({d.n} game{d.n === 1 ? '' : 's'}, pulled toward average while the sample is small).{' '}
+        </>
+      ) : null}
+      {matchup.cbsOut?.length ? `${opponent} cornerbacks out: ${matchup.cbsOut.map((c) => `${c.name} (${c.snap}% of snaps, ${c.status})`).join(', ')}.` : null}
+    </p>
   );
 }
 

@@ -3,6 +3,7 @@
 //   data/schedule.json  kickoff times (UTC), lines and implied team totals (nflverse nfldata)
 //   data/accuracy.json  projection accuracy by position over completed weeks (aggregates only)
 //   data/usage.json     recent snap share, targets and carries (nflverse), shown as context only
+//   data/matchups.json  defense vs position beyond players' usual, and regular cornerbacks (nflverse), context only
 //   data/manifest.json  timestamps, sources and licences
 // Usage: tsx pipeline/build-data.ts [--out dist/data] [--cache .cache]
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -10,6 +11,7 @@ import { join } from 'node:path';
 import { DATA_SCHEMA_VERSION, type AccuracyFile, type Manifest, type PlayersFile, type ScheduleFile } from '../app/src/data/contracts';
 import type { RawPlayer, RawState } from '../app/src/sleeper/raw';
 import { compactPlayers, csvRecords, gamesFromCsv, latestInjuryReport, projectionAccuracy, sleeperToGsis, type PointsRow } from './lib';
+import { buildMatchups } from './matchups';
 import { buildUsage, invert } from './usage';
 
 const args = new Map<string, string>();
@@ -126,23 +128,25 @@ async function main() {
   if (playersFile.players.length < 1500) throw new Error(`players.json looks wrong: ${playersFile.players.length} players`);
   if (scheduleFile.games.length < 250) throw new Error(`schedule.json looks wrong: ${scheduleFile.games.length} games`);
 
-  const usage =
-    snapsCsv || statsCsv
-      ? buildUsage({
-          season,
-          now,
-          snaps: snapsCsv ? csvRecords(snapsCsv) : [],
-          stats: statsCsv ? csvRecords(statsCsv) : [],
-          rosters: rosterRecords,
-          sleeperByGsis: invert(gsisBySleeper),
-        })
-      : null;
+  const snapRecords = snapsCsv ? csvRecords(snapsCsv) : [];
+  const statRecords = statsCsv ? csvRecords(statsCsv) : [];
+  const sleeperByGsis = invert(gsisBySleeper);
+  const usage = buildUsage({ season, now, snaps: snapRecords, stats: statRecords, rosters: rosterRecords, sleeperByGsis });
+  const matchups = buildMatchups({ season, now, snaps: snapRecords, stats: statRecords, rosters: rosterRecords, sleeperByGsis });
   if (usage) {
     manifest.files['usage.json'] = {
       updatedAt: now,
       source: 'nflverse snap counts (compiled by Pro Football Reference) and weekly player stats, joined via nflverse weekly rosters',
       license: 'nflverse data CC-BY 4.0; snap shares, targets and carries for recent weeks only',
       credits: 'Usage via nflverse',
+    };
+  }
+  if (matchups) {
+    manifest.files['matchups.json'] = {
+      updatedAt: now,
+      source: 'nflverse weekly player stats (PPR by opponent) and snap counts (cornerbacks), joined via nflverse weekly rosters',
+      license: 'nflverse data CC-BY 4.0; per-defense aggregates and cornerback snap shares only',
+      credits: 'Matchup data via nflverse',
     };
   }
 
@@ -160,13 +164,15 @@ async function main() {
   await writeFile(join(OUT, 'schedule.json'), JSON.stringify(scheduleFile));
   if (accuracy) await writeFile(join(OUT, 'accuracy.json'), JSON.stringify(accuracy));
   if (usage) await writeFile(join(OUT, 'usage.json'), JSON.stringify(usage));
+  if (matchups) await writeFile(join(OUT, 'matchups.json'), JSON.stringify(matchups));
   await writeFile(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2));
   const withPractice = playersFile.players.filter((p) => p.prac).length;
   const all = accuracy?.rows.find((r) => r.pos === 'ALL');
   console.log(
     `season ${season} week ${week}: ${playersFile.players.length} players (${withPractice} with practice status, report week ${report?.week ?? '-'}), ${scheduleFile.games.length} games` +
       `${all ? `, accuracy weeks ${accuracy!.weeks.join(',')} n=${all.n} MAE ${all.mae} within±1sd ${Math.round(all.within1 * 100)}%` : ''}` +
-      `${usage ? `, usage weeks ${usage.weeks.join(',')} for ${Object.keys(usage.players).length} players` : ''} → ${OUT}`,
+      `${usage ? `, usage weeks ${usage.weeks.join(',')} for ${Object.keys(usage.players).length} players` : ''}` +
+      `${matchups ? `, matchups for ${Object.keys(matchups.defense).length} defenses` : ''} → ${OUT}`,
   );
 }
 

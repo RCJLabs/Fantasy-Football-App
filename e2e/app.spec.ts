@@ -37,6 +37,7 @@ async function mockBackends(page: Page) {
   await page.route('**/data/schedule.json', (route) => route.fulfill({ json: fx.schedule }));
   await page.route('**/data/manifest.json', (route) => route.fulfill({ json: fx.manifest }));
   await page.route('**/data/usage.json', (route) => route.fulfill({ json: fx.usage }));
+  await page.route('**/data/matchups.json', (route) => route.fulfill({ json: fx.matchupContext }));
 }
 
 test.beforeEach(async ({ page }) => {
@@ -80,6 +81,9 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(usage.locator('tr', { hasText: 'Snaps' })).toContainText('80%85%–90%');
   await expect(usage.locator('tr', { hasText: 'Targets' })).toContainText('9 (25%)');
   await expect(usage).not.toContainText('Carries');
+  // Matchup context: CCC against WRs, and its regular cornerback who's out.
+  await expect(flanker).toContainText('WRs facing CCC have scored 2.3 PPR more a game than their usual (5 games');
+  await expect(flanker).toContainText('CCC cornerbacks out: Corner Back (92% of snaps, Out).');
   await expect(page.locator('.pl').filter({ hasText: 'Taylor Wideout' }).first()).toContainText('Live');
   await page.screenshot({ path: testInfo.outputPath('lineup.png'), fullPage: true });
 

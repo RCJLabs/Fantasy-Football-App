@@ -39,5 +39,6 @@ jobs:
             jq -r '"- players.json: \(.players | length) players, \([.players[] | select(.prac)] | length) with practice status (report week \(.injuryReportWeek // "-")), season \(.season) week \(.week)"' out/data/players.json
             jq -r '"- schedule.json: \(.games | length) games, \([.games[] | select(.homeImplied != null)] | length) with implied totals"' out/data/schedule.json
             [ -f out/data/usage.json ] && jq -r '"- usage.json: \(.players | length) players, weeks \(.weeks | map(tostring) | join(", "))"' out/data/usage.json
+            [ -f out/data/matchups.json ] && jq -r '"- matchups.json: \(.defense | length) defenses, \(.secondary | length) secondaries, weeks \(.weeks | map(tostring) | join(", "))"' out/data/matchups.json
             ls -l out/data | awk 'NR>1 {print "- " $9 ": " $5 " bytes"}'
           } | tee -a "$GITHUB_STEP_SUMMARY"

@@ -73,6 +73,26 @@ export interface PlayerUsage {
   cshare: Array<number | null>;
 }
 
+/** A defense against one position: extra PPR per game beyond those players' usual (shrunk), over `n` games. */
+export interface DefenseEdge {
+  pg: number;
+  n: number;
+}
+
+/** data/matchups.json: matchup context from nflverse (display only). */
+export interface MatchupsFile {
+  schemaVersion: number;
+  generatedAt: string;
+  season: string;
+  weeks: number[];
+  /** Pseudo-games of an average defense mixed into each sample. */
+  priorGames: number;
+  /** By Sleeper team code, then position (QB/RB/WR/TE). */
+  defense: Record<string, Partial<Record<'QB' | 'RB' | 'WR' | 'TE', DefenseEdge>>>;
+  /** Each defense's regular cornerbacks (Sleeper ids) with average defensive snap share, whole percent. */
+  secondary: Record<string, Array<{ id: string; snap: number }>>;
+}
+
 /** data/usage.json: recent usage of QBs, RBs, WRs and TEs from nflverse (display only). */
 export interface UsageFile {
   schemaVersion: number;

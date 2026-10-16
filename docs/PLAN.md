@@ -95,8 +95,18 @@
     It doesn't change projections.
   - The archive also runs before Sunday's 4 pm games (after their inactives) and before SNF in EDT, so every slate gets a late prediction.
 
+- **Matchup context, display only — built (2026-10-16):** this is roadmap item 7.
+  - **Defense vs position:** each PPR game is compared with that player's average in his other games (leave-one-out, players with 3+ games).
+    - The edges are summed per defense and position, per game, then shrunk toward zero with 4 pseudo-games of an average defense `[design]`.
+    - Weeks 1–5 range from about −5.5 to +7.5 PPR per game. Game-level noise is 8–13 points, so most teams are within noise; the label says
+      so.
+  - **Cornerbacks out:** each defense's three regular corners (50%+ of defensive snaps over the last 4 weeks), checked against their current
+    injury tags. For example, DEN's Pat Surtain (81% of snaps) was Out on Thursday.
+  - Both appear in player details, with sample sizes. Projections are unchanged.
+
   **Not yet:**
-  - usage in projections (a shift in role before RotoWire catches up) — only if a backtest shows it helps;
+  - matchup or usage adjustments to projections — only if a backtest shows they beat RotoWire alone (RotoWire already prices matchups);
+  - scheme matchups (coverage shells, man/zone): FTN charting has them (CC-BY-SA), not yet joined;
   - scoring the committed predictions (the reveal): chance to play (Brier, calibration by tag) against game-day actives, and points (MAE,
     ±1 SD coverage) against PPR results. It needs the archive key wherever it runs; first possible after week 6 is final;
   - keeper-league picks: Sleeper lets them be traded, but FantasyCalc's rookie-pick prices don't fit a keeper draft;

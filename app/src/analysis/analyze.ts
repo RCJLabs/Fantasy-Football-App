@@ -5,7 +5,7 @@ import { crossCovariance, pairCorrelation, withinCovariance, type CorrItem } fro
 import { canFill, optimizeLineup, startingSlots, twoStageValue, type LineupPlayer, type LineupProblem } from '../engine/lineup';
 import { expectedStats, scoreBreakdown, scoreStats, uncoveredScoringKeys } from '../engine/scoring';
 import { pointSd, playerDist, probBeatAtLeast, sumDists, winProbability, type Dist } from '../engine/winprob';
-import type { PlayerUsage } from '../data/contracts';
+import type { DefenseEdge, MatchupsFile, PlayerUsage } from '../data/contracts';
 import type { ProjectionIndex } from '../sleeper/parse';
 import { playoffWeekInfo, type PlayoffWeek } from './ros';
 
@@ -25,6 +25,8 @@ export interface WeekContext {
   kickoffsApproximate?: boolean;
   /** Recent usage by Sleeper id (pipeline usage.json), when available. */
   usage?: UsageIndex;
+  /** Defense-vs-position edges and regular cornerbacks (pipeline matchups.json), when available. */
+  matchups?: MatchupsFile;
 }
 
 export interface UsageIndex {
@@ -62,6 +64,8 @@ export interface PlayerRow {
   teamImplied?: number;
   /** Recent usage (display only), with the weeks it covers. */
   usage?: PlayerUsage & { weeks: number[] };
+  /** Matchup context (display only): the opponent against this position, and its regular cornerbacks who are out. */
+  matchup?: { defense?: DefenseEdge; cbsOut?: Array<{ name: string; snap: number; status: string }> };
 }
 
 export type ProblemLevel = 'error' | 'warn' | 'info';
@@ -148,6 +152,24 @@ export function teamName(roster: Roster | undefined, users: readonly LeagueUser[
   return u?.teamName ?? u?.displayName ?? `Team ${roster.rosterId}`;
 }
 
+const OFFENSE = new Set(['QB', 'RB', 'WR', 'TE']);
+const SIDELINED = new Set(['Out', 'Doubtful', 'IR', 'PUP', 'Sus']);
+
+/** The opponent's record against this position, and (for pass catchers) its regular cornerbacks who are out. */
+function matchupContext(ctx: WeekContext, pos: string, opponent: string): PlayerRow['matchup'] | undefined {
+  if (!OFFENSE.has(pos)) return undefined;
+  const defense = ctx.matchups!.defense[opponent]?.[pos as 'QB' | 'RB' | 'WR' | 'TE'];
+  const cbsOut =
+    pos === 'WR' || pos === 'TE'
+      ? (ctx.matchups!.secondary[opponent] ?? []).flatMap((cb) => {
+          const p = ctx.players.get(cb.id);
+          return p?.injury && SIDELINED.has(p.injury) ? [{ name: p.name, snap: cb.snap, status: p.injury }] : [];
+        })
+      : [];
+  if (!defense && !cbsOut.length) return undefined;
+  return { ...(defense ? { defense } : {}), ...(cbsOut.length ? { cbsOut } : {}) };
+}
+
 /** Everything the app knows about one player this week, scored for one league. */
 export function playerRow(id: string, league: League, ctx: WeekContext, actualPoints?: number): PlayerRow {
   const proj = ctx.projections.byPlayer.get(id);
@@ -197,6 +219,8 @@ export function playerRow(id: string, league: League, ctx: WeekContext, actualPo
     row.opponent = row.home ? game.away : game.home;
     const implied = row.home ? game.homeImplied : game.awayImplied;
     if (implied !== undefined) row.teamImplied = implied;
+    const matchup = ctx.matchups ? matchupContext(ctx, pos, row.opponent) : undefined;
+    if (matchup) row.matchup = matchup;
   }
   if (locked && actualPoints !== undefined) row.actual = actualPoints;
   return row;

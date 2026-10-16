@@ -57,6 +57,10 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             <strong>Usage</strong> (snap share, targets and carries over the last four weeks, with the share of the team's) is shown for context in player
             details and on the waiver board. It doesn't change projections.
           </li>
+          <li>
+            <strong>Matchups</strong>, also context only: how many more (or fewer) PPR points players at a position have scored against this week's
+            opponent than in their other games, pulled toward average while the sample is small, and which of the opponent's regular cornerbacks are out.
+          </li>
         </ul>
         <p class="muted small">Coming next: matchup adjustments, added only after backtests show they help.</p>
       </div>
@@ -69,7 +73,7 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           <li>League, roster, matchup and player data: Sleeper API (read-only, non-commercial use).</li>
           <li>Projections: RotoWire, via Sleeper.</li>
           <li>Practice reports and schedule: nflverse (CC-BY 4.0), processed daily.</li>
-          <li>Usage: nflverse (CC-BY 4.0) weekly stats and snap counts (compiled by Pro Football Reference).</li>
+          <li>Usage and matchups: nflverse (CC-BY 4.0) weekly stats and snap counts (compiled by Pro Football Reference).</li>
           <li>Trending adds: Sleeper.</li>
           <li>
             Trade market values:{' '}
