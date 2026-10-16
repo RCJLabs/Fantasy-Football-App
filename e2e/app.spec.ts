@@ -140,9 +140,16 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(page.getByRole('heading', { name: 'Streaming' })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('waivers.png'), fullPage: true });
 
-  // Season: standings with playoff odds and my remaining schedule.
+  // Season: team grades, standings with playoff odds and my remaining schedule.
   await page.getByRole('tab', { name: 'Season' }).click();
-  const standings = page.locator('table.table').first();
+  const grades = page.locator('.card', { has: page.getByRole('heading', { name: 'Team grades' }) });
+  await expect(grades.locator('thead')).toContainText('Grade');
+  await expect(grades.locator('thead')).toContainText('Playoffs');
+  await expect(grades.locator('tbody tr')).toHaveCount(4);
+  await expect(grades.locator('tbody tr.mine td').nth(1)).toHaveText(/^[SABCDF]$/);
+  // My team is the only full roster: S overall and first in every part; its lowest grade is an A on playoff odds, where the rival is close.
+  await expect(grades.locator('p').first()).toHaveText('Your team: S (1st of 4). Highest grade: bench depth (S, 1st); lowest: playoff odds (A, 1st).');
+  const standings = page.locator('.card', { has: page.getByRole('heading', { name: 'Standings outlook' }) }).locator('table');
   await expect(standings.locator('thead')).toContainText('Playoffs');
   await expect(standings.locator('thead')).toContainText('Title');
   await expect(standings.locator('tr.mine')).toContainText('Test Titans');
@@ -289,9 +296,14 @@ test('phone layout: nothing pushes the page sideways, and a 10-team standings ta
   // Season: every column of the standings, Title included, fits without scrolling.
   const standings = page.locator('.card', { has: page.getByRole('heading', { name: 'Standings outlook' }) }).locator('table');
   await expect(standings.locator('thead')).toContainText('Title');
+  // The team grades table too: all ten teams, every column in view.
+  const grades = page.locator('.card', { has: page.getByRole('heading', { name: 'Team grades' }) }).locator('table');
+  await expect(grades.locator('tbody tr')).toHaveCount(10);
   const fits = async () => {
-    const fit = await standings.evaluate((t) => ({ table: t.scrollWidth, wrap: t.parentElement!.clientWidth }));
-    expect(fit.table, `standings ${fit.table}px wide in ${fit.wrap}px`).toBeLessThanOrEqual(fit.wrap);
+    for (const [label, table] of [['standings', standings], ['grades', grades]] as const) {
+      const fit = await table.evaluate((t) => ({ table: t.scrollWidth, wrap: t.parentElement!.clientWidth }));
+      expect(fit.table, `${label} ${fit.table}px wide in ${fit.wrap}px`).toBeLessThanOrEqual(fit.wrap);
+    }
   };
   await fits();
   await page.screenshot({ path: testInfo.outputPath('phone-season.png'), fullPage: true });

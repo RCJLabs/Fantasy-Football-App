@@ -505,6 +505,40 @@ h3 {
 .table-wrap {
   overflow-x: auto;
 }
+/* Team grades: the letter, and under it the number it grades. */
+.grade {
+  display: inline-block;
+  min-width: 1.3em;
+  text-align: center;
+  font-weight: 700;
+}
+.grade-S {
+  /* The page background on the accent: dark on light blue in the dark theme, light on dark blue in the light one. */
+  color: var(--bg);
+  background: var(--accent);
+  border-radius: 4px;
+}
+.grade-A {
+  color: var(--good);
+}
+.grade-B {
+  color: var(--good);
+  opacity: 0.75;
+}
+.grade-C {
+  color: var(--text);
+}
+.grade-D {
+  color: var(--warn);
+}
+.grade-F {
+  color: var(--bad);
+}
+.grade-value {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
 /* A second line on phones (e.g. points for under W-L) that is its own column on wider screens. */
 .phone-only {
   display: none;

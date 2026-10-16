@@ -183,6 +183,13 @@
   - **On the owner's 10-team keeper league:** 6 ideas in about 1 second on a desktop.
   - **Limit:** lineup math only; market values are shown beside each idea as a check on how the other manager may see it.
 
+- **Team grades — built (2026-10-16):** asked for by the owner; details in [team-grades.md](team-grades.md).
+  - **Parts:** this week's best lineup, the best lineup's points per week over the rest of the season, what the bench adds, and playoff
+    (or title) odds. Each team is graded S–F on each part by its z-score within the league.
+  - **Overall:** the parts weighted 45/25/15/15 `[design]`. Starters, weekly projections and rankings share one source, so they aren't
+    added up separately.
+  - **On the owner's leagues:** keeper league A (1st of 10), redraft C (4th of 12); the dynasty league is pre-draft, so it gets no grades.
+
 - **Phone layout — fixed (2026-10-16):** the standings table pushed the page sideways on a 412px phone. Grid columns now can't grow past
   the screen, tables are tighter on phones, and points for sits under W-L. An e2e test checks 412px and 360px.
 
