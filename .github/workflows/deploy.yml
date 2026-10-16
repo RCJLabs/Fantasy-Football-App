@@ -6,7 +6,9 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '7 16 * * *' # daily, ~12:07 ET (after Sunday's early inactives in EDT)
+    # GitHub runs scheduled workflows as the account that last changed these cron lines. Commits authored by
+    # the session's bot account (no access to this repo) never fired, so edit them from an owner account.
+    - cron: '7 16 * * *'  # daily at ~12:07 ET (after Sunday's early inactives in EDT)
   workflow_dispatch:
 
 permissions:

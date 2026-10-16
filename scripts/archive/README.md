@@ -49,5 +49,24 @@ gh api repos/RCJLabs/Fantasy-Football-App/releases/tags/archive-2026-10 \
   --jq ".assets[] | select(.name | contains(\"${ts}\")) | [.name, .created_at]"  # upload times vs kickoffs
 ```
 
-Scoring the committed predictions against what happened (game-day actives, PPR points) is the next step.
+## Scoring the ledger
+
+After a week's games, with the private key:
+
+```sh
+scripts/ledger/fetch.sh 2026 6 ff-archive-identity.txt preds/w06     # decrypts only predictions.json from each snapshot
+base=https://github.com/nflverse/nflverse-data/releases/download
+curl -sSfLO "$base/weekly_rosters/roster_weekly_2026.csv"
+curl -sSfLO "$base/stats_player/stats_player_week_2026.csv"
+npx tsx scripts/ledger/score.ts preds/w06 roster_weekly_2026.csv stats_player_week_2026.csv 6 --json w06.json
+```
+
+For each player-game the scorer takes the **last prediction committed before kickoff** and checks it against what happened.
+- **Chance to play:** scored on players tagged Questionable, Doubtful or Out. It reports Brier score, log loss, and calibration by tag (and by practice
+  status, for final reports) against nflverse game-day actives.
+- **Points if active:** scored on QB/RB/WR/TE projected 5+. It reports MAE, bias, and the share of results within ±1 and ±2 of the app's spread,
+  against nflverse full-PPR points.
+
+Only games with stats count. Weekly rosters exist before kickoff too, so counting them early would score pre-game statuses. The output is
+aggregates only.
 
