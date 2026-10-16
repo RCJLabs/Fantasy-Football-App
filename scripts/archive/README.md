@@ -8,14 +8,22 @@
 
 Each run saves the inputs we can't recreate later:
 
-- **Sleeper projections:** the current and next week on every run. All remaining weeks are also saved on the 12:xx UTC run.
+- **Sleeper projections:** the current and next week on every run. All remaining weeks are also saved once a day, from 12:00 UTC.
 - **Sleeper trending adds and drops.**
-- **Sleeper players dump:** once a day.
-- **nflverse injuries:** twice a day. nflverse keeps only the latest row per player per week, so earlier rows are lost unless we snapshot them.
+- **Sleeper players dump:** once a day, from 12:00 UTC.
+- **nflverse injuries:** twice a day, from 08:00 and from 20:00 UTC. nflverse keeps only the latest row per player per week, so earlier rows
+  are lost unless we snapshot them.
 - **The app's deployed data files** (`site_players.json`, `site_schedule.json`, `site_baseline.json`): with the projections, exactly what the app showed at that moment.
 - **Player props** from The Odds API (`props_events.json`, `props_event_<id>.json`): each game once, in the first run within 6 hours of its
   kickoff ([docs/props.md](../../docs/props.md)). The API key (Actions secret `ODDS_API_KEY`) reaches only `scripts/props/pull.ts`.
 - **The app's predictions** (`predictions.json`, see below).
+
+**Daily jobs.** GitHub starts scheduled runs up to an hour late, and sometimes skips them. A job tied to one exact hour missed days, so
+each daily job runs in the first snapshot of the day at or after its hour.
+- **Marker:** that run also uploads `daily_<timestamp>_<job>.json` **unencrypted**. It holds only the job's name (`weeks`, `players`,
+  `injuries8` or `injuries20`) and the snapshot's timestamp, no data. Later runs that day see it and skip the job.
+- **Failures:** a job whose fetch fails gets no marker, so the next run tries again.
+- **Fallback:** if a run can't list the release's assets, each job runs only in its own hour, as before.
 
 Each run's files are bundled as a `tar.gz`, encrypted with [age](https://age-encryption.org) to the public key in `recipient.txt`, and uploaded to a monthly prerelease (`archive-YYYY-MM`).
 

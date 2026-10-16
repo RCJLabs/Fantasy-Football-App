@@ -5,7 +5,7 @@
 # the raw third-party data is never published in readable form.
 #
 # Env: ARCHIVE_MODE=auto|full (full = all remaining weeks + players dump + injuries),
-#      GH_TOKEN and GH_REPO (for `gh release`), GITHUB_STEP_SUMMARY (optional),
+#      GH_TOKEN and GH_REPO (for `gh release` and `gh api`), GITHUB_STEP_SUMMARY (optional),
 #      SNAPSHOT_HOOK (optional command run on the snapshot dir before encryption; the prediction ledger),
 #      ARCHIVE_SITE (the deployed app, default https://rcjlabs.github.io/Fantasy-Football-App).
 set -euo pipefail
@@ -17,11 +17,13 @@ UA="Fantasy-Football-App archive (+https://github.com/RCJLabs/Fantasy-Football-A
 POSITIONS=(QB RB WR TE K DEF DL LB DB)
 MODE="${ARCHIVE_MODE:-auto}"
 LAST_REG_WEEK=18
+repo="${GH_REPO:-RCJLabs/Fantasy-Football-App}"
 
 here="$(cd "$(dirname "$0")" && pwd)"
 recipient="$(cat "$here/recipient.txt")"
 ts="$(date -u +%Y%m%dT%H%M%SZ)"
-hour="$(date -u +%H)"
+today="${ts%%T*}"
+hour=$((10#${ts:9:2}))
 work="$(mktemp -d)"
 out="$work/snap"
 mkdir -p "$out"
@@ -52,6 +54,14 @@ slim() {
   [ -f "$f" ] || return 0
   if jq -c "$2" "$f" >"$f.slim" 2>/dev/null; then mv "$f.slim" "$f"; else rm -f "$f.slim"; fi
 }
+
+# release_assets TAG — "<id> <name>" for each asset of a release, paged (a month holds hundreds). Fails if it can't be read.
+release_assets() {
+  local id
+  id="$(gh api "repos/$repo/releases/tags/$1" --jq .id 2>/dev/null)" || return 1
+  gh api --paginate "repos/$repo/releases/$id/assets?per_page=100" --jq '.[] | "\(.id) \(.name)"' 2>/dev/null
+}
+
 # Projection rows embed a full player object; keep the fields that change week to week.
 SLIM_PROJ='map({player_id, stats, team, opponent, game_id, date, status, company, updated_at, last_modified,
   position: .player.position, injury_status: .player.injury_status,
@@ -70,14 +80,38 @@ if [ -f "$out/state.json" ]; then
   week=$(jq -r '.week // 0' "$out/state.json")
   stype=$(jq -r '.season_type // "regular"' "$out/state.json")
 fi
+tag="archive-${season}-$(date -u +%m)"
 
-# Projections: current + next week on every run; all remaining weeks once a day (12:xx UTC) or in full mode.
+# Daily jobs run in the first snapshot of the day (UTC) at or after their hour. GitHub starts scheduled runs up to an
+# hour late and skips some, so a fixed hour missed days. A run that does a job at or after its hour uploads a public
+# marker, daily_<timestamp>_<job>.json (no data), and later runs that day skip the job. If this month's markers can't
+# be listed, a job runs only in its own hour, as before.
+if names="$(release_assets "$tag")"; then
+  done_today="$(sed -n "s/^[0-9]* daily_${today}T[0-9]*Z_\([a-z0-9]*\)\.json\$/\1/p" <<<"$names")"
+else
+  done_today="?"
+fi
+marks=()
+# due JOB HOUR — whether this run does JOB (always, in full mode).
+due() {
+  [ "$MODE" = full ] && return 0
+  if [ "$done_today" = "?" ]; then
+    [ "$hour" -eq "$2" ]
+  else
+    [ "$hour" -ge "$2" ] && ! grep -qx "$1" <<<"$done_today"
+  fi
+}
+# mark JOB HOUR — JOB succeeded: mark it done today, if this run is at or after its hour.
+mark() { if [ "$hour" -ge "$2" ]; then marks+=("$1"); fi; }
+
+# Projections: current + next week on every run; all remaining weeks once a day (from 12:00 UTC) or in full mode.
 if [ "$week" -ge 1 ] && [ "$stype" = regular ]; then
   last=$((week + 1))
-  if [ "$MODE" = full ] || [ "$hour" = 12 ]; then last=$LAST_REG_WEEK; fi
+  if [ "$last" -lt "$LAST_REG_WEEK" ] && due weeks 12; then last=$LAST_REG_WEEK; fi
   [ "$last" -gt "$LAST_REG_WEEK" ] && last=$LAST_REG_WEEK
   qs=""
   for p in "${POSITIONS[@]}"; do qs="${qs}&position[]=${p}"; done
+  saved=0
   for ((w = week; w <= last; w++)); do
     name="proj_w$(printf %02d "$w").json"
     fetch "$name" "$SLEEPER_WEB/projections/nfl/$season/$w?season_type=$stype$qs"
@@ -87,21 +121,26 @@ if [ "$week" -ge 1 ] && [ "$stype" = regular ]; then
       fetch "$name" "$SLEEPER/projections/nfl/$stype/$season/$w"
     fi
     slim "$name" "$SLIM_PROJ"
+    if [ -f "$out/$name" ]; then saved=$((saved + 1)); fi
   done
+  if [ "$last" -gt $((week + 1)) ] && [ "$saved" -eq $((last - week + 1)) ]; then mark weeks 12; fi
 fi
 
 fetch trending_add.json "$SLEEPER/players/nfl/trending/add?lookback_hours=24&limit=200"
 fetch trending_drop.json "$SLEEPER/players/nfl/trending/drop?lookback_hours=24&limit=200"
 
-# Sleeper asks for the full players dump at most once a day: only the 12:xx UTC run fetches it.
-if [ "$MODE" = full ] || [ "$hour" = 12 ]; then
+# Sleeper asks for the full players dump at most once a day: the first run from 12:00 UTC fetches it.
+if due players 12; then
   fetch players.json "$SLEEPER/players/nfl"
   slim players.json "$SLIM_PLAYERS"
+  if [ -f "$out/players.json" ]; then mark players 12; fi
 fi
 
-# nflverse keeps only the latest row per player-week, so snapshot it twice a day.
-if [ "$MODE" = full ] || [ "$hour" = 08 ] || [ "$hour" = 20 ]; then
+# nflverse keeps only the latest row per player-week, so snapshot it twice a day: from 08:00 and from 20:00 UTC.
+if [ "$hour" -ge 20 ]; then inj=20; else inj=8; fi
+if due "injuries$inj" "$inj"; then
   fetch "injuries_${season}.csv" "$NFLVERSE/injuries/injuries_${season}.csv"
+  if [ -f "$out/injuries_${season}.csv" ]; then mark "injuries$inj" "$inj"; fi
 fi
 
 # The app's own data files as deployed (player DB with practice reports, schedule, the in-house
@@ -118,7 +157,11 @@ if [ -n "${PROPS_HOOK:-}" ] && [ -n "${ODDS_API_KEY:-}" ] && [ "${PROPS_MODE:-au
   seen="$work/props-seen"
   mkdir -p "$seen"
   for m in "$(date -u +%m)" "$(date -u -d "$(date -u +%Y-%m-15) -1 month" +%m)"; do
-    gh release download "archive-${season}-$m" -p 'props_*.json' -D "$seen" >/dev/null 2>&1 || true
+    { release_assets "archive-${season}-$m" || true; } | while read -r id name; do
+      case "$name" in
+        props_*.json) gh api -H "Accept: application/octet-stream" "repos/$repo/releases/assets/$id" >"$seen/$name" 2>/dev/null || rm -f "$seen/$name" ;;
+      esac
+    done
   done
   read -r -a hook <<<"$PROPS_HOOK"
   env -u GH_TOKEN "${hook[@]}" "$out" "$seen" || echo "Props hook failed; continuing without props." >&2
@@ -138,6 +181,9 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     echo "| file | http | bytes |"
     echo "|---|---|---|"
     jq -r '"| \(.name) | \(.http) | \(.bytes) |"' "$manifest"
+    echo
+    if [ ${#marks[@]} -gt 0 ]; then echo "Daily jobs done: ${marks[*]}"; else echo "Daily jobs done: none"; fi
+    echo "Done earlier today: $(if [ "$done_today" = "?" ]; then echo "unknown (markers not listed)"; else echo "${done_today:-none}" | paste -sd' ' -; fi)"
     if [ -f "$out/commitment.json" ]; then
       echo
       jq -r '"Predictions committed: \(.players) players in \(.games | length) games (week \(.week)), sha256 `\(.sha256)`"' "$out/commitment.json"
@@ -157,10 +203,9 @@ fi
 asset="snap_${season}w$(printf %02d "$week")_${ts}.tar.gz.age"
 tar -C "$work" -czf - snap | age -r "$recipient" -o "$work/$asset"
 
-tag="archive-${season}-$(date -u +%m)"
 if ! gh release view "$tag" >/dev/null 2>&1; then
   gh release create "$tag" --prerelease --title "Encrypted input archive $tag" \
-    --notes "age-encrypted snapshots of fantasy inputs for private backtesting. Unreadable without the private key; not for redistribution. Each commit_*.json is the public SHA-256 of the predictions.json inside the snapshot with the same timestamp. Each props_*.json lists the games whose player props that snapshot holds (no odds)." \
+    --notes "age-encrypted snapshots of fantasy inputs for private backtesting. Unreadable without the private key; not for redistribution. Each commit_*.json is the public SHA-256 of the predictions.json inside the snapshot with the same timestamp. Each props_*.json lists the games whose player props that snapshot holds (no odds). Each daily_*.json marks a once-a-day fetch that snapshot holds (no data)." \
     || gh release view "$tag" >/dev/null # another run may have created it concurrently
 fi
 # The commitment (SHA-256 of the predictions inside the bundle) is public: its upload time proves when they were made.
@@ -174,5 +219,10 @@ if [ -f "$out/props_meta.json" ]; then
   cp "$out/props_meta.json" "$work/props_${season}w$(printf %02d "$week")_${ts}.json"
   assets+=("$work/props_${season}w$(printf %02d "$week")_${ts}.json")
 fi
+# Today's daily jobs this snapshot holds (no data): later runs today skip them.
+for job in ${marks[@]+"${marks[@]}"}; do
+  jq -nc --arg job "$job" --arg snapshot "$ts" '{job:$job, snapshot:$snapshot}' >"$work/daily_${ts}_${job}.json"
+  assets+=("$work/daily_${ts}_${job}.json")
+done
 gh release upload "$tag" "${assets[@]}"
 echo "Uploaded ${assets[*]##*/} to $tag ($oks ok, $fails failed)"

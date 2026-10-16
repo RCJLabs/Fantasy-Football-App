@@ -26,6 +26,11 @@ card 2026-10-16. The mechanics of the commit step and the scorer are in [scripts
   - points if active for QB/RB/WR/TE projected 5+: MAE, bias, and coverage of the app's ±1/±2 SD range;
   - the baseline and props shadows.
 - **Without the secret** `ARCHIVE_AGE_KEY` it logs one line and skips.
+- **With the wrong secret** the job fails on every run, before any download:
+  - a value with no `AGE-SECRET-KEY-1…` line;
+  - a key whose public key isn't `scripts/archive/recipient.txt`, the key the snapshots are encrypted to.
+
+  Otherwise a wrong key would surface only when a week came due.
 
 ### The key `[decided 2026-10-16]`
 
