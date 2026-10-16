@@ -48,7 +48,9 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             eight weeks out and 80% thirteen weeks out (game-day rosters, 2019–2025). Each team's best lineup is valued week by week, with
             bench players covering absences, so depth counts for more later in the season. Playoff weeks count by your playoff odds (every round is
             a must-win, the final as much as the first), except a first-round bye week, which counts only by your chance of playing it. Title odds
-            play the bracket out round by round with each team's projected lineups.
+            play the bracket out round by round with each team's projected lineups. Playoff and title odds also let every team drift from its
+            projection as the season goes on (injuries, role changes, pickups): in a backtest on leagues built from 2022–2025 seasons, odds without
+            that drift were too sure of themselves, and teams given a 1% chance made the playoffs 6% of the time.
           </li>
           <li>
             <strong>Keeper and dynasty leagues</strong> also get a long-term view. Trades show market value this season and beyond it (FantasyCalc

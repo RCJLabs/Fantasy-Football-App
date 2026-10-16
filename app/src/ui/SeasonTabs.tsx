@@ -258,8 +258,8 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
         </div>
         <p class="muted small">
           {o.sims.toLocaleString()} simulations of {weekSpan(o.regularWeeks)}
-          {rules.medianGame ? ' (head-to-head plus the league-median game)' : ''}: every team plays its best projected lineup each week; ties go to points
-          for.
+          {rules.medianGame ? ' (head-to-head plus the league-median game)' : ''}: every team plays its best projected lineup each week, and can
+          drift from its projection as the season goes on, as much as teams did in 2022–25 (injuries, role changes, pickups); ties go to points for.
           {playoffs ? ` Top ${rules.playoffTeams} make the playoffs.` : ' This league has no playoffs.'}
           {titles
             ? ` Title odds play the bracket out the same way${byes ? ', top seeds on byes' : ''}${rules.playoffSeedType === 1 ? ', re-seeded each round' : ''}.`

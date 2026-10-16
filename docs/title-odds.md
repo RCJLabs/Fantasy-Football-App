@@ -82,8 +82,8 @@ needs every round won:
 
 ## Limits
 
-- **Team strength is treated as known.** The odds spread only by week-to-week swings around the projections. A projection error that lasts
-  all season isn't modelled. In theory that makes odds near 0% or 100% too confident; the size of the effect is unmeasured.
+- **Team strength:** since 2026-10-16 each team can drift from its projection as the season goes on. The drift is sized by a backtest that
+  found the old odds too sure of themselves ([ros-uncertainty.md](ros-uncertainty.md)). The examples above predate it.
 - **Rosters are frozen.** No trades, pickups or injuries beyond the future-week availability curves ([hazard.md](hazard.md)).
 - **Weeks are independent.** The two weeks of a round are drawn independently.
 - **No playoff odds after the regular season,** as above.
