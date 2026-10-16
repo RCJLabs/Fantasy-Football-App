@@ -37,8 +37,26 @@ Once every regular-season week is scored, the odds come from Sleeper's `winners_
   and loser once decided.
 - Placement games carry `p`: 1 for the final, 3 and 5 for third and fifth place. The title path is the games without `p`, plus the final.
 - The two 6-team brackets seen have 3 rounds with the top two seeds starting in round 2, as the league settings say.
-- `[unverified]`: when exactly Sleeper records a winner after a week ends, and whether it fills later slots' teams or only their sources.
-  The code handles both.
+- Once a game is decided, Sleeper fills in the team of each later slot it feeds and keeps the reference beside it (finished 2025 bracket,
+  below). The code reads either.
+- `[unverified]`: when exactly Sleeper records a winner after a week ends. A finished bracket can't show it; until it does, the round's
+  final points decide the game in the simulation.
+
+**Checked on a finished season (2026-10-16)** `[verified]`, on the owner's one 2025 league: 10 teams, 6 in the playoffs, one-week rounds
+in weeks 15–17. `scripts/check/bracket-replay.ts` reads it from the private league pull (`scripts/league/pull.sh` now fetches last
+season's leagues too) and prints roster ids and numbers only.
+- **Sleeper's results:** in all 7 games, placement games included, the recorded winner had more points in the round's week. None tied.
+- **Seeding:** roster points for are regular-season points only. The app's finish order (wins, then points for) gives the bracket's six
+  teams, its two byes and its first-round pairs (seeds adding up to 9); a 10-4 tie for the second bye went to points for.
+- **Replay:** at the start of each playoff week, with later results hidden, and after the final, the app's bracket mode showed:
+  - the right teams alive, and title odds adding up to 1, none for teams that are out;
+  - rounds already played at their final points;
+  - the weeks ahead weighted only for teams still alive;
+  - the champion at 100% after the final.
+- **The champion's odds:** 21% before round 1, 33% before round 2, 59% before the final. One league says nothing about calibration. The
+  replay counts every player as healthy, because stored projection rows carry each player's injury status today, not that week's.
+- **Not covered:** two-week rounds or championships, re-seeding, Sleeper's tie rule, and other bracket sizes. The league had none of
+  them.
 
 **How the rest is played:**
 - **Decided games** stand as Sleeper recorded them, whatever the projections said.

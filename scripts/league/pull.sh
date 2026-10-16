@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Pull one Sleeper user's leagues (settings, rosters, matchups, transactions, brackets) plus past-week
-# projections and stats, encrypt the bundle with age and upload it as a release asset. Used for private
+# projections and stats, and last season's finished leagues (brackets, scores, playoff-week projections);
+# encrypt the bundle with age and upload it as a release asset. Used for private
 # testing against real leagues: the username comes from the workflow_dispatch payload (never from the
 # workflow file), is masked before anything is printed, and the log only shows counts.
 #
@@ -103,6 +104,30 @@ for ((w = 1; w <= week; w++)); do
   slim "stats_w$ww.json" "$SLIM_ROWS"
 done
 
+# Last season's leagues, finished: brackets with every round decided, weekly scores, and projections for the weeks
+# around the playoffs, to replay the playoffs through the app's bracket code (docs/title-odds.md).
+prev=$((season - 1))
+fetch "prev/leagues.json" "$SLEEPER/user/$user_id/leagues/nfl/$prev"
+mapfile -t prev_ids < <(jq -r '.[].league_id' "$out/prev/leagues.json" 2>/dev/null || true)
+for id in "${prev_ids[@]}"; do mask "$id"; done
+for id in "${prev_ids[@]}"; do
+  d="prev/leagues/$id"
+  fetch "$d/rosters.json" "$SLEEPER/league/$id/rosters"
+  fetch "$d/users.json" "$SLEEPER/league/$id/users"
+  fetch "$d/winners_bracket.json" "$SLEEPER/league/$id/winners_bracket"
+  fetch "$d/losers_bracket.json" "$SLEEPER/league/$id/losers_bracket"
+  for ((w = 1; w <= LAST_REG_WEEK; w++)); do
+    fetch "$d/matchups_w$(printf %02d "$w").json" "$SLEEPER/league/$id/matchups/$w"
+  done
+done
+if [ "${#prev_ids[@]}" -gt 0 ]; then
+  for ((w = 13; w <= LAST_REG_WEEK; w++)); do
+    ww=$(printf %02d "$w")
+    fetch "prev/proj_w$ww.json" "$SLEEPER_WEB/projections/nfl/$prev/$w?season_type=regular$qs"
+    slim "prev/proj_w$ww.json" "$SLIM_ROWS"
+  done
+fi
+
 # FantasyCalc market values in each league's format, redraft and dynasty (public data, for local tests).
 nearest() { jq -nr --argjson x "$1" --argjson opts "$2" '$opts | min_by((. - $x) | fabs)'; }
 mapfile -t formats < <(jq -r '.[] | "\(.total_rosters // 12) \(.scoring_settings.rec // 0) \([.roster_positions[]? | select(. == "QB" or . == "SUPER_FLEX")] | length)"' "$out/leagues.json" 2>/dev/null | sort -u)
@@ -118,7 +143,7 @@ for f in "${formats[@]}"; do
   done
 done
 
-echo "Fetched $oks files ($fails failed) for ${#league_ids[@]} league(s), season $season week $week."
+echo "Fetched $oks files ($fails failed) for ${#league_ids[@]} league(s), season $season week $week, and ${#prev_ids[@]} from $prev."
 [ "$oks" -gt 3 ] || { echo "Too few fetches succeeded; not uploading." >&2; exit 1; }
 
 tar -C "$work" -czf - league | age -r "$recipient" -o "$work/$ASSET"

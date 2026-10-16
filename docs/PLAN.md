@@ -210,8 +210,14 @@
   - **Shown:** a Playoffs card in the Season tab (this round's games, chance to win them, title odds, who's out); trades show title odds.
   - **Checked:** the parser on the owner's two real 6-team brackets (pre-filled, week 6); unit tests for decided, live and two-week rounds;
     an end-to-end test of a final under way.
-  - **Unverified:** how soon Sleeper records each round's winners after the games, and the tie rule. Points from weeks already played
-    cover the first.
+  - **Checked on a finished season (2026-10-16):** the owner's 2025 league, replayed from the start of each playoff week with later
+    results hidden (`scripts/check/bracket-replay.ts`). Every check passed:
+    - Sleeper's recorded winners had the higher score in all 7 games.
+    - The app's seeding matched the bracket.
+    - At every week the app had the right teams alive and the decided rounds at their final points.
+    - The weights covered only teams still alive, and the champion was at 100% after the final.
+  - **Unverified:** how soon Sleeper records each round's winners after the games (points from weeks already played cover it), the tie
+    rule, two-week rounds and re-seeding in real data.
 
 - **Archive and ledger hardening — built (2026-10-16):**
   - **Daily archive jobs survive late runs.** On Oct 16 GitHub started the 12:17 UTC run at 13:16 and skipped the 08:17 one.
