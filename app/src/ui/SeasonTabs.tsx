@@ -4,7 +4,8 @@ import { handcuffs, nextUpForOut, type Handcuff } from '../analysis/handcuffs';
 import { irStash } from '../analysis/irStash';
 import { marketPrice } from '../analysis/faab';
 import { GRADE_WEIGHTS, leagueGrades, type Grade, type LeagueGrades, type Part } from '../analysis/grades';
-import { evaluateTrade, freeAgentPool, streamers, waiverBoard, type ByeWeek, type LeagueOutlook, type TradeSideResult } from '../analysis/outlook';
+import type { Claim } from '../analysis/claims';
+import { claimPlan, evaluateTrade, freeAgentPool, streamers, waiverBoard, type ByeWeek, type LeagueOutlook, type TradeSideResult } from '../analysis/outlook';
 import { carriedForward, longTermRanking } from '../analysis/longterm';
 import { pickAssets, pickLabel, pickTotals, type PickAsset } from '../analysis/picks';
 import { findTrades, type TradeIdea } from '../analysis/tradeFinder';
@@ -51,7 +52,8 @@ export function WaiversTab({ bundle, now }: { bundle: LeagueBundle; now: number 
     const trending = await loadTrending();
     try {
       const season = await loadSeason(bundle);
-      return { season, board: waiverBoard(season.outlook, bundle.myRoster!, bundle.ctx, trending, season.claims), nextUp: nextUpForOut(bundle.ctx.players) };
+      const board = waiverBoard(season.outlook, bundle.myRoster!, bundle.ctx, trending, season.claims);
+      return { season, board, plan: claimPlan(season.outlook, bundle.myRoster!, bundle.ctx, board), nextUp: nextUpForOut(bundle.ctx.players) };
     } catch (e) {
       logError(e);
       return { fallback: analyzeWaivers(bundle.league, bundle.data.rosters, bundle.myRoster!, bundle.ctx, trending), reason: e instanceof Error ? e.message : String(e) };
@@ -92,7 +94,7 @@ export function WaiversTab({ bundle, now }: { bundle: LeagueBundle; now: number 
     );
   }
 
-  const { season, board, nextUp } = w.data;
+  const { season, board, plan, nextUp } = w.data;
   const o = season.outlook;
   const notes = (r: (typeof board.rows)[number]) => {
     const starter = nextUp.get(r.player.id);
@@ -107,6 +109,7 @@ export function WaiversTab({ bundle, now }: { bundle: LeagueBundle; now: number 
   const showBids = board.remaining !== undefined;
   return (
     <div class="stack">
+      <ClaimPlanCard bundle={bundle} outlook={o} plan={plan} bids={showBids} />
       <div class="card">
         <h2>Free agents</h2>
         <p class="muted small">
@@ -171,6 +174,52 @@ export function WaiversTab({ bundle, now }: { bundle: LeagueBundle; now: number 
       <Handcuffs bundle={bundle} outlook={o} />
       <IrStashCard bundle={bundle} outlook={o} />
       <Streamers bundle={bundle} outlook={o} now={now} />
+    </div>
+  );
+}
+
+/** Waiver claims in order, with drops, backups and bids (analysis/claims.ts). */
+function ClaimPlanCard({ bundle, outlook, plan, bids }: { bundle: LeagueBundle; outlook: LeagueOutlook; plan: readonly Claim[]; bids: boolean }) {
+  if (!plan.length) return null;
+  const player = (id: string) => bundle.ctx.players.get(id) ?? outlook.model.player(id);
+  const name = (id: string) => player(id)?.name ?? id;
+  const tag = (id: string) => {
+    const p = player(id);
+    return p ? `${p.pos}${p.team ? `·${p.team}` : ''}` : '';
+  };
+  const bid = (b: number | undefined) => (bids && b !== undefined ? ` · bid ${money(b)}` : '');
+  return (
+    <div class="card">
+      <h2>Claim plan</h2>
+      <ol class="claims">
+        {plan.map((c) => (
+          <li>
+            Add <strong>{name(c.add)}</strong> <span class="muted small">{tag(c.add)}</span>
+            {c.drop ? (
+              <>
+                , drop <strong>{name(c.drop)}</strong>
+              </>
+            ) : (
+              ' into an open spot'
+            )}
+            {bid(c.bid)}
+            <div class="muted small">
+              {signed(c.rosGain)} over the rest of the season{c.now >= 0.05 ? `, ${signed(c.now)} this week` : ''}
+            </div>
+            {c.backup ? (
+              <div class="small">
+                If that fails: <strong>{name(c.backup.add)}</strong> <span class="muted small">{tag(c.backup.add)}</span>, same drop{bid(c.backup.bid)}{' '}
+                <span class="muted small">({signed(c.backup.rosGain)})</span>
+              </div>
+            ) : null}
+          </li>
+        ))}
+      </ol>
+      <p class="muted small">
+        Each claim assumes the ones above it went through: its drop{bids ? ' and bid come from the roster and budget' : ' comes from the roster'} they&apos;d
+        leave. A backup uses the same drop, so once that player is gone it can&apos;t go through: it lands only if the claim above it fails.
+        {bids ? ' A backup never bids more than its claim.' : ''}
+      </p>
     </div>
   );
 }

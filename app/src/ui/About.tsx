@@ -65,6 +65,11 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             fitted model.
           </li>
           <li>
+            <strong>Claim plan</strong> (Waivers tab): up to three waiver claims in order, each with the drop that costs least for the roster the
+            claims above would leave. Each has a backup for the same drop, which can only go through if the claim above it fails. In FAAB leagues,
+            each bid comes from the budget left after the claims above, and a backup never bids more than its claim.
+          </li>
+          <li>
             <strong>Handcuffs</strong> (Waivers tab): the depth chart&apos;s next man up behind your QB and RB starters. In 2019–2025 games a starter
             sat, his backup gained 76% (QBs) or 40% (RBs) of the starter&apos;s points on top of his own, and those shares predicted later seasons
             better than the backup&apos;s own average. TE and WR backups didn&apos;t pass that test, so they aren&apos;t valued. Insurance is the chance the

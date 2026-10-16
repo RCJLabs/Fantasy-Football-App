@@ -7,6 +7,7 @@ import { faabMarket, suggestBid, tierOf, type BidAdvice, type FaabMarket } from 
 import { normCdf } from '../engine/math';
 import { bracketState, simulateBracket, type BracketOdds, type BracketState, type BracketTeam } from './bracket';
 import { activeIds, addGains, changeVariance, cheapestDrops, playoffRounds, playoffRoundWeeks, playoffWeekInfo, regularSeasonEnd, RosModel, rosterLimit, seasonEnd, teamDrift, teamIds, weekWeights } from './ros';
+import { planClaims, type Claim } from './claims';
 import { simulateSeason, type SeasonTeam, type TeamOdds } from './season';
 
 export interface OutlookInput {
@@ -246,6 +247,8 @@ export interface WaiverAdvice {
   rosGain: number;
   drop?: PlayerRow;
   bid?: BidAdvice;
+  /** FAAB market tier: rank among free agents at his position (0 = the best). */
+  tier?: 0 | 1 | 2;
   trendingAdds?: number;
 }
 
@@ -253,6 +256,8 @@ export interface WaiverBoard {
   rows: WaiverAdvice[];
   market: FaabMarket | null;
   remaining?: number;
+  /** The league's average FAAB left, for scaling bids. */
+  avgRemaining?: number;
   openSpots: number;
 }
 
@@ -305,16 +310,60 @@ export function waiverBoard(
     const g = gains.get(id);
     const row: WaiverAdvice = { player, gainThisWeek: gainNow(player), rosGain: Math.max(0, g?.gain ?? 0) };
     if (g?.drop) row.drop = playerRow(g.drop, league, ctx);
-    if (market && remaining !== undefined)
-      row.bid = suggestBid(market, player.pos, tierOf(tierRank.get(id) ?? 99), row.rosGain, remaining, avgRemaining, league.rules.waiverBidMin ?? 0);
+    if (market && remaining !== undefined) {
+      row.tier = tierOf(tierRank.get(id) ?? 99);
+      row.bid = suggestBid(market, player.pos, row.tier, row.rosGain, remaining, avgRemaining, league.rules.waiverBidMin ?? 0);
+    }
     const t = trending.get(id);
     if (t !== undefined) row.trendingAdds = t;
     return row;
   });
   out.sort((a, b) => b.gainThisWeek + b.rosGain - (a.gainThisWeek + a.rosGain) || (b.trendingAdds ?? 0) - (a.trendingAdds ?? 0));
   const board: WaiverBoard = { rows: out.slice(0, limit), market, openSpots };
-  if (remaining !== undefined) board.remaining = remaining;
+  if (remaining !== undefined) {
+    board.remaining = remaining;
+    board.avgRemaining = avgRemaining;
+  }
   return board;
+}
+
+/**
+ * The waiver claim plan (claims.ts) for your roster: from the board's best free agents, claims in order with their
+ * drops, backups and (with FAAB) bids from the budget left after the claims above.
+ */
+export function claimPlan(o: LeagueOutlook, myRoster: Roster, ctx: WeekContext, board: WaiverBoard, maxClaims = 3): Claim[] {
+  const { league, model } = o;
+  const me = o.teams.get(myRoster.rosterId);
+  if (!me || !o.weeks.length || !board.rows.length) return [];
+  const rows = new Map(board.rows.map((r) => [r.player.id, r]));
+  const droppable = activeIds(myRoster).filter((id) => !playerRow(id, league, ctx).locked);
+  const gains = new Map<string, (r: PlayerRow) => number>();
+  const market = board.market;
+  const remaining = board.remaining;
+  return planClaims({
+    value: (team) => model.value(team, me.weights),
+    thisWeek: (team, id) => {
+      const key = team.join(',');
+      let gain = gains.get(key);
+      if (!gain) {
+        gain = thisWeekGain(league, { ...myRoster, players: [...team] }, ctx);
+        gains.set(key, gain);
+      }
+      return gain(rows.get(id)?.player ?? playerRow(id, league, ctx));
+    },
+    team: teamIds(myRoster),
+    droppable,
+    openSpots: board.openSpots,
+    candidates: board.rows.slice(0, 15).map((r) => r.player.id),
+    ...(market && remaining !== undefined
+      ? {
+          budget: remaining,
+          bid: (id: string, gain: number, left: number) =>
+            suggestBid(market, rows.get(id)?.player.pos ?? '?', rows.get(id)?.tier ?? 2, gain, left, board.avgRemaining ?? 0, league.rules.waiverBidMin ?? 0).bid,
+        }
+      : {}),
+    maxClaims,
+  });
 }
 
 /** Sleeper's own fantasy points on a projection row, for prefiltering (IDP rows have none: keep them). */

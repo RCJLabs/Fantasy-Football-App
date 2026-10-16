@@ -578,8 +578,12 @@ h3 {
   background: var(--surface-2);
   font-weight: 600;
 }
-.handcuffs {
+.handcuffs,
+.claims {
   padding-left: 1.1rem;
+}
+.claims li {
+  margin: 0.5rem 0;
 }
 .handcuffs li {
   margin: 0.45rem 0;
