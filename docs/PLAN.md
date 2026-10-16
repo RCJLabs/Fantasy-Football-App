@@ -221,6 +221,16 @@
   - **FAAB:** each bid comes from the budget left after the claims above. A backup never bids more than its claim.
   - **On the owner's leagues:** three claims each. Bids total $23 of $25 and $9 of $22.
 
+- **What would it take — built (2026-10-16):** item 6 of the owner's assistance list; details in
+  [trade-finder.md](trade-finder.md#what-would-it-take-one-player).
+  - **What it does:** for a player on another team, packages of one or two of yours that help both best lineups, best for you
+    first, with market values. Packages they'd see as lopsided go last. When none helps both, it shows the cheapest their lineup gains
+    from, and it says whether he'd start for you.
+  - **Free agents:** a two-for-one's open spot isn't filled from free agency, unlike the trade builder. You could make that pickup
+    anyway, and counting it made a backup QB look like +32.
+  - **On the owner's leagues:** for rivals' top three players, packages that help both exist for 2 of 27 and 3 of 33. For the rest,
+    the cheapest their lineup gains from costs a median 11 points of the owner's.
+
 - **Buy low / sell high — built, display only (2026-10-16):** item 5 of the owner's assistance list; details in [luck.md](luck.md).
   - **Backtest, 2022–2025:** a player's luck is his points a game over his last four games above what his usage was worth
     (ffopportunity). It didn't predict how players did against RotoWire's projection, this week or over the next four.
@@ -702,8 +712,9 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
 5. **Buy low / sell high.** **Built 2026-10-16, display only** ([luck.md](luck.md)).
    - Points against what usage was worth (ffopportunity), with touchdowns against expected, in player details and a Trade-tab card.
    - The backtest found no lift over RotoWire's projections, which already price streaks in, so it doesn't feed values or trade ideas.
-6. **"What would it take" for one player.** You name a player on another team; it finds your cheapest packages where both lineups gain
-   and market values roughly match. It's the trade finder turned around.
+6. **"What would it take" for one player.** **Built 2026-10-16** ([trade-finder.md](trade-finder.md#what-would-it-take-one-player)).
+   - Packages of one or two of your players that help both lineups, best for you first. Lopsided ones on market value go last.
+   - When none helps both, the cheapest package their lineup gains from.
 7. **Across all your leagues (Home).** Players you start in several leagues, NFL games where your starters bunch up, and the same waiver
    target in two leagues (bid where he matters more). No new data.
 8. **Game-day inactive alerts.**

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import { analyzeWaivers, type PlayerRow } from '../analysis/analyze';
 import { handcuffs, nextUpForOut, type Handcuff } from '../analysis/handcuffs';
 import { irStash } from '../analysis/irStash';
@@ -9,7 +9,8 @@ import { claimPlan, evaluateTrade, freeAgentPool, streamers, waiverBoard, type B
 import { carriedForward, longTermRanking } from '../analysis/longterm';
 import { buyLowSellHigh, STREAK_GAP, type StreakPick } from '../analysis/luck';
 import { pickAssets, pickLabel, pickTotals, type PickAsset } from '../analysis/picks';
-import { findTrades, type TradeIdea } from '../analysis/tradeFinder';
+import { teamIds } from '../analysis/ros';
+import { findPackages, findTrades, LOPSIDED, TRADED, type TargetPackage, type TargetSearch, type TradeIdea } from '../analysis/tradeFinder';
 import { FANTASYCALC_URL, horizons, loadMarketValues, marketParams, marketTotals, type Horizon, type Market } from '../data/fantasycalc';
 import { loadTrending } from '../data/repo';
 import { InjuryBadge, ErrorBox, Spinner, touchdowns, usageNote } from './components';
@@ -697,6 +698,7 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
   const [get, setGet] = useState<string[]>([]);
   const [givePicks, setGivePicks] = useState<string[]>([]);
   const [getPicks, setGetPicks] = useState<string[]>([]);
+  const [target, setTarget] = useState<string | null>(null);
   const freeAgents = useMemo(() => freeAgentPool(o, bundle.ctx), [o, bundle.ctx]);
   const market = useAsync(async () => {
     const hs = horizons(bundle.league);
@@ -707,6 +709,8 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
   const values = markets.find((m) => m.horizon === 'season')?.values.players ?? null;
   const longMarket = markets.find((m) => m.horizon === 'long')?.values ?? null;
   const longValues = longMarket?.players ?? null;
+  // The market a league's managers trade on: dynasty values in dynasty leagues, this season's otherwise.
+  const tradeMarket = bundle.league.rules.type === 'dynasty' ? (longValues ?? values) : values;
   // Dynasty leagues: every team's future picks, valued on the long-term market once it loads.
   const picks = useMemo(
     () => (season.tradedPicks ? pickAssets(bundle.league, [...o.teams.values()].map((t) => t.roster), season.tradedPicks, longMarket?.picks ?? new Map(), o.odds) : []),
@@ -779,7 +783,28 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
       {passed ? <p class="note">This league's trade deadline (week {deadline}) has passed.</p> : null}
       {passed ? null : <TradeIdeas bundle={bundle} o={o} freeAgents={freeAgents} values={values} name={name} onOpen={(idea) => open(idea.partner, idea.give, idea.get)} />}
       {passed ? null : (
-        <BuyLowSellHigh bundle={bundle} o={o} name={name} onBuy={(p) => open(p.rosterId, [], [p.id])} onSell={(p) => open(partnerId, [p.id], [])} />
+        <BuyLowSellHigh
+          bundle={bundle}
+          o={o}
+          name={name}
+          onBuy={(p) => open(p.rosterId, [], [p.id])}
+          onSell={(p) => open(partnerId, [p.id], [])}
+          onPrice={(p) => {
+            setTarget(p.id);
+            document.getElementById('what-it-takes')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }}
+        />
+      )}
+      {passed ? null : (
+        <WhatItTakes
+          bundle={bundle}
+          o={o}
+          market={tradeMarket}
+          name={name}
+          target={target}
+          onTarget={setTarget}
+          onOpen={(p) => open(p.partner, p.give, p.get)}
+        />
       )}
       <div class="card" id="trade-builder">
         <h2>Build a trade</h2>
@@ -936,7 +961,7 @@ function TradeIdeas({
                 {values && give && get ? (
                   <p class="muted small">
                     Market value: you give {shortValue(give)}, you get {shortValue(get)}
-                    {get > give * 1.4 ? ' (they may see it as lopsided)' : ''}
+                    {get > give * LOPSIDED ? ' (they may see it as lopsided)' : ''}
                   </p>
                 ) : null}
                 <button type="button" class="btn btn-small" onClick={() => onOpen(idea)}>
@@ -967,12 +992,14 @@ function BuyLowSellHigh({
   name,
   onBuy,
   onSell,
+  onPrice,
 }: {
   bundle: LeagueBundle;
   o: LeagueOutlook;
   name: (id: string) => string;
   onBuy: (pick: StreakPick) => void;
   onSell: (pick: StreakPick) => void;
+  onPrice: (pick: StreakPick) => void;
 }) {
   const usage = bundle.ctx.usage?.players;
   const myId = bundle.myRoster!.rosterId;
@@ -1000,6 +1027,14 @@ function BuyLowSellHigh({
               <button type="button" class="btn btn-small" onClick={() => (buying ? onBuy(p) : onSell(p))}>
                 Open in the builder
               </button>
+              {buying ? (
+                <>
+                  {' '}
+                  <button type="button" class="btn btn-small" onClick={() => onPrice(p)}>
+                    What would it take?
+                  </button>
+                </>
+              ) : null}
             </li>
           );
         })}
@@ -1019,6 +1054,143 @@ function BuyLowSellHigh({
       {list(picks.sell, false)}
       <h3>Buy low: theirs running cold who'd start for you</h3>
       {list(picks.buy, true)}
+    </div>
+  );
+}
+
+/** What it would take to get one player from another team: the trade finder turned around (docs/trade-finder.md). */
+function WhatItTakes({
+  bundle,
+  o,
+  market,
+  name,
+  target,
+  onTarget,
+  onOpen,
+}: {
+  bundle: LeagueBundle;
+  o: LeagueOutlook;
+  market: MarketValues;
+  name: (id: string) => string;
+  target: string | null;
+  onTarget: (id: string | null) => void;
+  onOpen: (p: TargetPackage) => void;
+}) {
+  const myId = bundle.myRoster!.rosterId;
+  const [state, setState] = useState<{ running: boolean; search?: TargetSearch | null; error?: string }>({ running: false });
+  const perWeek = (id: string) => (o.weeks.length ? o.model.total(id) / o.weeks.length : 0);
+  // Other teams' QBs, RBs, WRs and TEs, team by team, most valuable first.
+  const teams = useMemo(
+    () =>
+      [...o.teams.values()]
+        .filter((t) => t.rosterId !== myId)
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((t) => ({ team: t, ids: teamIds(t.roster).filter((id) => TRADED.has(o.model.player(id)?.pos ?? '')).sort((a, b) => o.model.total(b) - o.model.total(a)) }))
+        .filter((t) => t.ids.length),
+    [o, myId],
+  );
+  useEffect(() => {
+    if (!target) {
+      setState({ running: false });
+      return;
+    }
+    let live = true;
+    setState({ running: true });
+    findPackages(o, bundle.ctx, myId, target, { market }).then(
+      (search) => live && setState({ running: false, search }),
+      (e) => {
+        logError(e);
+        if (live) setState({ running: false, error: e instanceof Error ? e.message : String(e) });
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [o, bundle.ctx, myId, target, market]);
+
+  const list = (ids: readonly string[]) => ids.map(name).join(' + ');
+  const marketNote = (p: TargetPackage) => {
+    if (!p.market) return null;
+    const { give, get, unvalued } = p.market;
+    const note = get > give * LOPSIDED ? ' (they may see it as lopsided)' : give > get * LOPSIDED ? ' (well above his market value)' : '';
+    return (
+      <p class="muted small">
+        Market value: you give {shortValue(give)}
+        {unvalued ? ` (${unvalued === 1 ? 'one player has' : `${unvalued} players have`} no value)` : ''}, you get {shortValue(get)}
+        {note}
+      </p>
+    );
+  };
+  const packageList = (ps: readonly TargetPackage[]) => (
+    <ol class="idea-list">
+      {ps.map((p) => (
+        <li>
+          <p>
+            Give <strong>{list(p.give)}</strong>
+          </p>
+          <p class="small">
+            <span class={p.mine >= 0 ? 'good' : 'bad'}>You {signed(p.mine)} pts</span>
+            {p.result.me.range ? ` (80%: ${signed(p.result.me.range[0])} to ${signed(p.result.me.range[1])})` : ''} · them {signed(p.theirs)} pts
+          </p>
+          {p.result.them.drops.length ? <p class="muted small">They drop {list(p.result.them.drops)} to make room.</p> : null}
+          {marketNote(p)}
+          <button type="button" class="btn btn-small" onClick={() => onOpen(p)}>
+            Open in the builder
+          </button>
+        </li>
+      ))}
+    </ol>
+  );
+  const s = state.search;
+  return (
+    <div class="card takes" id="what-it-takes">
+      <h2>What would it take?</h2>
+      <label class="field">
+        <span class="muted small">Player you want</span>
+        <select value={target ?? ''} onChange={(e) => onTarget((e.target as HTMLSelectElement).value || null)}>
+          <option value="">Choose a player…</option>
+          {teams.map(({ team, ids }) => (
+            <optgroup label={team.name}>
+              {ids.map((id) => (
+                <option value={id}>
+                  {name(id)} · {o.model.player(id)?.pos ?? ''} · {pts(perWeek(id))}/wk
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </label>
+      <p class="muted small">
+        Packages of one or two of your QBs, RBs, WRs and TEs (your 12 most valuable) for him that improve both best lineups over {weekSpan(o.weeks)}, best for
+        you first{market ? '. Ones that give his team under 1/1.4 of his market value go last' : ''}.
+      </p>
+      {target && s && !state.running ? (
+        <p class="small">
+          {s.starts === 0
+            ? `${name(target)} wouldn't start for you in any week ahead.`
+            : `${name(target)} would start for you in ${s.starts === s.weeks ? 'every week ahead' : `${s.starts} of the ${s.weeks} weeks ahead`}.`}
+        </p>
+      ) : null}
+      {state.running ? <p class="muted">Searching…</p> : null}
+      {state.error ? <p class="note">The search failed: {state.error}</p> : null}
+      {target && s && !state.running ? (
+        s.packages.length ? (
+          packageList(s.packages)
+        ) : s.closest.length ? (
+          <>
+            <p>No package helps both lineups. These help theirs at the least cost to yours:</p>
+            {packageList(s.closest)}
+          </>
+        ) : (
+          <p>No package of one or two of your players helps their lineup. It would take more, or a different position.</p>
+        )
+      ) : null}
+      {target && s && !state.running ? (
+        <p class="muted small">
+          Lineup math only, as with trade ideas: whether they say yes also depends on how they rank players. A two-for-one&apos;s open spot isn&apos;t filled
+          from free agency here, since you could make that pickup anyway; the builder adds him. Open a package for its odds, byes and drops.
+        </p>
+      ) : null}
     </div>
   );
 }

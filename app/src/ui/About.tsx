@@ -80,6 +80,12 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             they add to your lineups once Sleeper projects them back. On IR they take no bench spot until then.
           </li>
           <li>
+            <strong>What would it take?</strong> (Trade tab): pick a player on another team, and it searches packages of one or two of your players
+            for him that improve both best lineups, best for you first, with market values. When none does, it shows the cheapest packages their
+            lineup gains from, and what they&apos;d cost yours. A two-for-one&apos;s open spot isn&apos;t filled from free agency there, since you could
+            make that pickup anyway.
+          </li>
+          <li>
             <strong>Buy low, sell high</strong> (Trade tab and player details): players whose PPR points over recent games ran 3+ a game ahead of
             or behind what their usage was worth (expected points from ffopportunity). Tested on 2022–2025, a streak didn&apos;t predict how
             players did against RotoWire&apos;s projections afterwards, so values don&apos;t change. The card lists your players running hot and other
