@@ -45,6 +45,17 @@ test.beforeEach(async ({ page }) => {
   await mockBackends(page);
 });
 
+test('About: the scored prediction ledger, once three weeks are in', async ({ page }, testInfo) => {
+  await page.route('**/data/ledger.json', (route) => route.fulfill({ json: fx.ledger }));
+  await page.goto('./#/about');
+  const card = page.locator('.card').filter({ has: page.getByRole('heading', { name: "How did the app's own predictions do?" }) });
+  await expect(card).toContainText('2026 weeks 6–8, 42 games');
+  // Limited-practice Questionable players pooled over the three weeks: 7 + 9 + 5 of 30 played.
+  await expect(card.locator('tr').filter({ hasText: 'Questionable, limited practice' })).toContainText(/30\s*71%\s*70%/);
+  await expect(card).toContainText('Points if active: 450 players projected for 5+ PPR who played. Average miss 4.4 points, bias −0.2; 67%');
+  await card.screenshot({ path: testInfo.outputPath('ledger.png') });
+});
+
 test('unknown username shows an error', async ({ page }) => {
   await page.goto('./');
   await page.getByLabel('Sleeper username').fill('nobody');

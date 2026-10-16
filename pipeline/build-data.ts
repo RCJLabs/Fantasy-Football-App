@@ -5,6 +5,7 @@
 //   data/usage.json     recent snap share, targets and carries (nflverse), shown as context only
 //   data/matchups.json  defense vs position beyond players' usual, and regular cornerbacks (nflverse), context only
 //   data/baseline.json  in-house baseline v0, a second opinion the app shows but doesn't blend (ffopportunity, CC-BY-SA)
+//   data/ledger.json    the app's pre-kickoff predictions, scored each finished week (aggregates; the `ledger` release)
 //   data/manifest.json  timestamps, sources and licences
 // Usage: tsx pipeline/build-data.ts [--out dist/data] [--cache .cache]
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -14,6 +15,7 @@ import {
   type AccuracyFile,
   type BaselineFile,
   type CompactPlayer,
+  type LedgerFile,
   type Manifest,
   type ManifestEntry,
   type MatchupsFile,
@@ -57,6 +59,18 @@ const optional = (url: string) =>
     console.warn(`optional source unavailable: ${e}`);
     return '';
   });
+
+/** The scored prediction ledger, published by the archive workflow's ledger job (scripts/ledger/auto.sh). */
+async function scoredLedger(): Promise<unknown> {
+  const repo = process.env.GITHUB_REPOSITORY || 'RCJLabs/Fantasy-Football-App';
+  const text = await optional(`https://github.com/${repo}/releases/download/ledger/ledger.json`);
+  try {
+    return text ? (JSON.parse(text) as unknown) : null;
+  } catch (e) {
+    console.warn(`ledger.json unreadable: ${e}`);
+    return null;
+  }
+}
 
 /** The currently deployed copy of a data file, if there is one. */
 async function deployedShard(name: string): Promise<unknown> {
@@ -251,6 +265,7 @@ async function main() {
   const stats = await seasonStats(season, week);
   const accuracy = stats ? await accuracyLedger(season, stats, now) : null;
   const baseline = stats ? await baselineShard(season, week, now, stats, gamesRecords, gsisBySleeper, playersFile.players) : null;
+  const ledger = await scoredLedger();
 
   // Optional shards: publish a fresh build that checks out, otherwise keep the deployed copy while it still
   // describes this season (this week, for the baseline), so one upstream outage doesn't take a feature down.
@@ -275,8 +290,14 @@ async function main() {
       license: 'CC-BY-SA 4.0, adapted from ffopportunity (CC-BY-SA 4.0); no Sleeper or RotoWire data is republished',
       credits: 'Expected points via ffopportunity (ffverse); lines via nflverse',
     },
+    'ledger.json': {
+      source:
+        "The app's own predictions, committed before each kickoff (SHA-256 fingerprints in the archive releases), scored against nflverse game-day rosters and weekly stats",
+      license: 'Aggregate scores only; no predictions, projections or stats are republished. nflverse data CC-BY 4.0',
+      credits: 'Outcomes via nflverse',
+    },
   };
-  const fresh: Record<ShardName, unknown> = { 'usage.json': usage, 'matchups.json': matchups, 'accuracy.json': accuracy, 'baseline.json': baseline };
+  const fresh: Record<ShardName, unknown> = { 'usage.json': usage, 'matchups.json': matchups, 'accuracy.json': accuracy, 'baseline.json': baseline, 'ledger.json': ledger };
   const shards = new Map<ShardName, Record<string, unknown>>();
   const health: string[] = [];
   for (const name of Object.keys(entries) as ShardName[]) {
@@ -312,12 +333,14 @@ async function main() {
   const use = shards.get('usage.json') as UsageFile | undefined;
   const mat = shards.get('matchups.json') as MatchupsFile | undefined;
   const base = shards.get('baseline.json') as BaselineFile | undefined;
+  const led = shards.get('ledger.json') as LedgerFile | undefined;
   console.log(
     `season ${season} week ${week}: ${playersFile.players.length} players (${withPractice} with practice status, report week ${report?.week ?? '-'}), ${scheduleFile.games.length} games` +
       `${all ? `, accuracy weeks ${acc!.weeks.join(',')} n=${all.n} MAE ${all.mae} within±1sd ${Math.round(all.within1 * 100)}%` : ''}` +
       `${use ? `, usage weeks ${use.weeks.join(',')} for ${Object.keys(use.players).length} players` : ''}` +
       `${mat ? `, matchups for ${Object.keys(mat.defense).length} defenses` : ''}` +
-      `${base ? `, baseline for ${Object.keys(base.players).length} players through week ${base.throughWeek}` : ''} → ${OUT}`,
+      `${base ? `, baseline for ${Object.keys(base.players).length} players through week ${base.throughWeek}` : ''}` +
+      `${led ? `, ledger weeks ${led.weeks.map((w) => w.week).join(',')}` : ''} → ${OUT}`,
   );
   for (const line of health) console.log(line);
 }

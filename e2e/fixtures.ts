@@ -1,6 +1,6 @@
 // Mock Sleeper responses and pipeline data files for the end-to-end test. Shapes follow the live
 // responses recorded in docs/spikes.md; names and numbers are invented.
-import type { BaselineFile, CompactPlayer, MatchupsFile, PlayersFile, ScheduleFile, UsageFile } from '../app/src/data/contracts';
+import type { BaselineFile, CompactPlayer, LedgerFile, LedgerWeek, MatchupsFile, PlayersFile, ScheduleFile, UsageFile } from '../app/src/data/contracts';
 import type { RawLeague, RawMatchup, RawProjection, RawRoster, RawTradedPick, RawTransaction } from '../app/src/sleeper/raw';
 
 const H = 3_600_000;
@@ -108,6 +108,32 @@ export const playersFile: PlayersFile = {
 };
 
 export const manifest = { schemaVersion: 1, generatedAt: iso(-3), files: {} };
+
+/** Three scored weeks of the prediction ledger (numbers invented), enough for the About page to show it. */
+const ledgerWeek = (week: number, questionable: { n: number; observed: number }): LedgerWeek => ({
+  season: '2026',
+  week,
+  games: 14,
+  scored: 410,
+  tagged: {
+    n: questionable.n + 10,
+    brier: 0.09,
+    logLoss: 0.31,
+    calibration: [
+      { group: 'Out', n: 10, predicted: 0, observed: 0 },
+      { group: 'Questionable, Limited (final report)', n: questionable.n, predicted: 0.71, observed: questionable.observed },
+    ],
+  },
+  points: { minProjected: 5, n: 150, mae: 4.4, bias: -0.2, within1: 0.67, within2: 0.94 },
+  baseline: { n: 0, appMae: 0, baselineMae: 0, ratio: 0 },
+  props: { n: 0, appMae: 0, propsMae: 0, blendMae: 0, ratio: 0 },
+});
+export const ledger: LedgerFile = {
+  schemaVersion: 1,
+  generatedAt: iso(-3),
+  season: '2026',
+  weeks: [ledgerWeek(6, { n: 10, observed: 0.7 }), ledgerWeek(7, { n: 12, observed: 0.75 }), ledgerWeek(8, { n: 8, observed: 0.625 })],
+};
 
 /** Matchup context (numbers invented): CCC has been soft on WRs and its top cornerback is out. */
 export const matchupContext: MatchupsFile = {

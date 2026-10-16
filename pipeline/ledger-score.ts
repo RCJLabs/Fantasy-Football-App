@@ -1,6 +1,7 @@
 // Scoring the prediction ledger (the reveal): for each player-game, the last prediction committed
 // before kickoff, against what happened (nflverse game-day actives and PPR points). Only games that
 // have been played count. Aggregates only: nothing per player is published.
+import { DATA_SCHEMA_VERSION, type LedgerCalibrationRow, type LedgerFile, type LedgerWeek } from '../app/src/data/contracts';
 import { scoreStats } from '../app/src/engine/scoring';
 import { LEDGER_SCORING, type PlayerPrediction, type PredictionFile } from './ledger';
 import { nflverseStatLine } from './nflverse-stats';
@@ -55,34 +56,65 @@ export function nflverseOutcomes(
   return { played, byGsis };
 }
 
-export interface CalibrationRow {
-  group: string;
-  n: number;
-  /** Mean predicted P(active) and observed share active. */
-  predicted: number;
-  observed: number;
+/** A scored week is published as is (data/ledger.json), so its shape lives with the data contracts. */
+export type CalibrationRow = LedgerCalibrationRow;
+export type LedgerScore = LedgerWeek;
+
+/** Days after a week's last kickoff before it's scored, so stats and game-day statuses have settled. [design] */
+export const SETTLE_DAYS = 2;
+/** After this many days a week is scored even with a game missing from the stats (postponed, or never published). */
+export const GIVE_UP_DAYS = 7;
+
+/**
+ * Committed regular-season weeks ready to score, ascending: every scheduled game of the week has stats and its
+ * last kickoff was SETTLE_DAYS ago, or GIVE_UP_DAYS have passed. A week is scored once, so it waits for
+ * corrections to settle.
+ */
+export function dueWeeks(
+  weeks: readonly number[],
+  schedule: ReadonlyArray<{ id: string; week: number; kickoff: string }>,
+  played: ReadonlySet<string>,
+  now: number,
+): number[] {
+  const day = 86_400_000;
+  return weeks
+    .filter((w) => {
+      if (w < 1 || w > 18) return false;
+      const games = schedule.filter((g) => g.week === w);
+      if (!games.length) return false;
+      const since = (now - Math.max(...games.map((g) => Date.parse(g.kickoff)))) / day;
+      return since >= GIVE_UP_DAYS || (since >= SETTLE_DAYS && games.every((g) => played.has(g.id)));
+    })
+    .sort((a, b) => a - b);
 }
 
-export interface LedgerScore {
-  season: string;
-  week: number;
-  games: number;
-  /** Predictions with an outcome (played game, player on a game-day roster). */
-  scored: number;
-  /** Players tagged Questionable, Doubtful or Out: where the chance to play matters. */
-  tagged: { n: number; brier: number; logLoss: number; calibration: CalibrationRow[] };
-  /** Active players projected for at least `minProjected` PPR: points if active against the result. */
-  points: { minProjected: number; n: number; mae: number; bias: number; within1: number; within2: number };
-  /**
-   * The shadow baseline against the app's own numbers, on active QB/RB/WR/TE that both predicted and
-   * either put at `minProjected` or more (the backtest's population, docs/baseline.md).
-   */
-  baseline: { n: number; appMae: number; baselineMae: number; ratio: number };
-  /**
-   * The props shadow (`pr`) against the app's number from the same snapshot, on the same population; `blendMae`
-   * averages the two (the question the blend gate asks).
-   */
-  props: { n: number; appMae: number; propsMae: number; blendMae: number; ratio: number };
+/** Regular-season games with stats, by nflverse game id (stats rows exist only once a game is played). */
+export function playedGames(stats: ReadonlyArray<Record<string, string>>): Set<string> {
+  return new Set(stats.filter((r) => (r.game_type || r.season_type || 'REG') === 'REG' && r.game_id).map((r) => r.game_id!));
+}
+
+const finite = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+
+/** Problems with one scored week before it's published, empty when it's fit to publish. */
+export function validateLedgerWeek(w: unknown, season: string): string[] {
+  if (typeof w !== 'object' || w === null) return ['not an object'];
+  const x = w as Partial<LedgerWeek>;
+  const out: string[] = [];
+  if (x.season !== season) out.push(`season ${String(x.season)}`);
+  if (!finite(x.week) || x.week! < 1 || x.week! > 18) out.push(`week ${String(x.week)}`);
+  if (!finite(x.games) || !finite(x.scored)) out.push('bad games or scored');
+  const t = x.tagged;
+  if (!t || ![t.n, t.brier, t.logLoss].every(finite) || !Array.isArray(t.calibration)) out.push('bad tagged');
+  else if (!t.calibration.every((r) => typeof r.group === 'string' && [r.n, r.predicted, r.observed].every(finite))) out.push('bad calibration');
+  const p = x.points;
+  if (!p || ![p.minProjected, p.n, p.mae, p.bias, p.within1, p.within2].every(finite)) out.push('bad points');
+  return out;
+}
+
+/** The public ledger file: every scored week of `season`, ascending (one per week, the latest copy wins). */
+export function combineLedger(weeks: readonly LedgerWeek[], season: string, now: string): LedgerFile {
+  const byWeek = new Map(weeks.filter((w) => w.season === season).map((w) => [w.week, w]));
+  return { schemaVersion: DATA_SCHEMA_VERSION, generatedAt: now, season, weeks: [...byWeek.values()].sort((a, b) => a.week - b.week) };
 }
 
 const TAGS = new Set(['Questionable', 'Doubtful', 'Out']);

@@ -62,6 +62,46 @@ export interface AccuracyFile {
   rows: AccuracyRow[];
 }
 
+/** Chance to play for one group of tagged players: mean predicted P(active) and the share active. */
+export interface LedgerCalibrationRow {
+  group: string;
+  n: number;
+  predicted: number;
+  observed: number;
+}
+
+/** One scored week of the prediction ledger: the app's last predictions before each kickoff, against what happened. */
+export interface LedgerWeek {
+  season: string;
+  week: number;
+  games: number;
+  /** Predictions with an outcome (played game, player on a game-day roster). */
+  scored: number;
+  /** Players tagged Questionable, Doubtful or Out: where the chance to play matters. */
+  tagged: { n: number; brier: number; logLoss: number; calibration: LedgerCalibrationRow[] };
+  /** Active players projected for at least `minProjected` PPR: points if active against the result. */
+  points: { minProjected: number; n: number; mae: number; bias: number; within1: number; within2: number };
+  /**
+   * The shadow baseline against the app's own numbers, on active QB/RB/WR/TE that both predicted and
+   * either put at `minProjected` or more (the backtest's population, docs/baseline.md).
+   */
+  baseline: { n: number; appMae: number; baselineMae: number; ratio: number };
+  /**
+   * The props shadow (`pr`) against the app's number from the same snapshot, on the same population; `blendMae`
+   * averages the two (the question the blend gate asks).
+   */
+  props: { n: number; appMae: number; propsMae: number; blendMae: number; ratio: number };
+}
+
+/** data/ledger.json: each finished week of the prediction ledger, scored (aggregates only; docs/ledger.md). */
+export interface LedgerFile {
+  schemaVersion: number;
+  generatedAt: string;
+  season: string;
+  /** Ascending by week. */
+  weeks: LedgerWeek[];
+}
+
 /** One player's recent usage, each array aligned with `UsageFile.weeks`; null = didn't play (or no data yet). */
 export interface PlayerUsage {
   /** Offensive snap share, whole percent. */

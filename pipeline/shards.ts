@@ -1,21 +1,23 @@
 // Checks on the optional data shards before they're published, and the rule for keeping the last good copy
 // when a fresh build fails (docs/PLAN.md §6, "Pipeline"). Pure; build-data.ts fetches and writes.
 import { DATA_SCHEMA_VERSION } from '../app/src/data/contracts';
+import { validateLedgerWeek } from './ledger-score';
 
-export type ShardName = 'accuracy.json' | 'usage.json' | 'matchups.json' | 'baseline.json';
+export type ShardName = 'accuracy.json' | 'usage.json' | 'matchups.json' | 'baseline.json' | 'ledger.json';
 
 /** Fewest rows a healthy shard has in-season; fewer means an upstream problem. */
-export const MIN_ROWS: Record<ShardName, number> = { 'accuracy.json': 1, 'usage.json': 100, 'matchups.json': 20, 'baseline.json': 150 };
+export const MIN_ROWS: Record<ShardName, number> = { 'accuracy.json': 1, 'usage.json': 100, 'matchups.json': 20, 'baseline.json': 150, 'ledger.json': 1 };
 
 type Json = Record<string, unknown>;
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
 const finite = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
 
-/** The rows a shard carries (players, defenses, accuracy rows). */
+/** The rows a shard carries (players, defenses, accuracy rows, scored weeks). */
 export function rowCount(name: ShardName, shard: Json): number {
   const of = (v: unknown) => (Array.isArray(v) ? v.length : isObject(v) ? Object.keys(v).length : 0);
   if (name === 'accuracy.json') return of(shard.rows);
   if (name === 'matchups.json') return of(shard.defense);
+  if (name === 'ledger.json') return of(shard.weeks);
   return of(shard.players);
 }
 
@@ -45,6 +47,10 @@ export function validateShard(name: ShardName, shard: unknown): string[] {
     }
   }
   if (name === 'accuracy.json' && Array.isArray(shard.rows) && !shard.rows.every((r) => isObject(r) && finite(r.n) && finite(r.mae))) out.push('bad rows');
+  if (name === 'ledger.json' && Array.isArray(shard.weeks)) {
+    const bad = shard.weeks.filter((w) => validateLedgerWeek(w, String(shard.season)).length);
+    if (bad.length) out.push(`${bad.length} weeks that don't validate`);
+  }
   return out;
 }
 
