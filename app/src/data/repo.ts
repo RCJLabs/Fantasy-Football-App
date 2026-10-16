@@ -29,6 +29,27 @@ export interface DataNotes {
 
 const dataUrl = (file: string) => `${import.meta.env.BASE_URL}data/${file}`;
 
+/**
+ * The data files are rebuilt every afternoon: deploy.yml at 16:07 UTC, or, when GitHub skips that, the first archive run after
+ * 16:00 UTC (scripts/archive/deploy-watchdog.sh). The app keeps a copy for up to 3 hours. Older than this, a day was missed.
+ */
+const STALE_DATA = 36 * HOUR;
+
+/**
+ * A note when the daily data files are old: overdue on the site, or a saved copy the app couldn't refresh (offline). Injury tags
+ * still come live from Sleeper's projection rows.
+ */
+export function staleDataNote(generatedAt: string, now: number, savedCopy = false): string | undefined {
+  const at = Date.parse(generatedAt);
+  if (!Number.isFinite(at) || now - at <= STALE_DATA) return undefined;
+  const hours = Math.floor((now - at) / HOUR);
+  const age = hours >= 48 ? `${Math.floor(hours / 24)} days` : `${hours} hours`;
+  const files = `practice reports, the official injury report and usage are ${age} old`;
+  return savedCopy
+    ? `The app couldn't refresh its daily data: ${files}, so chances to play may be off.`
+    : `The daily data update is overdue: ${files}, so chances to play may be off.`;
+}
+
 async function fetchDataFile<T extends { schemaVersion: number }>(file: string): Promise<T> {
   const res = await fetch(dataUrl(file), { cache: 'no-cache' });
   if (!res.ok) throw new Error(`${file}: HTTP ${res.status}`);
@@ -174,6 +195,8 @@ export async function loadWeek(season: string, week: number, force = false): Pro
     const file = await cached('data:players', 3 * HOUR, () => fetchDataFile<PlayersFile>('players.json'), { force });
     players = playersFromFile(file.value, week);
     asOf = Math.min(asOf, Date.parse(file.value.generatedAt) || asOf);
+    const stale = staleDataNote(file.value.generatedAt, Date.now(), file.stale);
+    if (stale) notes.push(stale);
   } catch {
     try {
       const dump = await cached('sleeper:players', 24 * HOUR, () => sleeperApi.players());

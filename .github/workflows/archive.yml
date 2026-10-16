@@ -100,3 +100,24 @@ jobs:
           GH_REPO: ${{ github.repository }}
           ARCHIVE_AGE_KEY: ${{ secrets.ARCHIVE_AGE_KEY }}
         run: bash scripts/ledger/auto.sh
+
+  deploy-watchdog:
+    # GitHub skips scheduled runs under load (the deploy's 16:07 UTC run never came on 2026-10-16). From 16:00 UTC,
+    # each archive run on main starts the day's deploy if it hasn't started yet (scripts/archive/README.md).
+    # A failure here never fails the archive run.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    continue-on-error: true
+    permissions:
+      actions: write # list deploy.yml's runs and dispatch it
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Start today's deploy if GitHub skipped it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash scripts/archive/deploy-watchdog.sh

@@ -25,6 +25,13 @@ each daily job runs in the first snapshot of the day at or after its hour.
 - **Failures:** a job whose fetch fails gets no marker, so the next run tries again.
 - **Fallback:** if a run can't list the release's assets, each job runs only in its own hour, as before.
 
+**Deploy watchdog.** The app's data files are rebuilt by `deploy.yml` at 16:07 UTC, and GitHub skips that run too: it never came on
+2026-10-16. So each archive run on `main` also runs `deploy-watchdog.sh`, in a job of its own.
+- **When:** from 16:00 UTC, if no deploy has started on `main` since 16:00 UTC that day, it dispatches one. Archive runs come about ten
+  times a day, so one skipped schedule no longer costs the day's data.
+- **Failures:** a failed deploy gets one retry from a later run; after two failures it stops and warns in the job summary.
+- **Permissions:** the job has only `actions: write` (and read access to check out the script). Its failure never fails the archive run.
+
 Each run's files are bundled as a `tar.gz`, encrypted with [age](https://age-encryption.org) to the public key in `recipient.txt`, and uploaded to a monthly prerelease (`archive-YYYY-MM`).
 
 **Only the holder of the private key can read the snapshots.** That keeps third-party data (Sleeper, RotoWire projections) unpublished even though this repo is public.
