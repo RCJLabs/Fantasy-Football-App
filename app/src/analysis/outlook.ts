@@ -4,7 +4,7 @@ import type { ProjectionIndex } from '../sleeper/parse';
 import type { RawTransaction } from '../sleeper/raw';
 import { playerRow, rosteredIds, startable, teamName, teamSide, thisWeekGain, type PlayerRow, type WeekContext } from './analyze';
 import { faabMarket, suggestBid, tierOf, type BidAdvice, type FaabMarket } from './faab';
-import { activeIds, addGains, cheapestDrops, regularSeasonEnd, RosModel, rosterLimit, seasonEnd, teamIds, weekWeights } from './ros';
+import { activeIds, addGains, cheapestDrops, playoffRoundWeeks, regularSeasonEnd, RosModel, rosterLimit, seasonEnd, teamIds, weekWeights } from './ros';
 import { simulateSeason, type SeasonTeam, type TeamOdds } from './season';
 
 export interface OutlookInput {
@@ -45,6 +45,8 @@ export interface LeagueOutlook {
   teams: Map<number, TeamOutlook>;
   /** Simulated standings; absent once the regular season is over. */
   odds?: Map<number, TeamOdds>;
+  /** Each playoff round's indices into `weeks`, while the whole bracket is ahead: the simulation then plays it out. */
+  playoffRounds?: number[][];
   pairings: Map<number, Map<number, number | null>>;
   sims: number;
 }
@@ -77,10 +79,19 @@ export function buildOutlook(input: OutlookInput): LeagueOutlook {
 
   const sims = input.sims ?? 4000;
   const outlook: LeagueOutlook = { league, model, weeks, regularWeeks, teams, pairings, sims };
+  const rounds = playoffRoundWeeks(league, weeks);
+  if (rounds) outlook.playoffRounds = rounds;
   if (regularWeeks.length) outlook.odds = simulate(outlook, new Map());
   const fallback = league.rules.playoffTeams && league.rules.numTeams ? Math.min(1, league.rules.playoffTeams / league.rules.numTeams) : 1;
-  for (const t of teams.values()) t.weights = weekWeights(league, weeks, outlook.odds?.get(t.rosterId)?.pPlayoffs ?? fallback);
+  for (const t of teams.values()) t.weights = weekWeights(league, weeks, outlook.odds?.get(t.rosterId), fallback);
   return outlook;
+}
+
+/** A team's score in each playoff round: the round's weeks added up (independent weeks). */
+function roundDists(future: readonly Dist[], rounds: readonly number[][]): Dist[] {
+  return rounds.map((idx) =>
+    idx.reduce((d, i) => ({ mean: d.mean + future[i]!.mean, variance: d.variance + future[i]!.variance }), { mean: 0, variance: 0 }),
+  );
 }
 
 function opponentOf(pairs: ReadonlyMap<number, number | null> | undefined, rosterId: number): number | null {
@@ -90,15 +101,21 @@ function opponentOf(pairs: ReadonlyMap<number, number | null> | undefined, roste
   return null;
 }
 
-/** Simulate the rest of the regular season; `override` swaps in other future-week distributions for some teams. */
+/**
+ * Simulate the rest of the regular season, and the playoff bracket while all of it is ahead; `override` swaps
+ * in other future-week distributions for some teams.
+ */
 function simulate(o: LeagueOutlook, override: ReadonlyMap<number, Dist[]>): Map<number, TeamOdds> {
   const futureCount = o.regularWeeks.filter((w) => o.weeks.includes(w)).length;
   const current = o.regularWeeks.length - futureCount; // 1 while this week's result is still open
+  const rounds = o.playoffRounds;
   const teams: SeasonTeam[] = [...o.teams.values()].map((t) => {
     const future = override.get(t.rosterId);
     const weeks = future ? [...t.regular.slice(0, current), ...future.slice(0, futureCount)] : t.regular;
     const r = t.roster;
-    return { rosterId: t.rosterId, wins: r.wins, losses: r.losses, ties: r.ties, pointsFor: r.pointsFor, weeks };
+    const team: SeasonTeam = { rosterId: t.rosterId, wins: r.wins, losses: r.losses, ties: r.ties, pointsFor: r.pointsFor, weeks };
+    if (rounds) team.playoff = roundDists(future ?? t.future, rounds);
+    return team;
   });
   return simulateSeason({
     teams,
@@ -106,6 +123,7 @@ function simulate(o: LeagueOutlook, override: ReadonlyMap<number, Dist[]>): Map<
     pairings: o.pairings,
     medianGame: o.league.rules.medianGame,
     playoffTeams: o.league.rules.playoffWeekStart ? (o.league.rules.playoffTeams ?? 0) : 0,
+    ...(rounds ? { playoffRounds: rounds.length, reseed: o.league.rules.playoffSeedType === 1 } : {}),
     sims: o.sims,
   });
 }
@@ -261,6 +279,9 @@ export interface TradeSideResult {
   adds: string[];
   pBefore?: number;
   pAfter?: number;
+  /** Chance of winning the title, while the whole bracket is ahead. */
+  titleBefore?: number;
+  titleAfter?: number;
   /** For leagues without playoffs: chance of finishing first. */
   firstBefore?: number;
   firstAfter?: number;
@@ -327,6 +348,10 @@ export function evaluateTrade(o: LeagueOutlook, ctx: WeekContext, myId: number, 
       if (o.league.rules.playoffWeekStart) {
         r.pBefore = pre.pPlayoffs;
         r.pAfter = post.pPlayoffs;
+        if (pre.pTitle !== undefined && post.pTitle !== undefined) {
+          r.titleBefore = pre.pTitle;
+          r.titleAfter = post.pTitle;
+        }
       } else {
         r.firstBefore = pre.pFirst;
         r.firstAfter = post.pFirst;

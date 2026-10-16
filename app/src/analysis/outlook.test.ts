@@ -13,6 +13,7 @@ import {
   KICKER_PLAY,
   playoffByes,
   playoffRounds,
+  playoffRoundWeeks,
   projectionPositions,
   QUESTIONABLE_PLAY,
   regularSeasonEnd,
@@ -21,7 +22,7 @@ import {
   seasonEnd,
   weekWeights,
 } from './ros';
-import { simulateSeason } from './season';
+import { bracketOrder, simulateSeason, type SeasonTeam } from './season';
 
 const rawLeague: RawLeague = {
   league_id: 'L',
@@ -52,8 +53,24 @@ describe('season calendar', () => {
     expect(seasonEnd(six)).toBe(17);
     const noPlayoffs = parseLeague({ ...rawLeague, settings: { ...rawLeague.settings, playoff_week_start: 0 } });
     expect([regularSeasonEnd(noPlayoffs), seasonEnd(noPlayoffs)]).toEqual([18, 18]);
-    expect(weekWeights(league, [13, 14, 15], 0.4)).toEqual([1, 1, 0.4]);
-    expect(weekWeights(noPlayoffs, [15, 16], 0)).toEqual([1, 1]);
+    expect(weekWeights(league, [13, 14, 15], { pPlayoffs: 0.4, pBye: 0 })).toEqual([1, 1, 0.4]);
+    expect(weekWeights(league, [13, 14, 15], undefined, 0.5)).toEqual([1, 1, 0.5]);
+    expect(weekWeights(noPlayoffs, [15, 16], { pPlayoffs: 0, pBye: 0 })).toEqual([1, 1]);
+    // Every round counts by the playoff odds, but a first-round bye week only by the chance of playing it.
+    expect(weekWeights(six, [14, 15, 16, 17], { pPlayoffs: 0.75, pBye: 0.5 })).toEqual([1, 0.25, 0.75, 0.75]);
+  });
+
+  it("maps each playoff round to its weeks while the whole bracket is ahead", () => {
+    const at = (settings: Record<string, number>) => parseLeague({ ...rawLeague, settings: { ...rawLeague.settings, ...settings } });
+    const weeks = [10, 11, 12, 13, 14, 15, 16, 17, 18];
+    expect(playoffRoundWeeks(at({ playoff_teams: 6 }), weeks)).toEqual([[5], [6], [7]]);
+    expect(playoffRoundWeeks(at({ playoff_teams: 4, playoff_round_type: 2 }), weeks)).toEqual([[5, 6], [7, 8]]);
+    expect(playoffRoundWeeks(at({ playoff_teams: 4, playoff_round_type: 1 }), weeks)).toEqual([[5], [6, 7]]);
+    const twoWeekFinal = at({ playoff_teams: 6, playoff_round_type: 1 });
+    expect(playoffRoundWeeks(twoWeekFinal, weeks)).toEqual([[5], [6], [7, 8]]);
+    expect(weekWeights(twoWeekFinal, [15, 16, 17, 18], { pPlayoffs: 0.75, pBye: 0.5 })).toEqual([0.25, 0.75, 0.75, 0.75]);
+    expect(playoffRoundWeeks(at({ playoff_teams: 6 }), [16, 17])).toBeUndefined(); // bracket under way
+    expect(playoffRoundWeeks(at({ playoff_week_start: 0 }), weeks)).toBeUndefined();
   });
   it('fetches IDP projections only for IDP leagues', () => {
     expect(projectionPositions(league)).not.toContain('LB');
@@ -179,6 +196,60 @@ describe('simulateSeason', () => {
   });
 });
 
+describe('playoff bracket', () => {
+  it("orders seeds the way Sleeper's bracket pairs them", () => {
+    expect(bracketOrder(2)).toEqual([1, 2]);
+    expect(bracketOrder(4)).toEqual([1, 4, 2, 3]);
+    expect(bracketOrder(8)).toEqual([1, 8, 4, 5, 2, 7, 3, 6]);
+  });
+
+  // Six teams seeded 1–6 by record (no regular-season weeks left), each scoring the same certain total every round.
+  const seeded = (scores: number[]): SeasonTeam[] =>
+    scores.map((mean, i) => ({ rosterId: i + 1, wins: 10 - i, losses: 3 + i, ties: 0, pointsFor: 1500, weeks: [], playoff: [0, 1, 2].map(() => ({ mean, variance: 0 })) }));
+  const run = (teams: SeasonTeam[], reseed = false) =>
+    simulateSeason({ teams, weeks: [], pairings: new Map(), medianGame: false, playoffTeams: 6, playoffRounds: 3, reseed, sims: 10 });
+
+  it('gives the top seeds byes and plays the fixed bracket', () => {
+    // Round 1: 6 beats 3, 4 beats 5. Fixed bracket: 1 meets 4, 2 meets 6, so 6 reaches the final; 1 wins it.
+    const odds = run(seeded([100, 90, 70, 85, 60, 95]));
+    expect([1, 2, 3, 4, 5, 6].map((id) => odds.get(id)!.pRound)).toEqual([
+      [0, 1, 1],
+      [0, 1, 0],
+      [1, 0, 0],
+      [1, 1, 0],
+      [1, 0, 0],
+      [1, 1, 1],
+    ]);
+    expect([1, 2, 3, 4, 5, 6].map((id) => odds.get(id)!.pTitle)).toEqual([1, 0, 0, 0, 0, 0]);
+  });
+
+  it('re-seeds each round when the league does: the best seed left meets the worst', () => {
+    // Round 2 re-seeded: 1 meets 6 and 2 meets 4, so 2 reaches the final instead of 6.
+    const odds = run(seeded([100, 90, 70, 85, 60, 95]), true);
+    expect(odds.get(2)!.pRound).toEqual([0, 1, 1]);
+    expect(odds.get(6)!.pRound).toEqual([1, 1, 0]);
+    expect(odds.get(1)!.pTitle).toBe(1);
+  });
+
+  it('breaks a tied round in favour of the better seed', () => {
+    const odds = run(seeded([80, 80, 80, 80, 80, 80]));
+    expect(odds.get(1)!.pTitle).toBe(1);
+    expect(odds.get(4)!.pRound).toEqual([1, 1, 0]); // beats seed 5 on the tie, then loses to seed 1 on one
+    expect(odds.get(5)!.pRound).toEqual([1, 0, 0]);
+  });
+
+  it('spreads the title over an even field, with byes worth a round', () => {
+    const teams = seeded([100, 100, 100, 100, 100, 100]).map((t) => ({ ...t, playoff: t.playoff!.map((d) => ({ ...d, variance: 400 })) }));
+    const odds = simulateSeason({ teams, weeks: [], pairings: new Map(), medianGame: false, playoffTeams: 6, playoffRounds: 3, sims: 4000 });
+    const title = [1, 2, 3, 4, 5, 6].map((id) => odds.get(id)!.pTitle!);
+    expect(title.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
+    // Byes: two wins to the title (1/4) instead of three (1/8).
+    for (const [i, expected] of [0.25, 0.25, 0.125, 0.125, 0.125, 0.125].entries()) expect(title[i]).toBeCloseTo(expected, 1);
+    expect(odds.get(1)!.pRound![0]).toBe(0);
+    expect(odds.get(1)!.pRound![1]).toBe(1);
+  });
+});
+
 describe('FAAB', () => {
   const claim = (leg: number, id: string, bid: number, status = 'complete'): RawTransaction => ({ type: 'waiver', status, leg, adds: { [id]: 1 }, settings: { waiver_bid: bid } });
   const pos: Record<string, string> = { r1: 'RB', r2: 'RB', r3: 'RB', r4: 'RB', d1: 'DEF', d2: 'DEF', d3: 'DEF', d4: 'DEF', w1: 'WR' };
@@ -242,8 +313,11 @@ describe('league outlook', () => {
     const odds = [...o.odds!.values()];
     expect(odds.reduce((a, x) => a + x.pPlayoffs, 0)).toBeCloseTo(2, 9);
     expect(o.odds!.get(4)!.pPlayoffs).toBeLessThan(o.odds!.get(2)!.pPlayoffs);
-    // Playoff-week weight follows playoff odds.
+    // Two-team playoff: the final is week 15, played by both playoff teams; it counts by the playoff odds.
+    expect(o.playoffRounds).toEqual([[8]]);
+    expect(odds.reduce((a, x) => a + x.pTitle!, 0)).toBeCloseTo(1, 9);
     const me = o.teams.get(1)!;
+    expect(o.odds!.get(1)!.pRound).toEqual([o.odds!.get(1)!.pPlayoffs]);
     expect(me.weights.at(-1)).toBeCloseTo(o.odds!.get(1)!.pPlayoffs, 9);
     expect(scheduleOutlook(o, 1)[0]).toMatchObject({ week: 7, opponent: 4 });
     expect(scheduleOutlook(o, 1)[1]).toMatchObject({ week: 8, opponent: 3 });
@@ -267,6 +341,8 @@ describe('league outlook', () => {
     expect(t.me.delta + t.them.delta).not.toBe(0);
     expect(t.me.weekly).toHaveLength(o.weeks.length);
     expect(t.me.pBefore).toBeCloseTo(o.odds!.get(1)!.pPlayoffs, 9);
+    expect(t.me.titleBefore).toBeCloseTo(o.odds!.get(1)!.pTitle!, 9);
+    expect(t.them.titleAfter).toBeGreaterThanOrEqual(0);
     expect(t.deadlinePassed).toBe(false);
     // 2-for-1: my open spot absorbs the extra player; they may refill only the one spot the trade frees.
     const two = evaluateTrade(o, ctx, 1, 2, ['wa'], ['rd', 're'], fa);
@@ -275,6 +351,22 @@ describe('league outlook', () => {
     // 3-for-1 overflows my roster by one: the cheapest player goes.
     const three = evaluateTrade(o, ctx, 1, 2, ['wa'], ['rd', 're', 'wb'], fa);
     expect(three.me.drops).toHaveLength(1);
+  });
+
+  it('plays out a bracket of two-week rounds with a bye, which only discounts the bye weeks', () => {
+    const three = parseLeague({ ...rawLeague, settings: { ...rawLeague.settings, playoff_teams: 3, playoff_round_type: 2 } });
+    const toWeek18 = new Map(Array.from({ length: 12 }, (_, i) => [7 + i, index(weekRows, 7 + i, (id) => `T${id}`)]));
+    const b = buildOutlook({ league: three, rosters, users: [], matchups: pair([1, 2], [3, 4]), ctx, byWeek: toWeek18, schedule, sims: 1500 });
+    expect(b.weeks.at(-1)).toBe(18);
+    expect(b.playoffRounds).toEqual([[8, 9], [10, 11]]);
+    const odds = [...b.odds!.values()];
+    expect(odds.reduce((a, x) => a + x.pTitle!, 0)).toBeCloseTo(1, 9);
+    expect(odds.reduce((a, x) => a + x.pRound![0]!, 0)).toBeCloseTo(2, 9); // seeds 2 and 3; seed 1 has the bye
+    expect(odds.reduce((a, x) => a + x.pRound![1]!, 0)).toBeCloseTo(2, 9); // two finalists
+    for (const x of odds) {
+      const firstRound = Math.max(0, x.pPlayoffs - x.pBye);
+      expect(b.teams.get(x.rosterId)!.weights.slice(8)).toEqual([firstRound, firstRound, x.pPlayoffs, x.pPlayoffs]);
+    }
   });
 
   it('lists DEF streamers: mine first, then free agents', () => {

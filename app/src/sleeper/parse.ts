@@ -25,6 +25,7 @@ export function parseLeagueRules(raw: RawLeague): LeagueRules {
     ['playoffWeekStart', 'playoff_week_start'],
     ['playoffTeams', 'playoff_teams'],
     ['playoffRoundType', 'playoff_round_type'],
+    ['playoffSeedType', 'playoff_seed_type'],
     ['tradeDeadline', 'trade_deadline'],
     ['waiverType', 'waiver_type'],
     ['waiverBudget', 'waiver_budget'],

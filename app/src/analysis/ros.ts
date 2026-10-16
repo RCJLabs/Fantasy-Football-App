@@ -100,12 +100,38 @@ export function playoffWeekInfo(league: League, week: number): PlayoffWeek | nul
 }
 
 /**
- * Weight of each week in rest-of-season values: regular-season weeks count fully; playoff weeks count in
- * proportion to the team's playoff odds ("playoff mode" shifts value toward them as odds firm up). [design]
+ * Weight of each week in rest-of-season values: regular-season weeks count fully and playoff weeks by the playoff
+ * odds (`fallback` without them). Every round is a must-win, so a later round counts as much as the first even
+ * though fewer teams get there; but a first-round bye week counts only by the chance of playing it (playoff odds
+ * minus bye odds). Simulated title-odds gains from extra points per round have this shape; weighting rounds by the
+ * chance of playing them would sink the final below round 1, the reverse of it (docs/title-odds.md). [design]
  */
-export function weekWeights(league: League, weeks: readonly number[], pPlayoffs: number): number[] {
+export function weekWeights(league: League, weeks: readonly number[], odds?: { pPlayoffs: number; pBye: number }, fallback = 1): number[] {
   const start = league.rules.playoffWeekStart;
-  return weeks.map((w) => (start && w >= start ? pPlayoffs : 1));
+  return weeks.map((w) => {
+    if (!start || w < start) return 1;
+    if (!odds) return fallback;
+    return playoffWeekInfo(league, w)?.round === 1 ? Math.max(0, odds.pPlayoffs - odds.pBye) : odds.pPlayoffs;
+  });
+}
+
+/**
+ * Indices into `weeks` of each playoff round's weeks (two for a two-week round), or undefined unless every
+ * playoff week is still ahead: once the bracket has started, its real matchups decide.
+ */
+export function playoffRoundWeeks(league: League, weeks: readonly number[]): number[][] | undefined {
+  const start = league.rules.playoffWeekStart;
+  const rounds = playoffRounds(league.rules.playoffTeams ?? 0);
+  if (!start || !rounds) return undefined;
+  const out: number[][] = Array.from({ length: rounds }, () => []);
+  for (let w = start; w <= seasonEnd(league); w++) {
+    const info = playoffWeekInfo(league, w);
+    if (!info) continue;
+    const i = weeks.indexOf(w);
+    if (i < 0) return undefined;
+    out[info.round - 1]!.push(i);
+  }
+  return out.every((r) => r.length) ? out : undefined;
 }
 
 /** Players a roster can field: everyone except taxi-squad players (IR players count once they return). */

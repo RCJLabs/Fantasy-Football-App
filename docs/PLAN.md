@@ -163,6 +163,22 @@
   - **Shipped** inside `baseline.json` (team codes): a labelled second opinion for defenses, and the DEF fallback for a week without Sleeper
     projections. Kickers stay Sleeper-only.
 
+- **Title odds — built (2026-10-16):** part of the Phase 3 full trade analyzer, brought forward; details in [title-odds.md](title-odds.md).
+  - **Bracket:** each simulated season plays on through the winners' bracket.
+    - Top seeds get byes. Each round goes to the higher score from that week's projected lineups; two-week rounds add both weeks.
+    - Sleeper's fixed pairing (seed 1 meets the 4/5 winner) matched a real league's pre-filled bracket.
+    - Re-seeding follows `playoff_seed_type` `[unverified]`.
+  - **Shown:** a Title column in the Season tab, and both trade sides' title odds before and after.
+  - **Playoff-week weights:** each playoff week counts by the playoff odds; a first-round week counts by the chance of playing it (playoff
+    odds minus bye odds).
+    - The first version weighted each round by the chance of reaching it. It was dropped.
+    - Simulated title-odds gains from extra points are as large in the final as in round 2, and smaller in round 1.
+  - **Noise:** at 4,000 simulations, a trade-sized change in title odds varies by about ±0.4 points. A change of a point or less can be
+    noise.
+  - **Not yet:**
+    - odds once the playoffs start (Sleeper's `winners_bracket` has the real bracket);
+    - uncertainty in team strength, so odds near 0% or 100% are likely too confident.
+
 - **Injury absences by type — built (2026-10-16):** the rest of the Phase 3 injury-context item; details in [injuries.md](injuries.md).
   - **Data:** 1,538 QB/RB/WR/TE absences in 2019–2025, with Kaplan–Meier shares because absences running at a season's end are censored.
   - **Results:**
@@ -309,7 +325,7 @@ What we build instead is a **calculated consensus**: an average of independent *
 | **K / DST** | Rescored Sleeper projections (spike b confirms they exist). DST in-house v0 = f(opponent implied total, opponent sack and turnover rates, home/away); 2-week DST streaming view. K: Sleeper only. | DST points vs. opponent implied total r = −0.32 (n=544); kicker vs own implied total r = 0.13 (2025, approximate scoring) `[own calc]` | MVP (Sleeper) · DST v0: Phase 1 stretch |
 | **Waiver board** | Gain in this week's (and next week's, if projected) optimal lineup, plus "ROS-lite" value. Opportunity-shock flag from Sleeper depth order + injury status. Trending adds as a *demand* signal (with Sleeper attribution). | ROS-lite: Sleeper future-week projections if they exist (spike f), bye-aware; otherwise per-game value × remaining non-bye games, labelled "flat ROS estimate" `[design]` | MVP stretch → Phase 2 |
 | **FAAB** | Value-based max bid: dollars per unit of ROS value, calibrated from the league's own *winning* bids and scaled by remaining budget and weeks. Runner-up-bid model only if failed claims expose `waiver_bid`. | Losing-bid visibility unconfirmed `[unverified]`; spike (c). No cross-league prior (no league sample; §8). | Phase 2 |
-| **Trade analyzer** | **Stripped (Phase 2):** your optimal-lineup points by remaining week (regular season + playoffs) with ROS-lite, a bye grid, roster spots filled or dropped on both sides, and FantasyCalc market value shown separately. **Full (Phase 3):** future implied totals from team ratings fitted to market lines (plus win totals as a prior); a weekly injury hazard by position × age (built as one curve by weeks ahead, since position and age didn't hold up: [hazard.md](hazard.md)); weeks weighted by leverage from the season sim; playoff and title odds; ranges, not points. | `games.csv` currently has lines only through Week 7 `[verified]`, which is why ROS needs the team-rating model | Stripped: Phase 2 · Full: Phase 3 |
+| **Trade analyzer** | **Stripped (Phase 2):** your optimal-lineup points by remaining week (regular season + playoffs) with ROS-lite, a bye grid, roster spots filled or dropped on both sides, and FantasyCalc market value shown separately. **Full (Phase 3):** future implied totals from team ratings fitted to market lines (plus win totals as a prior); a weekly injury hazard by position × age (built as one curve by weeks ahead, since position and age didn't hold up: [hazard.md](hazard.md)); weeks weighted by leverage from the season sim; playoff and title odds; ranges, not points. **Title odds and bye-aware playoff-week weights built 2026-10-16** ([title-odds.md](title-odds.md)). | `games.csv` currently has lines only through Week 7 `[verified]`, which is why ROS needs the team-rating model | Stripped: Phase 2 · title odds: built · rest of Full: Phase 3 |
 | **Matchup layer** | Vegas implied team total and spread are the primary environment signal (`home_itt = (total_line + spread_line)/2`; nflverse spread is positive when the **home** team is favored `[verified]`, unit-tested). **DvP:** the residual of position-level xFP allowed after conditioning on the opponent's implied total, used *only inside the in-house baseline*, never on the blend. Shrunk toward the league mean, with weight on last season equal to its measured year-over-year r. **CB depletion** flag (starting LCB/RCB/NB out, from injuries + depth chart). **Wind** only shifts the pass/rush split and K inside the baseline. Everything is display-only until a walk-forward backtest shows lift. | Defense-vs-position barely repeats (WR r≈0) `[reported]`. Vegas dominating feature importance comes from one unreviewed 2026 thesis `[unverified]`. Strong wind is already priced into game totals (residual +0.7 ± 2.0 pts at ≥20 mph, n=47) `[own calc]`. PFR per-CB stats are used only if their split-half reliability holds up `[design]`. | CB depletion + DvP display: Phase 2 stretch · rest: Phase 3 backtest |
 | **Injury context** | Population base rates: weekly hazard of a new missed-game injury by position × age, early-exit rates, games-missed distributions by injury type, all shown as labelled ranges. They feed the ROS availability multiplier. | Individual proneness isn't estimable `[reported]`. The cited hamstring recurrence rate (38%) conflicts with the most-cited study (16.5%), so trace it before showing it `[unverified]`. **Future-week availability built 2026-10-16** ([hazard.md](hazard.md)) `[own calc]`: a healthy QB/RB/WR/TE is active 94% a week later and 85% eight weeks later. One curve by weeks ahead; position and age didn't hold up on held-out seasons. **Games missed by injury built 2026-10-16** ([injuries.md](injuries.md)): shown in player details. | ROS availability, games missed: built (Phase 2) · early exits: Phase 3 |
 | **Explanations** | Show the blend as sources (RotoWire X, in-house Y → Z), then rescoring and P(play) applied visibly. Only the in-house component is broken into factors. An LLM, later, narrates this JSON only. | Breaking down RotoWire's black box would invent reasoning `[design]` | MVP |
@@ -494,7 +510,7 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
   - injury hazard. **Future-week availability and games missed by injury type built 2026-10-16** ([hazard.md](hazard.md), [injuries.md](injuries.md)); early exits remain.
   - DvP / CB depletion / coverage priors, each kept only if it shows residual lift
   - Then publish the calibration page and the public ledger.
-- **Full trade analyzer:** team-rating ROS projections, hazard, season sim, leverage-weighted playoff and title odds. **Dynasty mode.** **Best-ball valuation** (Δ E[max lineup]).
+- **Full trade analyzer:** team-rating ROS projections, hazard, season sim, leverage-weighted playoff and title odds. Hazard and title odds built 2026-10-16; team ratings, ranges and leverage beyond bye weeks remain. **Dynasty mode.** **Best-ball valuation** (Δ E[max lineup]).
 - **Cloudflare Worker:** Cron Trigger scheduler; `/llm` proxy with Turnstile + an anonymous per-install quota (declared).
 - **LLM layer**, grounded in computed JSON with every number post-checked:
   - pipeline blurbs (no point values, since scoring lives on the device)
