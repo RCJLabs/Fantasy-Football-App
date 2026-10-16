@@ -155,7 +155,7 @@ describe('analyzeLineup', () => {
   it('flags the Out and Questionable starters', () => {
     const texts = a.problems.map((p) => p.text).join('\n');
     expect(texts).toMatch(/rb1 RB \(RB\) is Out/);
-    expect(texts).toMatch(/wr3 WR \(FLEX\) is Questionable — 72% to play/);
+    expect(texts).toContain(`wr3 WR (FLEX) is Questionable — ${Math.round(playProbability('Questionable', undefined, { pos: 'WR' }) * 100)}% to play`);
     expect(texts).toMatch(/Better lineup available/);
   });
 

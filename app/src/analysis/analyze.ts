@@ -58,6 +58,8 @@ export interface PlayerRow {
   practice?: PracticeStatus;
   /** `practice` is from the week's final report, so it sets the odds. */
   practiceFinal?: boolean;
+  /** Not active in his team's last game: lowers a Questionable player's odds. */
+  missedLast?: boolean;
   /** P(active). */
   p: number;
   /** League points if active. */
@@ -207,7 +209,7 @@ export function playerRow(id: string, league: League, ctx: WeekContext, actualPo
   const hasProjection = Object.keys(stats).length > 0;
   const expected = hasProjection ? expectedStats(stats, pos) : {};
   const projected = hasProjection ? scoreStats(expected, league.scoring) : 0;
-  const p = game ? playProbability(injury, finalPractice) : 0;
+  const p = game ? playProbability(injury, finalPractice, { body: base?.injuryBody ?? null, missedLast: base?.missedLast ?? false, pos }) : 0;
   const mu = Math.max(0, conditionalMean(projected, injury));
 
   const row: PlayerRow = {
@@ -234,6 +236,7 @@ export function playerRow(id: string, league: League, ctx: WeekContext, actualPo
   if (usage) row.usage = { ...usage, weeks: ctx.usage!.weeks };
   if (practice) row.practice = practice;
   if (finalPractice) row.practiceFinal = true;
+  if (base?.missedLast) row.missedLast = true;
   if (game && team) {
     row.home = game.home === team;
     row.opponent = row.home ? game.away : game.home;

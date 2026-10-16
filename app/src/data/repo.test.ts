@@ -13,7 +13,7 @@ const file = (injuryReportWeek: number | undefined): PlayersFile => ({
   players: [
     { id: 'a', n: 'Final Q', pos: 'WR', t: 'AAA', inj: 'Questionable', prac: 'Limited', rpt: 'Questionable' },
     { id: 'b', n: 'Midweek', pos: 'RB', t: 'BBB', inj: 'Questionable', prac: 'DNP' },
-    { id: 'c', n: 'Healthy', pos: 'TE', t: 'CCC' },
+    { id: 'c', n: 'Healthy', pos: 'TE', t: 'CCC', ml: 1 },
   ],
 });
 
@@ -24,6 +24,8 @@ describe('playersFromFile', () => {
     expect(players.get('b')?.practice).toBe('DNP');
     expect(players.get('b')?.practiceFinal).toBeUndefined();
     expect(players.get('c')?.practice).toBeUndefined();
+    expect(players.get('c')?.missedLast).toBe(true);
+    expect(players.get('a')?.missedLast).toBeUndefined();
   });
   it("drops last week's practice statuses", () => {
     for (const reportWeek of [5, undefined]) {

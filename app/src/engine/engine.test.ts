@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bestAssignment, hungarianMin } from './assignment';
-import { conditionalMean, playProbability } from './availability';
+import { conditionalMean, injuryGroup, playProbability, Q_EARLY, Q_FINAL, questionableTerms } from './availability';
 import { expectNormal, gaussHermite, normCdf, normInterval } from './math';
 import { crossCovariance, pairCorrelation, withinCovariance } from './correlation';
 import { canFill, optimizeLineup, startingSlots, twoStageValue, type LineupPlayer, type LineupProblem } from './lineup';
@@ -99,15 +99,49 @@ describe('scoring', () => {
 });
 
 describe('availability', () => {
-  it('maps designations and final practice status to P(active) (2023–25 calibration)', () => {
+  it('maps designations to P(active)', () => {
     expect(playProbability(null)).toBeCloseTo(0.99);
-    expect(playProbability('Questionable')).toBeCloseTo(0.72);
-    expect(playProbability('Questionable', 'Full')).toBeCloseTo(0.92);
-    expect(playProbability('Questionable', 'Limited')).toBeCloseTo(0.71);
-    expect(playProbability('Questionable', 'DNP')).toBeCloseTo(0.56);
     expect(playProbability('Doubtful')).toBeCloseTo(0.02);
     expect(playProbability('Out')).toBe(0);
     expect(playProbability('IR')).toBe(0);
+  });
+  it('rates a Questionable player from practice, his last game, the injury and position (v1, 2019–25)', () => {
+    const q = (practice: 'Full' | 'Limited' | 'DNP' | undefined, ctx: Parameters<typeof playProbability>[2] = {}) => playProbability('Questionable', practice, ctx);
+    const wr = { pos: 'WR', body: 'Ankle' };
+    // A WR with an ankle injury who played last week (the model's reference case).
+    expect(q('Full', wr)).toBeCloseTo(0.96, 2);
+    expect(q('Limited', wr)).toBeCloseTo(0.837, 2);
+    expect(q('DNP', wr)).toBeCloseTo(0.582, 2);
+    // Missing his last game, a hamstring, and playing QB each lower the odds; a back or an illness raises them.
+    expect(q('Limited', { ...wr, missedLast: true })).toBeLessThan(q('Limited', wr));
+    expect(q('Limited', { ...wr, body: 'Left Hamstring' })).toBeLessThan(q('Limited', wr));
+    expect(q('Limited', { ...wr, pos: 'QB' })).toBeLessThan(q('Limited', wr));
+    expect(q('Limited', { ...wr, body: 'Back' })).toBeGreaterThan(q('Limited', wr));
+    expect(q('DNP', { ...wr, body: 'Illness' })).toBeGreaterThan(q('DNP', wr));
+    expect(q('Limited', { pos: 'RB', body: 'Hamstring', missedLast: true })).toBeCloseTo(0.456, 2);
+    // Before the final report (no practice yet), a separate fit; an unknown injury counts as the reference.
+    expect(q(undefined, wr)).toBeCloseTo(0.78, 2);
+    expect(q(undefined)).toBeCloseTo(q(undefined, wr), 9);
+    expect(q(undefined, { pos: 'RB', body: 'Hamstring', missedLast: true })).toBeLessThan(0.55);
+    expect(questionableTerms('Limited', wr)).toHaveLength(Q_FINAL.length);
+    expect(questionableTerms(undefined, wr)).toHaveLength(Q_EARLY.length);
+  });
+  it('groups injury wordings from Sleeper and the official report', () => {
+    expect(['Hamstring', 'Right Hamstring', 'Groin', 'Ankle', 'Toe', 'Knee - ACL', 'Lower Back', 'Illness', 'Concussion', 'Shoulder', 'Not injury related - resting player', '', null].map(injuryGroup)).toEqual([
+      'hamstring',
+      'hamstring',
+      'other leg muscle',
+      'ankle/foot',
+      'ankle/foot',
+      'knee',
+      'back/torso',
+      'illness',
+      'concussion',
+      'arm/shoulder',
+      'other',
+      '',
+      '',
+    ]);
   });
   it('treats projections as conditional on playing by default', () => {
     expect(conditionalMean(12, 'Questionable')).toBe(12);

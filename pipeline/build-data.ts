@@ -26,7 +26,7 @@ import {
 import type { StatLine } from '../app/src/domain/types';
 import type { RawPlayer, RawState } from '../app/src/sleeper/raw';
 import { buildBaselineFile, ffoppStats, SKILL, type SleeperRow } from './baseline';
-import { compactPlayers, csvRecords, gamesFromCsv, latestInjuryReport, projectionAccuracy, sleeperToGsis, type PointsRow } from './lib';
+import { compactPlayers, csvRecords, gamesFromCsv, latestInjuryReport, missedLastGame, projectionAccuracy, sleeperToGsis, type PointsRow } from './lib';
 import { defGames, dstWeek } from './dst';
 import { buildMatchups } from './matchups';
 import { decideShard, type ShardName } from './shards';
@@ -220,15 +220,15 @@ async function main() {
   const report = injuriesCsv ? latestInjuryReport(csvRecords(injuriesCsv), week) : undefined;
   const rosterRecords = rostersCsv ? csvRecords(rostersCsv) : [];
   const gsisBySleeper = sleeperToGsis(dump, rosterRecords);
+  const gamesRecords = csvRecords(gamesCsv);
   const playersFile: PlayersFile = {
     schemaVersion: DATA_SCHEMA_VERSION,
     generatedAt: now,
     season,
     week,
     ...(report ? { injuryReportWeek: report.week } : {}),
-    players: compactPlayers(dump, report, gsisBySleeper),
+    players: compactPlayers(dump, report, gsisBySleeper, missedLastGame(rosterRecords, gamesRecords, season, week)),
   };
-  const gamesRecords = csvRecords(gamesCsv);
   const scheduleFile: ScheduleFile = {
     schemaVersion: DATA_SCHEMA_VERSION,
     generatedAt: now,

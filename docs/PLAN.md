@@ -176,6 +176,20 @@
   - **Shipped** inside `baseline.json` (team codes): a labelled second opinion for defenses, and the DEF fallback for a week without Sleeper
     projections. Kickers stay Sleeper-only.
 
+- **P(play) v1 for Questionable players — built (2026-10-16):** the Phase 3 P(play) v1, brought forward; details in
+  [calibration.md](calibration.md).
+  - **Model:** a logistic regression on the final practice, whether he missed his last game, the injury (9 groups) and position.
+    - Fitted on 1,326 relevant Questionable player-games, 2019–2025.
+    - 2016–18 game-day statuses are unusable (99% active).
+  - **Gate passed:** out-of-sample Brier score 0.1813 → 0.1677 with each season held out (−0.0136, interval −0.0201 to −0.0071). Fitted
+    on 2019–22, scored on 2023–25: −0.0142 (−0.0241 to −0.0047).
+    - Before the final report, a fit without practice: −0.0071 (−0.0114 to −0.0029).
+  - **Largest effects:** missing the last game (Limited: 62% vs 81% active), hamstrings and concussions down, back injuries and illness up,
+    QBs down.
+  - **Pipeline:** `players.json` flags players who weren't active in their team's last game (`ml`, from nflverse weekly rosters).
+  - **Shown:** player details name the factors. The ledger commits the new numbers from the next archive run.
+  - **Not yet:** mid-week P(play) from the archive's snapshots, once a few weeks of final reports are in.
+
 - **Playoffs from Sleeper's bracket — built (2026-10-16):** for the Phase 2 exit (running the fantasy playoffs on the app); details in
   [title-odds.md](title-odds.md).
   - **The gap:** once the regular season ended, the app stopped simulating. Every team, in the playoffs or out, kept the share of teams
@@ -298,7 +312,7 @@
   - draft order from playoff results or a league-set order (picks follow reverse regular-season standings);
   - keeper costs: draft-round prices aren't in Sleeper's API;
   - mid-week P(play) (practice before the final report, Sleeper's pre-report tags), from the archive's twice-daily snapshots once a few weeks are final;
-  - position-specific P(play): Questionable QBs played 53% (27/51), but the gap swings by season and disappears for top QBs.
+  - position-specific P(play): done in the v1 model (2026-10-16), where position earned its place out of sample over 2019–2025.
 
 v2 incorporates an adversarial review of v1 by four independent critics: evidence consistency, solo-dev feasibility, completeness, and football methodology.
 
@@ -395,7 +409,7 @@ What we build instead is a **calculated consensus**: an average of independent *
 | **Projection blend** | Average **per stat**, using only the sources that project that stat. Each source declares an **availability convention** (conditional-on-playing / already discounted / unknown). Everything is converted to conditional-on-playing before blending, and **P(play) is applied exactly once**. A missing projection counts only as P(play) evidence, never as a 0. Every number shows its source count; with <2 sources it's labelled "single source". | Mixing conventions would discount Questionable players twice (~15% low) `[design]`. Phase 0 spike checks RotoWire's convention. | MVP (Sleeper only) |
 | **In-house baseline** | **v0 (shadow):** shrunk trailing mean of ffopportunity expected-stat components (`*_exp`) × (this week's implied team total ÷ the team's season-average implied total). **v1:** a team model fitted on 2018–25: plays = f(pace, spread); pass rate = neutral PROE + f(spread); TDs split between pass and rush and given to players by xTD share, inside-10 carries, end-zone targets and QB sneaks (FTN `is_qb_sneak`). Player shares come from the **current configuration** (same starting QB and key teammates active, backing off to all games), with **vacated-share redistribution rates fitted** from with/without splits and recency weighting chosen by backtest. A QB change is detected from `games.csv` QB IDs. Shares reset after role breaks and NFL trades. | Trailing xFP beat trailing actual points: MAE 5.6–6.4 vs 6.4–6.9, 2026 Weeks 3–5, PPR `[own calc]`. 8 of 32 teams have started more than one QB in 2026 `[own calc]`. **Blend gate:** joins the blend only when its walk-forward MAE is within ~5–10% of RotoWire's for that position (backtest on 2023–25 plus live shadow weeks) **and** a blend with weights fit on earlier seasons lowers MAE out of sample. Before that it is a labelled second opinion and the fallback if Sleeper projections go dark. **v0 result** ([baseline.md](baseline.md)) `[own calc]`: MAE 1.05/1.03/1.01× RotoWire's for RB/WR/TE, QB 1.21× (2024 – 2026 wk 5); blending changes MAE +0.1% to −1.1% by season, so no blend. | v0 shadow: Phase 2 · v1: Phase 3 |
 | **Distributions** | **Per-stat marginals** (yards, receptions, TDs) with a position- and mean-dependent CV fitted on nflverse; long-TD rates from pbp. **v2:** a shared bank of joint stat-residual vectors per position/tier, so the device draws, applies league scoring, and gets mean, quantiles and bonus expectations in one pass. Same-game correlation via a team-game factor. | Point-level σ can't price yardage bonuses and differs by scoring format `[design]`. CV depends on the mean `[own calc]`. | MVP (simple parametric) → Phase 3 (bank) |
-| **P(play)** | **v0:** table of designation × final practice status. The **final report is keyed to each game's day** (Wednesday, Friday or Saturday games exist in 2026 Weeks 12, 15 and 16) `[verified]`. Explicit states: IR/PUP/suspended (0 until activated), activated or elevated (≈1, role uncertain), rest days (own category). Collapses to 0 or 1 once inactives post. **v1:** logistic model trained on weekly-roster ACT/INA labels joined exactly by gsis_id. | Calibrated on 2023–2025, fantasy-relevant players ([calibration.md](calibration.md)) `[own calc]`: Questionable 92/71/56% active after a full/limited/missed final practice, 72% overall; Doubtful 1 of 69. Practice sets the odds only from the final report. Whether and how fast Sleeper's `injury_status` reflects game-day inactives is unknown `[unverified]`; spike (j). | v0 MVP · v1 Phase 3 |
+| **P(play)** | **v0:** table of designation × final practice status. The **final report is keyed to each game's day** (Wednesday, Friday or Saturday games exist in 2026 Weeks 12, 15 and 16) `[verified]`. Explicit states: IR/PUP/suspended (0 until activated), activated or elevated (≈1, role uncertain), rest days (own category). Collapses to 0 or 1 once inactives post. **v1:** logistic model trained on weekly-roster ACT/INA labels joined exactly by gsis_id. **v1 built 2026-10-16 for Questionable players** (practice, missed last game, injury, position; [calibration.md](calibration.md)). | Calibrated on 2023–2025, fantasy-relevant players ([calibration.md](calibration.md)) `[own calc]`: Questionable 92/71/56% active after a full/limited/missed final practice, 72% overall; Doubtful 1 of 69. Practice sets the odds only from the final report. Whether and how fast Sleeper's `injury_status` reflects game-day inactives is unknown `[unverified]`; spike (j). | v0 MVP · v1 Phase 3 |
 | **Start/sit optimizer** | Two-stage expected points. For each candidate lineup, enumerate the inactive scenarios for Q/D starters (2^k, k usually ≤4). In each scenario, re-optimize only the slots whose replacements kick off after that player's inactive reveal (kickoff − 90 min). FLEX/SUPER_FLEX placement falls out of this rather than a rule. **Locks:** a player whose game has started stays put and his actual points replace his distribution. An "I won't check inactives" toggle falls back to P·μ. | Example: P=0.7, μ_Q=15, bench μ=10. The swap option values starting him at 13.5 vs 10, where P·μ gives 10.5 vs 10 `[design]`. A pure variance swap is worth only ~0.2–0.7 pp of win probability (SD 5→9), up to ~1.5 pp (SD 4→12, 30-point underdog), ignoring correlation `[own calc]`. So expected points drives the decision, and P(win) is a tiebreaker. | MVP |
 | **Win probability / playoff mode** | Analytic normal approximation vs. the actual opposing lineup (median game counted as a second result). **Playoff mode** maximizes P(win) for the round, summed across multi-week rounds. | Monte Carlo needs common random numbers: 10k draws ≈ 0.5 pp standard error `[verified: arithmetic]` | Display: Phase 1 stretch · playoff mode: Phase 2 |
 | **K / DST** | Rescored Sleeper projections (spike b confirms they exist). DST in-house v0 = f(opponent implied total, opponent sack and turnover rates, home/away); 2-week DST streaming view. K: Sleeper only. | DST points vs. opponent implied total r = −0.32 (n=544); kicker vs own implied total r = 0.13 (2025, approximate scoring) `[own calc]` | MVP (Sleeper) · DST v0: Phase 1 stretch |
@@ -583,7 +597,7 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
 ### Phase 3 — Offseason · **Jan – Jul 2027**
 - **Backtests** (walk-forward, as of each lock) on the archive + nflverse 2018–25:
   - in-house baseline v1 (team model, configuration-aware shares, vacated-share redistribution)
-  - P(play) v1
+  - P(play) v1. **Questionable model built 2026-10-16** ([calibration.md](calibration.md)); mid-week statuses wait on the archive.
   - injury hazard. **Future-week availability and games missed by injury type built 2026-10-16** ([hazard.md](hazard.md), [injuries.md](injuries.md)); early exits remain.
   - DvP / CB depletion / coverage priors, each kept only if it shows residual lift. **DvP and CB depletion tested 2026-10-16 on 2022–25:
     no lift** ([matchups-gate.md](matchups-gate.md)); coverage priors remain.

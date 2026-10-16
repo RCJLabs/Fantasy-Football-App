@@ -104,10 +104,15 @@ export function Explain({ row }: { row: PlayerRow }) {
       <p>
         Chance to play: <strong>{pct(row.p)}</strong>
         {row.injury ? ` — ${row.injury}${row.injuryBody ? ` (${row.injuryBody})` : ''}` : ' — no injury designation'}
-        {row.practice ? `, ${row.practice === 'DNP' ? 'did not practice' : `${row.practice.toLowerCase()} practice`} on the ${row.practiceFinal ? 'final' : 'latest'} report` : ''}.
+        {row.practice ? `, ${row.practice === 'DNP' ? 'did not practice' : `${row.practice.toLowerCase()} practice`} on the ${row.practiceFinal ? 'final' : 'latest'} report` : ''}
+        {row.injury === 'Questionable' && row.missedLast ? ', missed his last game' : ''}.
       </p>
-      {row.injury === 'Questionable' && row.practice && !row.practiceFinal ? (
-        <p class="muted">The final injury report isn't out yet, so this is the rate for all Questionable players.</p>
+      {row.injury === 'Questionable' ? (
+        <p class="muted">
+          {row.practiceFinal
+            ? 'For Questionable players this weighs the final practice, the injury, his position and whether he missed his last game (2019–2025 game-day actives).'
+            : "The final injury report isn't out yet, so this weighs only the injury, his position and whether he missed his last game."}
+        </p>
       ) : null}
       {row.injury && ABSENT.has(row.injury) ? <InjuryDurationNote body={row.injuryBody} /> : null}
       {row.teamImplied !== undefined ? <p>Vegas implied team total: {row.teamImplied.toFixed(1)}.</p> : null}

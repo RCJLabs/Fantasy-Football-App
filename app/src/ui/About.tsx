@@ -24,9 +24,11 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             first downs, bonuses, IDP). Yardage bonuses and defense points-allowed tiers are priced from a spread around the projection.
           </li>
           <li>
-            <strong>Chance to play</strong> comes from the injury designation and the final practice report. Over 2023–2025, fantasy-relevant players
-            listed Questionable were active 92% of the time after a full final practice, 71% after a limited one and 56% after missing it (72% overall,
-            used until the final report is out). Doubtful players played 1 time in 69. For players who are out, player details also show how long
+            <strong>Chance to play</strong> comes from the injury designation. For Questionable players it also weighs the final practice report,
+            whether he missed his last game, the injury and his position, fitted on 2019–2025 game-day actives. A Questionable WR with an ankle
+            injury who played last week is active about 84% of the time after a limited final practice. With a hamstring injury, after missing his
+            last game, it's about 56%. Tested on seasons it wasn't fitted on, this beat practice alone. Until the final report is out, the same
+            factors apply without practice. Doubtful players played 1 time in 69. For players who are out, player details also show how long
             absences with the same injury have lasted (2019–2025): history, not a forecast.
           </li>
           <li>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compactPlayers, csvRecords, easternToUtcIso, gamesFromCsv, isEasternDst, latestInjuryReport, parseCsv, practiceStatus, projectionAccuracy, sleeperToGsis, toSleeperTeam } from './lib';
+import { compactPlayers, csvRecords, easternToUtcIso, gamesFromCsv, isEasternDst, latestInjuryReport, missedLastGame, parseCsv, practiceStatus, projectionAccuracy, sleeperToGsis, toSleeperTeam } from './lib';
 
 describe('csv', () => {
   it('handles quotes, escaped quotes, empty quoted fields and CRLF', () => {
@@ -96,6 +96,28 @@ describe('injury report', () => {
     expect(map.get('30')).toBe('00-3');
     const players = compactPlayers(dump, latestInjuryReport(csvRecords(csv), 6), map);
     expect(players.find((p) => p.id === '20')).toMatchObject({ gsis: '00-2', prac: 'Full' });
+  });
+  it("flags players who weren't active in their team's last game", () => {
+    // SEA played weeks 4 and 5 (week 6 not yet); DEN was on bye in week 5.
+    const games = csvRecords(
+      ['season,game_type,week,home_team,away_team,home_score', '2026,REG,4,SEA,DEN,24', '2026,REG,5,SEA,KC,17', '2026,REG,6,DEN,SEA,NA'].join('\n'),
+    );
+    const rosters = csvRecords(
+      [
+        'season,game_type,week,team,gsis_id,status',
+        '2026,REG,4,SEA,00-1,ACT',
+        '2026,REG,5,SEA,00-1,INA', // missed week 5
+        '2026,REG,6,SEA,00-1,ACT', // week 6 not played yet: ignored
+        '2026,REG,4,DEN,00-2,INA',
+        '2026,REG,5,DEN,00-2,ACT', // DEN's bye: not a game
+        '2026,REG,4,SEA,00-3,RES', // on a reserve list
+        '2026,REG,5,SEA,00-3,ACT',
+      ].join('\n'),
+    );
+    expect([...missedLastGame(rosters, games, '2026', 6)].sort()).toEqual(['00-1', '00-2']);
+    expect([...missedLastGame(rosters, games, '2026', 5)].sort()).toEqual(['00-2', '00-3']);
+    const players = compactPlayers({ '10': { player_id: '10', full_name: 'A', position: 'WR', team: 'SEA', gsis_id: '00-1' } }, undefined, undefined, new Set(['00-1']));
+    expect(players[0]!.ml).toBe(1);
   });
 });
 
