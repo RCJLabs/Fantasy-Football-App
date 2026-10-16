@@ -4,7 +4,9 @@ name: keepalive
 # which would stop the archive and daily data refresh mid-season. A monthly commit prevents that.
 on:
   schedule:
-    - cron: '23 6 1 * *'
+    # GitHub runs scheduled workflows as the account that last changed these cron lines. Commits authored by
+    # the session's bot account (no access to this repo) never fired, so edit them from an owner account.
+    - cron: '23 6 1 * *' # monthly
   workflow_dispatch:
 
 permissions:
