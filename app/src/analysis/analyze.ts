@@ -526,14 +526,19 @@ function lineupProblems(a: LineupAnalysis, reshuffled: boolean, league: League, 
   });
   const freeIr = league.rules.reserveSlots - roster.reserve.length;
   if (freeIr > 0) {
-    const irEligible = a.bench.filter((r) => r.injury && ['IR', 'Out', 'PUP', 'Sus', 'NA', 'DNR', 'COV', 'Doubtful'].includes(r.injury) && league.rules.reserveAllow[irKey(r.injury)] !== false);
-    if (irEligible.length) out.push({ level: 'info', text: `${irEligible[0]!.name} (${irEligible[0]!.injury}) could move to IR to free a bench spot` });
+    const eligible = a.bench.filter((r) => irEligible(league, r.injury));
+    if (eligible.length) out.push({ level: 'info', text: `${eligible[0]!.name} (${eligible[0]!.injury}) could move to IR to free a bench spot` });
   }
   if (a.uncoveredKeys.length) out.push({ level: 'info', text: `Scoring keys without projections: ${a.uncoveredKeys.join(', ')}` });
   return out;
 }
 
 const irKey = (status: string) => (status === 'Doubtful' ? 'doubtful' : status === 'Out' ? 'out' : status === 'Sus' ? 'sus' : status === 'NA' ? 'na' : status === 'DNR' ? 'dnr' : status === 'COV' ? 'cov' : 'ir');
+
+/** The league lets a player with this status into an IR slot (Sleeper's `reserve_allow_*`; IR itself always). */
+export function irEligible(league: League, injury: string | null | undefined): boolean {
+  return !!injury && ['IR', 'Out', 'PUP', 'Sus', 'NA', 'DNR', 'COV', 'Doubtful'].includes(injury) && league.rules.reserveAllow[irKey(injury)] !== false;
+}
 
 export interface WaiverRow {
   player: PlayerRow;
