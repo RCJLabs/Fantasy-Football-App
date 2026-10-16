@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BaselineFile, PlayersFile, ScheduleFile } from '../app/src/data/contracts';
-import { playProbability } from '../app/src/engine/availability';
+import type { StatLine } from '../app/src/domain/types';
+import { conditionalMean, playProbability } from '../app/src/engine/availability';
 import { buildPredictions, commitment, sha256, toRawProjection, type ArchivedProjection } from './ledger';
 
 const H = 3_600_000;
@@ -105,6 +106,18 @@ describe('prediction ledger', () => {
     expect(by.get('q1')!.mu).toBeCloseTo(200 * 0.04 + 4, 2);
     expect(by.get('q1')!.bl).toBeUndefined();
     expect(by.get('k1')!.fallback).toBeUndefined();
+  });
+
+  it("commits the props shadow next to the app's number, conditional on playing", () => {
+    const props = new Map<string, StatLine>([
+      ['q1', { pass_yd: 280 }], // pass TDs stay Sleeper's
+      ['w1', { rec_yd: 70 }], // Questionable: Sleeper's discounted receptions are undone first
+    ]);
+    const by = new Map(buildPredictions({ season: '2026', week: 6, now, projections, players, schedule, props }).players.map((p) => [p.id, p]));
+    expect(by.get('q1')!.pr).toBeCloseTo(280 * 0.04 + 2 * 4, 2);
+    expect(by.get('q1')!.mu).toBeCloseTo(250 * 0.04 + 2 * 4, 1); // unchanged: props aren't blended
+    expect(by.get('w1')!.pr).toBeCloseTo(conditionalMean(5, 'Questionable') + 7, 2);
+    expect(by.get('w2')!.pr).toBeUndefined();
   });
 
   it('predicts nothing once every game has started', () => {

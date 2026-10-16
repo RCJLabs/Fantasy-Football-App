@@ -15,14 +15,14 @@ export interface ScoredPrediction extends PlayerPrediction {
   kickoff: string;
 }
 
-/** The latest prediction for each player-game made before that game's kickoff. */
-export function lastBeforeKickoff(files: readonly PredictionFile[]): Map<string, ScoredPrediction> {
+/** The latest prediction for each player-game made before that game's kickoff (among those `keep` accepts). */
+export function lastBeforeKickoff(files: readonly PredictionFile[], keep: (p: PlayerPrediction) => boolean = () => true): Map<string, ScoredPrediction> {
   const out = new Map<string, ScoredPrediction>();
   for (const f of [...files].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))) {
     const kickoffs = new Map(f.games.map((g) => [g.id, g.kickoff]));
     for (const p of f.players) {
       const kickoff = kickoffs.get(p.game);
-      if (!kickoff || Date.parse(f.createdAt) >= Date.parse(kickoff)) continue;
+      if (!kickoff || Date.parse(f.createdAt) >= Date.parse(kickoff) || !keep(p)) continue;
       out.set(`${p.game}:${p.id}`, { ...p, createdAt: f.createdAt, kickoff });
     }
   }
@@ -78,6 +78,11 @@ export interface LedgerScore {
    * either put at `minProjected` or more (the backtest's population, docs/baseline.md).
    */
   baseline: { n: number; appMae: number; baselineMae: number; ratio: number };
+  /**
+   * The props shadow (`pr`) against the app's number from the same snapshot, on the same population; `blendMae`
+   * averages the two (the question the blend gate asks).
+   */
+  props: { n: number; appMae: number; propsMae: number; blendMae: number; ratio: number };
 }
 
 const TAGS = new Set(['Questionable', 'Doubtful', 'Out']);
@@ -94,12 +99,18 @@ export function scoreLedger(
   predictions: ReadonlyMap<string, ScoredPrediction>,
   outcomes: { played: Set<string>; byGsis: ReadonlyMap<string, Outcome> },
   minProjected = 5,
+  /** The latest pre-kickoff prediction that carried props (`pr`), per player-game. */
+  withProps: ReadonlyMap<string, ScoredPrediction> = new Map(),
 ): LedgerScore {
-  const scored: Array<{ p: ScoredPrediction; o: Outcome }> = [];
-  for (const p of predictions.values()) {
-    const o = p.gsis && outcomes.played.has(p.game) ? outcomes.byGsis.get(p.gsis) : undefined;
-    if (o) scored.push({ p, o });
-  }
+  const withOutcomes = (ps: ReadonlyMap<string, ScoredPrediction>) => {
+    const out: Array<{ p: ScoredPrediction; o: Outcome }> = [];
+    for (const p of ps.values()) {
+      const o = p.gsis && outcomes.played.has(p.game) ? outcomes.byGsis.get(p.gsis) : undefined;
+      if (o) out.push({ p, o });
+    }
+    return out;
+  };
+  const scored = withOutcomes(predictions);
 
   const tagged = scored.filter(({ p }) => TAGS.has(p.inj ?? ''));
   const eps = 1e-6;
@@ -119,9 +130,13 @@ export function scoreLedger(
   const err = played.map(({ p, o }) => o.ppr - p.mu);
   const n = played.length || 1;
   const both = scored.filter(({ p, o }) => o.active && skill(p) && p.bl !== undefined && Math.max(p.mu, p.bl) >= minProjected);
-  const meanAbs = (f: (x: { p: ScoredPrediction; o: Outcome }) => number) => both.reduce((a, x) => a + Math.abs(x.o.ppr - f(x)), 0) / (both.length || 1);
-  const appMae = meanAbs(({ p }) => p.mu);
-  const baselineMae = meanAbs(({ p }) => p.bl!);
+  const meanAbs = (rows: ReadonlyArray<{ p: ScoredPrediction; o: Outcome }>, f: (p: ScoredPrediction) => number) =>
+    rows.reduce((a, x) => a + Math.abs(x.o.ppr - f(x.p)), 0) / (rows.length || 1);
+  const appMae = meanAbs(both, (p) => p.mu);
+  const baselineMae = meanAbs(both, (p) => p.bl!);
+  const priced = withOutcomes(withProps).filter(({ p, o }) => o.active && skill(p) && p.pr !== undefined && Math.max(p.mu, p.pr) >= minProjected);
+  const propsAppMae = meanAbs(priced, (p) => p.mu);
+  const propsMae = meanAbs(priced, (p) => p.pr!);
   return {
     season,
     week,
@@ -137,5 +152,12 @@ export function scoreLedger(
       within2: r3(played.filter(({ p, o }) => Math.abs(o.ppr - p.mu) <= 2 * p.sd).length / n),
     },
     baseline: { n: both.length, appMae: r3(appMae), baselineMae: r3(baselineMae), ratio: appMae > 0 ? r3(baselineMae / appMae) : 0 },
+    props: {
+      n: priced.length,
+      appMae: r3(propsAppMae),
+      propsMae: r3(propsMae),
+      blendMae: r3(meanAbs(priced, (p) => (p.mu + p.pr!) / 2)),
+      ratio: propsAppMae > 0 ? r3(propsMae / propsAppMae) : 0,
+    },
   };
 }

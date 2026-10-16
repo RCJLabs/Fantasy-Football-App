@@ -6,7 +6,9 @@ import { createHash } from 'node:crypto';
 import { gamesByTeam, playerRow, type WeekContext } from '../app/src/analysis/analyze';
 import type { BaselineFile, PlayersFile, ScheduleFile } from '../app/src/data/contracts';
 import { baselineProjectionRows, hasOffenseProjections, mergeProjectionPlayers, playersFromFile } from '../app/src/data/repo';
-import type { PracticeStatus } from '../app/src/domain/types';
+import type { PracticeStatus, StatLine } from '../app/src/domain/types';
+import { conditionalMean } from '../app/src/engine/availability';
+import { projectedPoints } from '../app/src/engine/scoring';
 import { indexProjections, parseLeague } from '../app/src/sleeper/parse';
 import type { RawLeague, RawProjection } from '../app/src/sleeper/raw';
 
@@ -80,6 +82,11 @@ export interface PlayerPrediction {
   sd: number;
   /** In-house baseline, full-PPR points if active: the shadow second opinion, scored next to `mu`. */
   bl?: number;
+  /**
+   * Full-PPR points if active with the player's props wherever they price a stat and Sleeper's line elsewhere
+   * (pipeline/props.ts): the props shadow, scored next to `mu`. Only in the snapshot that fetched his game's props.
+   */
+  pr?: number;
   /** `mu` came from the baseline because Sleeper's projections were missing, as the app would show. */
   fallback?: true;
 }
@@ -106,6 +113,8 @@ export interface PredictionInput {
   schedule: ScheduleFile;
   /** The deployed baseline.json, when it was archived. */
   baseline?: BaselineFile;
+  /** Prop-implied stat means by Sleeper id (pipeline/props.ts) for the games this run fetched. */
+  props?: ReadonlyMap<string, StatLine>;
   code?: string;
 }
 
@@ -147,6 +156,15 @@ export function buildPredictions(input: PredictionInput): PredictionFile {
     if (row.practiceFinal) pred.final = true;
     if (row.baseline) pred.bl = round(row.baseline.pts, 2);
     if (row.fallback) pred.fallback = true;
+    const propLine = input.props?.get(id);
+    const stats = index.byPlayer.get(id)?.stats;
+    if (propLine && stats && !row.fallback) {
+      // Props are void when a player sits, so they're conditional on playing. Sleeper's line is discounted for
+      // Questionable players: undo that first, as the app does for `mu`.
+      const scale = conditionalMean(1, row.injury);
+      const line: StatLine = { ...Object.fromEntries(Object.entries(stats).map(([k, v]) => [k, v * scale])), ...propLine };
+      pred.pr = round(Math.max(0, projectedPoints(line, league.scoring, row.pos)), 2);
+    }
     out.push(pred);
   }
   out.sort((a, b) => a.game.localeCompare(b.game) || a.id.localeCompare(b.id));

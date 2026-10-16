@@ -13,6 +13,8 @@ Each run saves the inputs we can't recreate later:
 - **Sleeper players dump:** once a day.
 - **nflverse injuries:** twice a day. nflverse keeps only the latest row per player per week, so earlier rows are lost unless we snapshot them.
 - **The app's deployed data files** (`site_players.json`, `site_schedule.json`, `site_baseline.json`): with the projections, exactly what the app showed at that moment.
+- **Player props** from The Odds API (`props_events.json`, `props_event_<id>.json`): each game once, in the first run within 6 hours of its
+  kickoff ([docs/props.md](../../docs/props.md)). The API key (Actions secret `ODDS_API_KEY`) reaches only `scripts/props/pull.ts`.
 - **The app's predictions** (`predictions.json`, see below).
 
 Each run's files are bundled as a `tar.gz`, encrypted with [age](https://age-encryption.org) to the public key in `recipient.txt`, and uploaded to a monthly prerelease (`archive-YYYY-MM`).
@@ -36,7 +38,14 @@ On each run, `scripts/ledger/predict.ts` writes `predictions.json` into the snap
 - the weekly spread;
 - the in-house baseline's full-PPR points if active (`bl`), when the deployed `baseline.json` covers the week.
 
+- the props shadow's full-PPR points if active (`pr`): props wherever they price a stat, Sleeper's line elsewhere. Only in the snapshot that
+  fetched the game's props.
+
 The run also uploads `commit_<season>w<week>_<timestamp>.json` **unencrypted**. It holds the SHA-256 of that `predictions.json` and the games it covers. GitHub records the asset's upload time, so it proves the predictions existed before kickoff. Nothing derived from RotoWire is published. If the hook fails, the snapshot is uploaded without it.
+
+A run that fetched props also uploads `props_<season>w<week>_<timestamp>.json` **unencrypted**: the games fetched, their kickoffs and the
+credits used, but no odds. Later runs read these to skip games already fetched. Dispatching the workflow with `props: test` fetches the next
+game whatever its kickoff (about 6 credits), marked so it doesn't count as fetched.
 
 To verify a snapshot's predictions (with the private key):
 
@@ -69,6 +78,8 @@ For each player-game the scorer takes the **last prediction committed before kic
   against nflverse full-PPR points.
 - **Shadow baseline:** each prediction also carries `bl`, the in-house baseline's points if active
   ([docs/baseline.md](../../docs/baseline.md)). The scorer compares its MAE with the app's on active QB/RB/WR/TE that either put at 5+.
+- **Props shadow:** `pr` against the app's `mu` from the same snapshot (the one that fetched the props, usually not the last before
+  kickoff), on the same population, plus a 50/50 blend ([docs/props.md](../../docs/props.md)).
 
 Only games with stats count. Weekly rosters exist before kickoff too, so counting them early would score pre-game statuses. The output is
 aggregates only.
