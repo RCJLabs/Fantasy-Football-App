@@ -151,6 +151,8 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
     'Casey Quarterback QB → Backup Passer, a free agent. If Casey Quarterback misses a week, Backup Passer projects 15.5 instead of 0.9. Insurance: +15.2',
   );
   await expect(cuffs.locator('li').nth(1)).toContainText(/^Riley Runner RB → Next Man Runner, a free agent\. .*projects 11\.8 instead of 5\.5\. Insurance: \+\d+\.\d over the rest of the season\.$/);
+  // My IR slot is taken (Pat Injured), so no IR stash card.
+  await expect(page.getByRole('heading', { name: 'IR stash' })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('waivers.png'), fullPage: true });
 
   // Season: team grades, standings with playoff odds and my remaining schedule.
@@ -218,6 +220,28 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(page.getByRole('heading', { name: 'Your weeks after the trade' })).toBeVisible();
   await expect(page.locator('table.byes tbody tr')).toHaveCount(9); // weeks 7–15
   await page.screenshot({ path: testInfo.outputPath('trade.png'), fullPage: true });
+});
+
+test('IR stash: with an open IR slot, an injured free agent who comes back in week 10', async ({ page }, testInfo) => {
+  const rosters = fx.rosters.map((r) => (r.roster_id === 1 ? { ...r, reserve: [] } : r));
+  await page.route('https://api.sleeper.app/v1/**', (route) => {
+    const path = new URL(route.request().url()).pathname.replace('/v1/', '/');
+    return path === '/league/1001/rosters' ? route.fulfill({ json: rosters }) : route.fallback();
+  });
+  await page.goto('./');
+  await page.getByLabel('Sleeper username').fill('testuser');
+  await page.getByRole('button', { name: 'Find my leagues' }).click();
+  await page.locator('.league-card').filter({ hasText: 'Saturday Night Gridiron' }).getByRole('link').first().click();
+  await page.getByRole('tab', { name: 'Waivers' }).click();
+  const card = page.locator('.card', { has: page.getByRole('heading', { name: 'IR stash' }) });
+  await expect(card.locator('p').first()).toHaveText("You have 1 open IR slot. Injured free agents who can go straight into one, by what they add once they're back:");
+  const row = card.locator('tbody tr').first();
+  await expect(row).toContainText('Stash Runner');
+  await expect(row).toContainText('IR · 12.5 a game when back');
+  await expect(row.locator('td').nth(1)).toHaveText('wk 10');
+  await expect(row.locator('td').nth(2)).toHaveText(/^\+\d+\.\d$/);
+  await expect(card.locator('thead')).toContainText('Playoffs');
+  await card.screenshot({ path: testInfo.outputPath('ir-stash.png') });
 });
 
 test('a week without Sleeper projections falls back to the baseline, labelled', async ({ page }) => {

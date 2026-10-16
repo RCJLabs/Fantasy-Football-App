@@ -215,6 +215,12 @@
   - **On the owner's leagues:** RB handcuffs worth +0.4 to +11 over the rest of the season. QB handcuffs are worth about +0.3, since
     a free-agent QB fills in nearly as well.
 
+- **IR stash finder — built (2026-10-16):** item 3 of the owner's assistance list; details in [ir-stash.md](ir-stash.md).
+  - **What it shows:** with an open IR slot, injured free agents the league allows on IR whom Sleeper projects back. Each comes with
+    his return week, points a game once back, and his weighted rest-of-season gain (no drop while on IR), with the playoff part split
+    out.
+  - **On the owner's leagues:** 23 and 33 candidates. The best adds +21 and +26 over the rest of the season.
+
 - **Phone layout — fixed (2026-10-16):** the standings table pushed the page sideways on a 412px phone. Grid columns now can't grow past
   the screen, tables are tighter on phones, and points for sits under W-L. An e2e test checks 412px and 360px.
 
@@ -667,8 +673,10 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
    - QB and RB backups are valued with the share they inherited in 2019–2025 games the starter sat. That share passed a held-out test;
      TE and WR backups didn't, so they aren't valued.
    - The free-agent board tags backups whose starter is out now.
-3. **IR stash finder.** Free agents who are IR-eligible, ranked by playoff-week value, whose expected return (injury durations by type)
-   lands before your playoffs. Shown only with an open IR slot. Small: the models exist.
+3. **IR stash finder.** **Built 2026-10-16** ([ir-stash.md](ir-stash.md)).
+   - Shown only with an open IR slot. It ranks IR-eligible free agents by what they add once back, using Sleeper's return week; the
+     playoff part is shown.
+   - Injury-type durations stay in the player details as context.
 4. **Waiver claim plan.**
    - Ordered claims, each paired with its drop: the player whose loss costs least over the coming weeks, keeping bye and injury cover.
    - Backup claims in case a first choice fails, and the FAAB budget split across several claims.

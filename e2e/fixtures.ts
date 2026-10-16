@@ -76,6 +76,8 @@ const PLAYERS: P[] = [
   // CCC's backups, free agents: the next men up behind my QB and my (Out) RB.
   ['q2', 'Backup Passer', 'QB', 'CCC', { pass_yd: 12, pass_td: 0.1 }],
   ['r9', 'Next Man Runner', 'RB', 'CCC', { rush_yd: 30, rush_td: 0.2, rec: 1, rec_yd: 8 }],
+  // A free agent on IR whom Sleeper projects again from week 10: an IR stash.
+  ['fx', 'Stash Runner', 'RB', 'HHH', { rush_yd: 70, rush_td: 0.5, rec: 2, rec_yd: 15 }, 'IR'],
 ];
 /** Sleeper depth charts (position, order) for CCC's QBs and RBs. */
 const DEPTH: Record<string, [string, number]> = { q1: ['QB', 1], q2: ['QB', 2], r1: ['RB', 1], r9: ['RB', 2] };
@@ -91,9 +93,9 @@ const projectionRow = ([id, name, pos, team, stats, injury]: P, sidelined: boole
 
 export const projections: RawProjection[] = PLAYERS.map((p) => projectionRow(p, p[5] === 'Out' || p[5] === 'IR'));
 
-/** Weeks 7+: the Out RB is back; team GGG is on bye in week 8. */
+/** Weeks 7+: the Out RB is back; team GGG is on bye in week 8; the IR stash returns in week 10. */
 export const futureProjections = (week: number): RawProjection[] =>
-  PLAYERS.filter((p) => !(week === 8 && p[3] === 'GGG')).map((p) => projectionRow(p, p[5] === 'IR'));
+  PLAYERS.filter((p) => !(week === 8 && p[3] === 'GGG')).map((p) => projectionRow(p, p[5] === 'IR' && !(p[0] === 'fx' && week >= 10)));
 
 export const playersFile: PlayersFile = {
   schemaVersion: 1,

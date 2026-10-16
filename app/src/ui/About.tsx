@@ -71,6 +71,10 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             starter misses each week ahead times what the backup would add then, beyond your bench and the best free agent at the position.
           </li>
           <li>
+            <strong>IR stash</strong> (Waivers tab, when you have an open IR slot): injured free agents your league allows on IR, ranked by what
+            they add to your lineups once Sleeper projects them back. On IR they take no bench spot until then.
+          </li>
+          <li>
             <strong>Weeks ahead and season so far</strong> (Season tab). Ahead: each week to the end of the season, with regular starters on bye
             or not projected, players coming back, and in weeks with a hole, the free agent who adds most that week. So far: your record against
             all-play (your score against every team each week), which shows how much the schedule has helped or hurt. Each week&apos;s best lineup

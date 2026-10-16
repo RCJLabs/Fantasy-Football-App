@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'preact/hooks';
 import { analyzeWaivers, type PlayerRow } from '../analysis/analyze';
 import { handcuffs, nextUpForOut, type Handcuff } from '../analysis/handcuffs';
+import { irStash } from '../analysis/irStash';
 import { marketPrice } from '../analysis/faab';
 import { GRADE_WEIGHTS, leagueGrades, type Grade, type LeagueGrades, type Part } from '../analysis/grades';
 import { evaluateTrade, freeAgentPool, streamers, waiverBoard, type ByeWeek, type LeagueOutlook, type TradeSideResult } from '../analysis/outlook';
@@ -168,6 +169,7 @@ export function WaiversTab({ bundle, now }: { bundle: LeagueBundle; now: number 
         ) : null}
       </div>
       <Handcuffs bundle={bundle} outlook={o} />
+      <IrStashCard bundle={bundle} outlook={o} />
       <Streamers bundle={bundle} outlook={o} now={now} />
     </div>
   );
@@ -199,6 +201,60 @@ function Handcuffs({ bundle, outlook }: { bundle: LeagueBundle; outlook: LeagueO
         Insurance: each week ahead, the chance the starter misses it (about {pct(miss)} a week on average) times what the backup adds to that
         week&apos;s best lineup beyond your bench and the best free agent at the position, who you could add instead. Compare it with the ROS
         values above.
+      </p>
+    </div>
+  );
+}
+
+/** Injured free agents who could fill an open IR slot now and help later (analysis/irStash.ts). */
+function IrStashCard({ bundle, outlook }: { bundle: LeagueBundle; outlook: LeagueOutlook }) {
+  const stash = useMemo(() => irStash(outlook, bundle.myRoster!.rosterId, bundle.ctx.players), [bundle, outlook]);
+  if (!stash.openSlots || !stash.rows.length) return null;
+  const player = (id: string) => bundle.ctx.players.get(id) ?? outlook.model.player(id);
+  const playoffs = stash.rows.some((r) => r.playoffGain > 0);
+  return (
+    <div class="card">
+      <h2>IR stash</h2>
+      <p class="muted small">
+        You have {stash.openSlots} open IR slot{stash.openSlots > 1 ? 's' : ''}. Injured free agents who can go straight into one, by what they add once
+        they&apos;re back:
+      </p>
+      <table class="table stash">
+        <thead>
+          <tr>
+            <th>Player</th>
+            <th class="num">Back</th>
+            <th class="num">ROS</th>
+            {playoffs ? <th class="num">Playoffs</th> : null}
+          </tr>
+        </thead>
+        <tbody>
+          {stash.rows.map((r) => {
+            const p = player(r.id);
+            return (
+              <tr>
+                <td>
+                  <strong>{p?.name ?? r.id}</strong>{' '}
+                  <span class="muted small">
+                    {p?.pos}
+                    {p?.team ? `·${p.team}` : ''}
+                  </span>
+                  <div class="muted small">
+                    {p?.injury}
+                    {p?.injuryBody ? ` (${p.injuryBody})` : ''} · {pts(r.perWeek)} a game when back
+                  </div>
+                </td>
+                <td class="num">wk {r.back}</td>
+                <td class="num">{signed(r.gain)}</td>
+                {playoffs ? <td class="num">{signed(r.playoffGain)}</td> : null}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p class="muted small">
+        Back: the first week Sleeper projects him again. ROS: what he adds to your best lineups from then on, playoff weeks counted at your playoff
+        odds{playoffs ? '; Playoffs: the part from playoff weeks' : ''}. On IR he takes no bench spot; he&apos;ll need one when he comes back.
       </p>
     </div>
   );
