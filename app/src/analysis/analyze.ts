@@ -5,6 +5,7 @@ import { crossCovariance, pairCorrelation, withinCovariance, type CorrItem } fro
 import { canFill, optimizeLineup, startingSlots, twoStageValue, type LineupPlayer, type LineupProblem } from '../engine/lineup';
 import { expectedStats, scoreBreakdown, scoreStats, uncoveredScoringKeys } from '../engine/scoring';
 import { pointSd, playerDist, probBeatAtLeast, sumDists, winProbability, type Dist } from '../engine/winprob';
+import type { PlayerUsage } from '../data/contracts';
 import type { ProjectionIndex } from '../sleeper/parse';
 import { playoffWeekInfo, type PlayoffWeek } from './ros';
 
@@ -22,6 +23,13 @@ export interface WeekContext {
   gamesByTeam: Map<string, Game>;
   /** True when kickoff times come from game dates only (pipeline schedule unavailable). */
   kickoffsApproximate?: boolean;
+  /** Recent usage by Sleeper id (pipeline usage.json), when available. */
+  usage?: UsageIndex;
+}
+
+export interface UsageIndex {
+  weeks: number[];
+  players: ReadonlyMap<string, PlayerUsage>;
 }
 
 export interface PlayerRow {
@@ -52,6 +60,8 @@ export interface PlayerRow {
   /** Largest scoring contributions of the expected stat line. */
   breakdown: Array<{ key: string; points: number }>;
   teamImplied?: number;
+  /** Recent usage (display only), with the weeks it covers. */
+  usage?: PlayerUsage & { weeks: number[] };
 }
 
 export type ProblemLevel = 'error' | 'warn' | 'info';
@@ -178,6 +188,8 @@ export function playerRow(id: string, league: League, ctx: WeekContext, actualPo
     breakdown: hasProjection ? scoreBreakdown(expected, league.scoring).slice(0, 6) : [],
   };
   if (base?.injuryBody) row.injuryBody = base.injuryBody;
+  const usage = ctx.usage?.players.get(id);
+  if (usage) row.usage = { ...usage, weeks: ctx.usage!.weeks };
   if (practice) row.practice = practice;
   if (finalPractice) row.practiceFinal = true;
   if (game && team) {

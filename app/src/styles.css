@@ -636,3 +636,12 @@ h3 {
 .core li .num {
   float: right;
 }
+
+/* Recent usage in the player explanation */
+.table.usage {
+  margin-top: 0.4rem;
+}
+.table.usage caption {
+  text-align: left;
+  padding-bottom: 0.2rem;
+}

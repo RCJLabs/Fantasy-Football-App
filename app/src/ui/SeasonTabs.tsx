@@ -6,7 +6,7 @@ import { carriedForward, longTermRanking } from '../analysis/longterm';
 import { pickAssets, pickLabel, pickTotals, type PickAsset } from '../analysis/picks';
 import { FANTASYCALC_URL, horizons, loadMarketValues, marketParams, marketTotals, type Horizon, type Market } from '../data/fantasycalc';
 import { loadTrending } from '../data/repo';
-import { InjuryBadge, ErrorBox, Spinner } from './components';
+import { InjuryBadge, ErrorBox, Spinner, usageNote } from './components';
 import { loadSeason, type LeagueBundle, type SeasonBundle } from './data';
 import { logError } from './errorLog';
 import { kickoffLabel, pct, pts, signed } from './format';
@@ -16,6 +16,7 @@ const money = (n: number) => `$${Math.round(n)}`;
 const weekSpan = (weeks: readonly number[]) => (weeks.length ? (weeks.length > 1 ? `weeks ${weeks[0]}–${weeks.at(-1)}` : `week ${weeks[0]}`) : 'no weeks');
 
 function PlayerCell({ row, now, extra }: { row: PlayerRow; now: number; extra?: string }) {
+  const usage = usageNote(row);
   return (
     <>
       <strong>{row.name}</strong>{' '}
@@ -28,6 +29,7 @@ function PlayerCell({ row, now, extra }: { row: PlayerRow; now: number; extra?: 
         {row.kickoff === null ? 'BYE this week' : `${row.home ? 'vs' : '@'} ${row.opponent ?? '?'} ${kickoffLabel(row.kickoff, now)}`}
         {extra ? ` · ${extra}` : ''}
       </div>
+      {usage ? <div class="muted small">{usage}</div> : null}
     </>
   );
 }

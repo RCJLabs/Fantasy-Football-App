@@ -1,10 +1,10 @@
 import type { Game, League, LeagueUser, Matchup, Player, Roster, StatLine } from '../domain/types';
-import { gamesByTeam, type WeekContext } from '../analysis/analyze';
+import { gamesByTeam, type UsageIndex, type WeekContext } from '../analysis/analyze';
 import { sleeperApi, SleeperError } from '../sleeper/api';
 import { indexProjections, parseLeague, parseMatchup, parsePlayersDump, parseRoster, parseUser, type ProjectionIndex } from '../sleeper/parse';
 import type { RawProjection, RawState, RawTradedPick, RawTransaction, RawUser } from '../sleeper/raw';
 import { cached } from './cache';
-import { DATA_SCHEMA_VERSION, type AccuracyFile, type CompactPlayer, type Manifest, type PlayersFile, type ScheduleFile } from './contracts';
+import { DATA_SCHEMA_VERSION, type AccuracyFile, type CompactPlayer, type Manifest, type PlayersFile, type ScheduleFile, type UsageFile } from './contracts';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -148,6 +148,15 @@ export async function loadWeek(season: string, week: number, force = false): Pro
   } catch {
     /* fall through to approximation */
   }
+  // Recent usage is context only: the app works the same without it.
+  let usage: UsageIndex | undefined;
+  try {
+    const file = (await cached('data:usage', 3 * HOUR, () => fetchDataFile<UsageFile>('usage.json'), { force })).value;
+    if (file.season === season) usage = { weeks: file.weeks, players: new Map(Object.entries(file.players)) };
+  } catch {
+    /* no usage shown */
+  }
+
   if (!games.some((g) => g.week === week)) {
     games = approximateGames(projRes.value, week);
     kickoffsApproximate = true;
@@ -162,6 +171,7 @@ export async function loadWeek(season: string, week: number, force = false): Pro
     projections,
     gamesByTeam: gamesByTeam(games, week),
     kickoffsApproximate,
+    ...(usage ? { usage } : {}),
     notes,
     asOf,
   };

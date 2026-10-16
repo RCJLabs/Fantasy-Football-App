@@ -53,8 +53,12 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             <strong>FAAB bids</strong> follow what your league has actually paid for players at the same position this season, scaled by your remaining
             budget.
           </li>
+          <li>
+            <strong>Usage</strong> (snap share, targets and carries over the last four weeks, with the share of the team's) is shown for context in player
+            details and on the waiver board. It doesn't change projections.
+          </li>
         </ul>
-        <p class="muted small">Coming next: usage trends and matchup adjustments, each added only after backtests show it helps.</p>
+        <p class="muted small">Coming next: matchup adjustments, added only after backtests show they help.</p>
       </div>
 
       {accuracy.data ? <AccuracyCard file={accuracy.data} /> : null}
@@ -65,6 +69,7 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           <li>League, roster, matchup and player data: Sleeper API (read-only, non-commercial use).</li>
           <li>Projections: RotoWire, via Sleeper.</li>
           <li>Practice reports and schedule: nflverse (CC-BY 4.0), processed daily.</li>
+          <li>Usage: nflverse (CC-BY 4.0) weekly stats and snap counts (compiled by Pro Football Reference).</li>
           <li>Trending adds: Sleeper.</li>
           <li>
             Trade market values:{' '}

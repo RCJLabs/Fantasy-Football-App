@@ -110,8 +110,59 @@ export function Explain({ row }: { row: PlayerRow }) {
       <p class="muted">
         Expected {pts(row.ev)} = {pts(row.mu)} × {pct(row.p)}. Weekly spread ±{pts(row.sd)}.
       </p>
+      {row.usage ? <UsageTable usage={row.usage} /> : null}
     </div>
   );
+}
+
+/** Recent weeks' snap share, targets and carries (share of the team's in brackets). Context only. */
+function UsageTable({ usage }: { usage: NonNullable<PlayerRow['usage']> }) {
+  const lines: Array<[label: string, values: Array<number | null>, share: Array<number | null> | null, unit: string]> = [
+    ['Snaps', usage.snap, null, '%'],
+    ['Targets', usage.tgt, usage.tshare, ''],
+    ['Carries', usage.car, usage.cshare, ''],
+  ];
+  const shown = lines.filter(([, values]) => values.some((v) => v));
+  if (!shown.length) return null;
+  return (
+    <div class="table-wrap">
+      <table class="table usage">
+        <caption class="muted small">Recent usage (nflverse; share of team in brackets)</caption>
+        <thead>
+          <tr>
+            <th />
+            {usage.weeks.map((w) => (
+              <th class="num">Wk {w}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map(([label, values, share, unit]) => (
+            <tr>
+              <td>{label}</td>
+              {values.map((v, i) => (
+                <td class="num">
+                  {v === null ? '–' : `${v}${unit}`}
+                  {v && share?.[i] ? <span class="muted small"> ({share[i]}%)</span> : null}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** One line for lists: the last three snap shares and last week's share of targets (carries for RBs). */
+export function usageNote(row: PlayerRow): string | undefined {
+  const u = row.usage;
+  if (!u || row.pos === 'QB') return undefined;
+  const snaps = u.snap.filter((s): s is number => s !== null).slice(-3);
+  if (!snaps.length) return undefined;
+  const rb = row.pos === 'RB';
+  const share = [...(rb ? u.cshare : u.tshare)].reverse().find((x) => x !== null);
+  return `snaps ${snaps.join('→')}%${share ? ` · ${share}% of ${rb ? 'carries' : 'targets'}` : ''}`;
 }
 
 export function slotLabel(slot: string): string {

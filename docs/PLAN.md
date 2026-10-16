@@ -86,7 +86,17 @@
   - Nothing RotoWire-derived is published. A hook failure never blocks the snapshot.
   - On today's real snapshot: 415 players in 14 week-6 games, in 0.6 s.
 
+- **Usage trends, display only — built (2026-10-15):**
+  - Usage covers the last four weeks of snap share, targets and carries, plus each player's share of team targets and carries.
+    - Sources: nflverse snap counts (compiled by PFR) and weekly player stats.
+    - Joins: PFR id → gsis via weekly rosters, then gsis → Sleeper via the pipeline's id map.
+    - Coverage: 525 of 526 fantasy-relevant 2026 stat rows (10+ PPR) mapped.
+  - It appears as a table in player details and as a one-line trend on the waiver board, for example "snaps 45→61→84% · 62% of carries".
+    It doesn't change projections.
+  - The archive also runs before Sunday's 4 pm games (after their inactives) and before SNF in EDT, so every slate gets a late prediction.
+
   **Not yet:**
+  - usage in projections (a shift in role before RotoWire catches up) — only if a backtest shows it helps;
   - scoring the committed predictions (the reveal): chance to play (Brier, calibration by tag) against game-day actives, and points (MAE,
     ±1 SD coverage) against PPR results. It needs the archive key wherever it runs; first possible after week 6 is final;
   - keeper-league picks: Sleeper lets them be traded, but FantasyCalc's rookie-pick prices don't fit a keeper draft;

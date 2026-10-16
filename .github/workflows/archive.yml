@@ -5,9 +5,10 @@ name: archive
 on:
   schedule:
     - cron: '17 */4 * * *'   # every 4 hours
-    - cron: '42 23 * * 1,4'  # before MNF / TNF
+    - cron: '42 23 * * 0,1,4' # before SNF (EDT) / MNF / TNF
     - cron: '47 15 * * 0'    # Sunday ~11:47 EDT / 10:47 EST
     - cron: '47 16 * * 0'    # Sunday ~12:47 EDT / 11:47 EST
+    - cron: '47 19 * * 0'    # Sunday ~3:47 pm EDT / 2:47 pm EST: after the 4 pm games' inactives
   workflow_dispatch:
     inputs:
       mode:
