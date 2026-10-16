@@ -88,6 +88,10 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   // The in-house baseline, labelled as a second opinion (half PPR: 4 × 0.5 + 5 + 0.3 × 6).
   await expect(flanker).toContainText('Second opinion, not used: 8.8 pts if he plays');
   await expect(flanker).toContainText('games through week 5');
+  // An injured player: how long absences with his injury have lasted (2019–2025 history, not a forecast).
+  const runner = page.locator('.pl').filter({ hasText: 'Riley Runner' }).first();
+  await runner.getByRole('button').click();
+  await expect(runner).toContainText('Knee absences (QB/RB/WR/TE, 2019–2025, 213): 28% lasted one game, 46% two or fewer, 70% four or fewer.');
   const defense = page.locator('.pl').filter({ hasText: 'Fff Defense' }).first();
   await defense.getByRole('button').click();
   await expect(defense).toContainText("Second opinion, not used:");

@@ -137,7 +137,7 @@ aggregates are shown.
   little.
 - **Benchings that keep a player active** (a QB demoted to backup) count as active. His projection would fall, but that's a projection
   question, not an availability one.
-- **Not yet:** games-missed distributions by injury type and early-exit rates (PLAN §2, Injury context).
+- **Not yet:** early-exit rates (PLAN §2, Injury context). Games missed by injury type: [injuries.md](injuries.md).
 
 ## Reproduce
 

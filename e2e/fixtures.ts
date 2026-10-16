@@ -103,6 +103,7 @@ export const playersFile: PlayersFile = {
     t: team,
     ...(injury ? { inj: injury } : {}),
     ...(id === 'w2' ? { prac: 'Limited' as const, rpt: 'Questionable', body: 'Hamstring' } : {}),
+    ...(id === 'r1' ? { body: 'Knee' } : {}),
   })).concat([{ id: 'cb1', n: 'Corner Back', pos: 'CB', t: 'CCC', inj: 'Out' }]),
 };
 
