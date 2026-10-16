@@ -153,8 +153,12 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(page.locator('ol.core li').first()).toContainText('Casey Quarterback');
   await page.screenshot({ path: testInfo.outputPath('season.png'), fullPage: true });
 
-  // Trade: give a WR for their RB and see both sides.
+  // Trade ideas: in this league no trade helps both lineups enough (the other rosters are nearly empty).
   await page.getByRole('tab', { name: 'Trade' }).click();
+  await page.locator('.card.ideas').getByRole('button', { name: 'Find trades' }).click();
+  await expect(page.locator('.card.ideas')).toContainText('No trade found that helps both lineups by enough to matter.');
+
+  // Trade: give a WR for their RB and see both sides.
   await page.getByLabel('Trade with').selectOption({ label: 'Rival Raiders' });
   await page.locator('fieldset', { hasText: 'You give' }).getByText('Sam Slot').click();
   await page.locator('fieldset', { hasText: 'You get' }).getByText('Opp Rusher').click();
@@ -292,6 +296,52 @@ test('phone layout: nothing pushes the page sideways, and a 10-team standings ta
     await expect(page.getByRole('heading', { name: 'Standings outlook' })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('phone-season-360.png'), fullPage: true });
   }
+});
+
+test('trade ideas: a team with four WRs and no RB takes one of my running backs', async ({ page }, testInfo) => {
+  // Team "Three" gets four receivers (x1–x4) and no running back; I have RBs to spare.
+  const wr = (id: string, name: string, recYd: number) => ({
+    player_id: id,
+    stats: { rec: recYd / 13, rec_yd: recYd, rec_td: recYd / 160, pts_ppr: 10 },
+    team: 'HHH',
+    company: 'rotowire',
+    player: { first_name: name.split(' ')[0], last_name: name.split(' ')[1], position: 'WR', fantasy_positions: ['WR'], team: 'HHH', injury_status: null },
+  });
+  const receivers = [wr('x1', 'Deep Threat', 95), wr('x2', 'Route Runner', 85), wr('x3', 'Slot Specialist', 78), wr('x4', 'Fourth Option', 74)];
+  const rosters = fx.rosters.map((r) => (r.roster_id === 3 ? { ...r, players: receivers.map((x) => x.player_id), starters: [] } : r));
+  await page.route('https://api.sleeper.app/v1/**', (route) => {
+    const path = new URL(route.request().url()).pathname.replace('/v1/', '/');
+    return path === '/league/1001/rosters' ? route.fulfill({ json: rosters }) : route.fallback();
+  });
+  await page.route(/^https:\/\/api\.sleeper\.com\/projections\/nfl\/2026\/\d+\?/, (route) => {
+    const week = Number(new URL(route.request().url()).pathname.split('/').pop());
+    return route.fulfill({ json: [...(week === 6 ? fx.projections : fx.futureProjections(week)), ...receivers] });
+  });
+  await page.goto('./');
+  await page.getByLabel('Sleeper username').fill('testuser');
+  await page.getByRole('button', { name: 'Find my leagues' }).click();
+  await page.locator('.league-card').filter({ hasText: 'Saturday Night Gridiron' }).getByRole('link').first().click();
+  await page.getByRole('tab', { name: 'Trade' }).click();
+
+  const ideas = page.locator('.card.ideas');
+  await ideas.getByRole('button', { name: 'Find trades' }).click();
+  const first = ideas.locator('.idea-list li').first();
+  await expect(first).toBeVisible();
+  // Every idea goes to "Three", and every one sends them a running back.
+  for (const idea of await ideas.locator('.idea-list li').all()) {
+    await expect(idea).toContainText('(Three)');
+    await expect(idea).toContainText(/Give .*(Runner|Halfback|Back|Depth).* for /);
+  }
+  await expect(first).toContainText(/You \+[\d.]+ pts \(80%: [−+][\d.]+ to [−+][\d.]+\) · them \+[\d.]+ pts · your playoff odds \S+% → \S+%/);
+  await page.screenshot({ path: testInfo.outputPath('trade-ideas.png'), fullPage: true });
+
+  // Opening an idea fills the builder and shows the full evaluation.
+  await first.getByRole('button', { name: 'Open in the builder' }).click();
+  await expect(page.getByLabel('Trade with')).toHaveValue('3');
+  await expect(page.locator('fieldset', { hasText: 'You give' }).locator('label.picked')).not.toHaveCount(0);
+  await expect(page.locator('fieldset', { hasText: 'You get' }).locator('label.picked')).not.toHaveCount(0);
+  await expect(page.locator('.card[aria-live]')).toContainText(/Good for you, and good for them|for you/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 });
 
 test('dynasty league: draft picks in trades and the long-term outlook', async ({ page }, testInfo) => {

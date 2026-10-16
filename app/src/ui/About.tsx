@@ -58,6 +58,11 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             ranges sized that way held 80% of 2022–2025 outcomes.
           </li>
           <li>
+            <strong>Trade ideas</strong> search one-for-one and two-for-one trades with every team, among each team's eight most valuable QBs, RBs,
+            WRs and TEs, for trades that improve both best lineups over the rest of the season. It's lineup math only: whether the other manager says
+            yes also depends on how they rank players, so market values are shown beside each idea.
+          </li>
+          <li>
             <strong>Keeper and dynasty leagues</strong> also get a long-term view. Trades show market value this season and beyond it (FantasyCalc
             dynasty values). In dynasty leagues you can add draft picks: next year's are priced by the original team's projected finish (worst record
             picks first), later years at the round's price. The Season tab ranks teams by the value of the players (and picks) they carry forward and

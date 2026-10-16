@@ -158,6 +158,35 @@ h3 {
   color: #fff;
   font-weight: 600;
 }
+.btn-small {
+  min-height: 36px;
+  padding: 0 0.8rem;
+  font-size: 0.85rem;
+}
+/* A button that reads as a link inside text. */
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.link:disabled {
+  opacity: 0.6;
+}
+.idea-list {
+  margin: 0.5rem 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.9rem;
+}
+.idea-list p {
+  margin: 0.15rem 0;
+}
+.idea-list .btn {
+  margin-top: 0.3rem;
+}
 .row {
   display: flex;
   flex-wrap: wrap;

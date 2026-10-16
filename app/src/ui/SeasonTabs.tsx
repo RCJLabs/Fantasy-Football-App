@@ -4,6 +4,7 @@ import { marketPrice } from '../analysis/faab';
 import { evaluateTrade, freeAgentPool, scheduleOutlook, streamers, waiverBoard, type ByeWeek, type LeagueOutlook, type TradeSideResult } from '../analysis/outlook';
 import { carriedForward, longTermRanking } from '../analysis/longterm';
 import { pickAssets, pickLabel, pickTotals, type PickAsset } from '../analysis/picks';
+import { findTrades, type TradeIdea } from '../analysis/tradeFinder';
 import { FANTASYCALC_URL, horizons, loadMarketValues, marketParams, marketTotals, type Horizon, type Market } from '../data/fantasycalc';
 import { loadTrending } from '../data/repo';
 import { InjuryBadge, ErrorBox, Spinner, usageNote } from './components';
@@ -558,10 +559,20 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
     </fieldset>
   );
 
+  const openIdea = (idea: TradeIdea) => {
+    setPartnerId(idea.partner);
+    setGive(idea.give);
+    setGet(idea.get);
+    setGivePicks([]);
+    setGetPicks([]);
+    document.getElementById('trade-builder')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <div class="stack">
       {passed ? <p class="note">This league's trade deadline (week {deadline}) has passed.</p> : null}
-      <div class="card">
+      {passed ? null : <TradeIdeas bundle={bundle} o={o} freeAgents={freeAgents} values={values} name={name} onOpen={openIdea} />}
+      <div class="card" id="trade-builder">
         <h2>Build a trade</h2>
         <label class="field">
           <span class="muted small">Trade with</span>
@@ -636,8 +647,9 @@ function verdict(me: number, them: number): string {
   return `${mine}, ${theirs}`;
 }
 
-function TradeSide({ label, side, name }: { label: string; side: TradeSideResult; name: (id: string) => string }) {
-  const odds = [
+/** "playoff odds 87% → 88% · title odds 12% → 13%", or chance of 1st in leagues without playoffs. */
+function oddsText(side: TradeSideResult): string {
+  return [
     side.pBefore !== undefined
       ? `playoff odds ${pct(side.pBefore)} → ${pct(side.pAfter)}`
       : side.firstBefore !== undefined
@@ -647,6 +659,100 @@ function TradeSide({ label, side, name }: { label: string; side: TradeSideResult
   ]
     .filter(Boolean)
     .join(' · ');
+}
+
+type MarketValues = ReadonlyMap<string, { value: number }> | null;
+
+/** Trade ideas: a search for trades that improve both teams' best lineups over the rest of the season. */
+function TradeIdeas({
+  bundle,
+  o,
+  freeAgents,
+  values,
+  name,
+  onOpen,
+}: {
+  bundle: LeagueBundle;
+  o: LeagueOutlook;
+  freeAgents: readonly string[];
+  values: MarketValues;
+  name: (id: string) => string;
+  onOpen: (idea: TradeIdea) => void;
+}) {
+  const [state, setState] = useState<{ running: boolean; done: number; total: number; ideas?: TradeIdea[]; error?: string }>({ running: false, done: 0, total: 0 });
+  const myId = bundle.myRoster!.rosterId;
+  const run = async () => {
+    setState({ running: true, done: 0, total: o.teams.size - 1 });
+    try {
+      const ideas = await findTrades(o, bundle.ctx, myId, freeAgents, { onProgress: (done, total) => setState((s) => ({ ...s, done, total })) });
+      setState({ running: false, done: 0, total: 0, ideas });
+    } catch (e) {
+      logError(e);
+      setState({ running: false, done: 0, total: 0, error: e instanceof Error ? e.message : String(e) });
+    }
+  };
+  const market = (ids: readonly string[]) => ids.reduce((a, id) => a + (values?.get(id)?.value ?? 0), 0);
+  const list = (ids: readonly string[]) => ids.map(name).join(' + ');
+  return (
+    <div class="card ideas">
+      <h2>Trade ideas</h2>
+      <p class="muted small">
+        Trades that improve both your best lineups and theirs over {weekSpan(o.weeks)}: one for one, or two for one either way, among each team's
+        8 most valuable QBs, RBs, WRs and TEs. Best for you first.
+      </p>
+      {state.ideas === undefined ? (
+        <button type="button" class="btn" onClick={run} disabled={state.running}>
+          {state.running ? `Searching… ${state.done}/${state.total} teams` : 'Find trades'}
+        </button>
+      ) : null}
+      {state.error ? <p class="note">The search failed: {state.error}</p> : null}
+      {state.ideas && !state.ideas.length ? <p>No trade found that helps both lineups by enough to matter.</p> : null}
+      {state.ideas?.length ? (
+        <ol class="idea-list">
+          {state.ideas.map((idea) => {
+            const them = o.teams.get(idea.partner)?.name ?? '?';
+            const me = idea.result.me;
+            const odds = oddsText(me);
+            const [give, get] = [market(idea.give), market(idea.get)];
+            return (
+              <li>
+                <p>
+                  Give <strong>{list(idea.give)}</strong> for <strong>{list(idea.get)}</strong> <span class="muted">({them})</span>
+                </p>
+                <p class="small">
+                  <span class="good">You {signed(idea.mine)} pts</span>
+                  {me.range ? ` (80%: ${signed(me.range[0])} to ${signed(me.range[1])})` : ''} · them {signed(idea.theirs)} pts
+                  {odds ? ` · your ${odds}` : ''}
+                </p>
+                {values && give && get ? (
+                  <p class="muted small">
+                    Market value: you give {shortValue(give)}, you get {shortValue(get)}
+                    {get > give * 1.4 ? ' (they may see it as lopsided)' : ''}
+                  </p>
+                ) : null}
+                <button type="button" class="btn btn-small" onClick={() => onOpen(idea)}>
+                  Open in the builder
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      ) : null}
+      {state.ideas ? (
+        <p class="muted small">
+          Lineup math only: whether they say yes also depends on how they rank players. Ranges are wide because a season of points is
+          uncertain; open a trade for its odds, byes and drops.{' '}
+          <button type="button" class="link" onClick={run} disabled={state.running}>
+            Search again
+          </button>
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function TradeSide({ label, side, name }: { label: string; side: TradeSideResult; name: (id: string) => string }) {
+  const odds = oddsText(side);
   return (
     <div class="trade-side">
       <p>
