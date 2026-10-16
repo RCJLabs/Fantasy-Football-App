@@ -221,6 +221,15 @@
   - **FAAB:** each bid comes from the budget left after the claims above. A backup never bids more than its claim.
   - **On the owner's leagues:** three claims each. Bids total $23 of $25 and $9 of $22.
 
+- **Across your leagues — built (2026-10-16):** item 7 of the owner's assistance list; details in
+  [across-leagues.md](across-leagues.md).
+  - **Home card**, with two or more in-season leagues:
+    - players in the app's recommended lineup in more than one league;
+    - NFL games holding three or more of your starter spots;
+    - on request, free agents in the top 10 of two or more leagues' waiver boards, with each league's gain and bid.
+  - **On the owner's leagues:** 2 players start in both, 1 game holds 3 of 19 spots. 4 free agents are top targets in both, one
+    worth twice as much in one league.
+
 - **What would it take — built (2026-10-16):** item 6 of the owner's assistance list; details in
   [trade-finder.md](trade-finder.md#what-would-it-take-one-player).
   - **What it does:** for a player on another team, packages of one or two of yours that help both best lineups, best for you
@@ -715,8 +724,9 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
 6. **"What would it take" for one player.** **Built 2026-10-16** ([trade-finder.md](trade-finder.md#what-would-it-take-one-player)).
    - Packages of one or two of your players that help both lineups, best for you first. Lopsided ones on market value go last.
    - When none helps both, the cheapest package their lineup gains from.
-7. **Across all your leagues (Home).** Players you start in several leagues, NFL games where your starters bunch up, and the same waiver
-   target in two leagues (bid where he matters more). No new data.
+7. **Across all your leagues (Home).** **Built 2026-10-16** ([across-leagues.md](across-leagues.md)).
+   - Players you start in several leagues, and NFL games where your starters bunch up.
+   - The same waiver target in two leagues, with where he adds more.
 8. **Game-day inactive alerts.**
    - Before each Sunday window, if a starter is ruled out, the alert names the swap.
    - **Needs a server:** an installed web app can't wake itself at a set time. It needs the Cloudflare scheduler (decision pending) plus

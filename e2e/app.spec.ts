@@ -81,6 +81,20 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(card).toContainText('Riley Runner (RB) is Out');
   await expect(card).toContainText('Better lineup available');
   await expect(page.locator('.league-card').filter({ hasText: 'Dynasty Startup' })).toContainText('pre draft');
+  // Across leagues: the keeper and dynasty test leagues share one roster, so every starter is in both lineups.
+  const across = page.locator('.card.across');
+  const lists = across.locator('.across-list');
+  await expect(lists.nth(0).locator('li').first()).toContainText('Drew Flanker WR·DDD · 2 leagues · 74% to play'); // the likeliest to miss first
+  await expect(lists.nth(0)).toContainText('and 3 more');
+  await expect(lists.nth(1).locator('li').first()).toContainText(
+    /CCC@DDD .+ · 8 starter spots: Avery Tightend \(2\), Casey Quarterback \(2\), Drew Flanker \(2\), Kai Kicker \(2\)/,
+  );
+  await across.getByRole('button', { name: 'Compare waiver boards' }).click();
+  const shared = lists.nth(2).locator('li').first();
+  await expect(shared).toContainText('Free Agent Runner RB·EEE');
+  await expect(shared).toContainText('About the same in each:');
+  await expect(shared).toContainText('Saturday Night Gridiron +72.0 ($21)');
+  await expect(shared).toContainText('Gridiron Dynasty +72.0 ($21)');
   await page.screenshot({ path: testInfo.outputPath('home.png'), fullPage: true });
 
   // Lineup: bench the Out RB, keep the locked WR, explain a player.
