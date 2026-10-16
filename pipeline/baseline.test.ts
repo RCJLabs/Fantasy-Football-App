@@ -11,6 +11,12 @@ describe('baseline v0', () => {
     expect(line).toEqual({ rec: 6.5, rec_tgt: 10, rec_yd: 71.2, fum_lost: 1 });
   });
 
+  it('counts expected first downs net of expected touchdowns, as Sleeper counts first downs', () => {
+    const line = ffoppStats({ rec_first_down_exp: '3.2', rec_touchdown_exp: '0.5', rush_first_down_exp: '0.1', rush_touchdown_exp: '0.3' });
+    expect(line.rec_fd).toBeCloseTo(2.7, 9);
+    expect(line.rush_fd).toBeUndefined(); // never below zero
+  });
+
   it('weights recent games more and last season less, skipping beyond maxGames', () => {
     const t = trailingMean([game(2025, 17, 8, 20), game(2026, 2, 4, 24), game(2026, 1, 0), game(2025, 18, 6, 22)], 2026, p)!;
     // Most recent first: w2 (weight 1), w1 (0.5), 2025 w18 (0.25 × 0.5); 2025 w17 is the fourth game, dropped.

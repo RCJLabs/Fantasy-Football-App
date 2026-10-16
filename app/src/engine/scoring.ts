@@ -40,15 +40,19 @@ const STAT_SD: Record<string, (mean: number) => number> = {
   rush_att: (m) => Math.max(3, 0.3 * m),
 };
 
-/** Yardage/volume threshold bonuses: scoring key → [stat it thresholds, threshold]. */
-const THRESHOLD_BONUSES: Record<string, [string, number]> = {
-  bonus_pass_yd_300: ['pass_yd', 300],
+/**
+ * Yardage/volume threshold bonuses: scoring key → [stat it thresholds, threshold, the next tier up]. Sleeper's
+ * tiers are exclusive: a game that reaches the next tier gets only that one (its own stat lines, 2022–26:
+ * 86 of 86 such games; docs/stat-mapping.md).
+ */
+const THRESHOLD_BONUSES: Record<string, [string, number, number?]> = {
+  bonus_pass_yd_300: ['pass_yd', 300, 400],
   bonus_pass_yd_400: ['pass_yd', 400],
-  bonus_rush_yd_100: ['rush_yd', 100],
+  bonus_rush_yd_100: ['rush_yd', 100, 200],
   bonus_rush_yd_200: ['rush_yd', 200],
-  bonus_rec_yd_100: ['rec_yd', 100],
+  bonus_rec_yd_100: ['rec_yd', 100, 200],
   bonus_rec_yd_200: ['rec_yd', 200],
-  bonus_rush_rec_yd_100: ['rush_rec_yd', 100],
+  bonus_rush_rec_yd_100: ['rush_rec_yd', 100, 200],
   bonus_rush_rec_yd_200: ['rush_rec_yd', 200],
   bonus_pass_cmp_25: ['pass_cmp', 25],
   bonus_rush_att_20: ['rush_att', 20],
@@ -142,12 +146,13 @@ export function expectedStats(stats: StatLine, pos: string): StatLine {
     out.rush_rec_yd = (out.rush_yd ?? 0) + (out.rec_yd ?? 0);
   }
 
-  for (const [key, [stat, threshold]] of Object.entries(THRESHOLD_BONUSES)) {
+  for (const [key, [stat, threshold, nextTier]] of Object.entries(THRESHOLD_BONUSES)) {
     if (has(key)) continue;
     const mean = out[stat];
     if (mean === undefined || mean <= 0) continue;
-    const sdFn = STAT_SD[stat] ?? ((m: number) => Math.max(12, 0.6 * m));
-    out[key] = probAtLeast(mean, sdFn(mean), threshold);
+    const sd = (STAT_SD[stat] ?? ((m: number) => Math.max(12, 0.6 * m)))(mean);
+    const reached = probAtLeast(mean, sd, threshold);
+    out[key] = Math.max(0, nextTier === undefined ? reached : reached - probAtLeast(mean, sd, nextTier));
   }
 
   for (const [key, [stat, share]] of Object.entries(LONG_TD_SHARE)) {
@@ -161,10 +166,11 @@ export function expectedStats(stats: StatLine, pos: string): StatLine {
   const recKey = `bonus_rec_${pos.toLowerCase()}`;
   if (['RB', 'WR', 'TE'].includes(pos) && !has(recKey) && (out.rec ?? 0) > 0) out[recKey] = out.rec!;
 
-  // Position-specific first-down bonuses. [unverified] definition; checked by the golden test.
+  // Position-specific first-down bonuses: every first down the player produced, passing, rushing and
+  // receiving (Sleeper's own stat lines, 2024–25: QB 100%, RB/WR/TE 99.7–99.9%; docs/stat-mapping.md).
   const fdKey = `bonus_fd_${pos.toLowerCase()}`;
   if (['QB', 'RB', 'WR', 'TE'].includes(pos) && !has(fdKey)) {
-    const fd = pos === 'QB' ? (out.pass_fd ?? 0) + (out.rush_fd ?? 0) : (out.rush_fd ?? 0) + (out.rec_fd ?? 0);
+    const fd = (out.pass_fd ?? 0) + (out.rush_fd ?? 0) + (out.rec_fd ?? 0);
     if (fd > 0) out[fdKey] = fd;
   }
 

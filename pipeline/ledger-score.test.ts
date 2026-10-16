@@ -33,7 +33,8 @@ describe('ledger scoring', () => {
       { week: '6', game_type: 'REG', gsis_id: 'g-b', team: 'CCC', status: 'ACT' }, // CCC hasn't played yet
       { week: '5', game_type: 'REG', gsis_id: 'g-a', team: 'AAA', status: 'INA' },
     ];
-    const stats = [{ week: '6', season_type: 'REG', player_id: 'g-a', team: 'AAA', game_id: 'G1', fantasy_points_ppr: '17.5' }];
+    // Scored from the stat line with the ledger's scoring (7 + 45 × 0.1 + 6), not nflverse's own fantasy points.
+    const stats = [{ week: '6', season_type: 'REG', player_id: 'g-a', position: 'WR', team: 'AAA', game_id: 'G1', receptions: '7', receiving_yards: '45', receiving_tds: '1', fantasy_points_ppr: '99' }];
     const { played, byGsis } = nflverseOutcomes(rosters, stats, 6);
     expect([...played]).toEqual(['G1']);
     expect(byGsis.get('g-a')).toEqual({ active: true, ppr: 17.5 });

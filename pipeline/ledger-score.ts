@@ -1,7 +1,9 @@
 // Scoring the prediction ledger (the reveal): for each player-game, the last prediction committed
 // before kickoff, against what happened (nflverse game-day actives and PPR points). Only games that
 // have been played count. Aggregates only: nothing per player is published.
-import type { PlayerPrediction, PredictionFile } from './ledger';
+import { scoreStats } from '../app/src/engine/scoring';
+import { LEDGER_SCORING, type PlayerPrediction, type PredictionFile } from './ledger';
+import { nflverseStatLine } from './nflverse-stats';
 
 export interface Outcome {
   active: boolean;
@@ -28,9 +30,11 @@ export function lastBeforeKickoff(files: readonly PredictionFile[]): Map<string,
 }
 
 /**
- * Outcomes by gsis id for one week's played games: active = game-day roster status ACT; points =
- * nflverse full PPR (0 when active without a stat). Weekly rosters exist before kickoff too, so only
- * games with stats count (`played`).
+ * Outcomes by gsis id for one week's played games: active = game-day roster status ACT; points = the
+ * player's nflverse line mapped to Sleeper's stat keys and scored with the ledger's own scoring (0 when
+ * active without a stat). nflverse's `fantasy_points_ppr` differs on about 0.7% of player-weeks (return TDs,
+ * return fumbles; docs/stat-mapping.md). Weekly rosters exist before kickoff too, so only games with stats
+ * count (`played`).
  */
 export function nflverseOutcomes(
   rosters: ReadonlyArray<Record<string, string>>,
@@ -41,7 +45,7 @@ export function nflverseOutcomes(
   const weekStats = stats.filter(regularWeek);
   const played = new Set(weekStats.map((r) => r.game_id ?? '').filter(Boolean));
   const playedTeams = new Set(weekStats.map((r) => r.team ?? ''));
-  const ppr = new Map(weekStats.map((r) => [r.player_id ?? '', Number(r.fantasy_points_ppr) || 0]));
+  const ppr = new Map(weekStats.map((r) => [r.player_id ?? '', scoreStats(nflverseStatLine(r, r.position ?? ''), LEDGER_SCORING)]));
   const byGsis = new Map<string, Outcome>();
   for (const r of rosters) {
     if (!regularWeek(r) || !r.gsis_id || !playedTeams.has(r.team ?? '')) continue;
