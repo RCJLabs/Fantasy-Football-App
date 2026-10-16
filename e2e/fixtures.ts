@@ -73,7 +73,12 @@ const PLAYERS: P[] = [
   ['fa2', 'Waiver Receiver', 'WR', 'FFF', { rec: 3, rec_yd: 35, rec_td: 0.2 }],
   ['o1', 'Opp Passer', 'QB', 'BBB', { pass_yd: 240, pass_td: 1.6, pass_int: 0.8 }],
   ['o2', 'Opp Rusher', 'RB', 'DDD', { rush_yd: 75, rush_td: 0.55, rec: 2, rec_yd: 12 }],
+  // CCC's backups, free agents: the next men up behind my QB and my (Out) RB.
+  ['q2', 'Backup Passer', 'QB', 'CCC', { pass_yd: 12, pass_td: 0.1 }],
+  ['r9', 'Next Man Runner', 'RB', 'CCC', { rush_yd: 30, rush_td: 0.2, rec: 1, rec_yd: 8 }],
 ];
+/** Sleeper depth charts (position, order) for CCC's QBs and RBs. */
+const DEPTH: Record<string, [string, number]> = { q1: ['QB', 1], q2: ['QB', 2], r1: ['RB', 1], r9: ['RB', 2] };
 
 const projectionRow = ([id, name, pos, team, stats, injury]: P, sidelined: boolean): RawProjection => ({
   player_id: id,
@@ -102,6 +107,7 @@ export const playersFile: PlayersFile = {
     pos,
     t: team,
     ...(injury ? { inj: injury } : {}),
+    ...(DEPTH[id] ? { dp: DEPTH[id][0], do: DEPTH[id][1] } : {}),
     ...(id === 'w2' ? { prac: 'Limited' as const, rpt: 'Questionable', body: 'Hamstring' } : {}),
     ...(id === 'r1' ? { body: 'Knee' } : {}),
   })).concat([{ id: 'cb1', n: 'Corner Back', pos: 'CB', t: 'CCC', inj: 'Out' }]),

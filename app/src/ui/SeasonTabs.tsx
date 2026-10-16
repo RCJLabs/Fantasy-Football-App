@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'preact/hooks';
 import { analyzeWaivers, type PlayerRow } from '../analysis/analyze';
+import { handcuffs, nextUpForOut, type Handcuff } from '../analysis/handcuffs';
 import { marketPrice } from '../analysis/faab';
 import { GRADE_WEIGHTS, leagueGrades, type Grade, type LeagueGrades, type Part } from '../analysis/grades';
 import { evaluateTrade, freeAgentPool, streamers, waiverBoard, type ByeWeek, type LeagueOutlook, type TradeSideResult } from '../analysis/outlook';
@@ -49,7 +50,7 @@ export function WaiversTab({ bundle, now }: { bundle: LeagueBundle; now: number 
     const trending = await loadTrending();
     try {
       const season = await loadSeason(bundle);
-      return { season, board: waiverBoard(season.outlook, bundle.myRoster!, bundle.ctx, trending, season.claims) };
+      return { season, board: waiverBoard(season.outlook, bundle.myRoster!, bundle.ctx, trending, season.claims), nextUp: nextUpForOut(bundle.ctx.players) };
     } catch (e) {
       logError(e);
       return { fallback: analyzeWaivers(bundle.league, bundle.data.rosters, bundle.myRoster!, bundle.ctx, trending), reason: e instanceof Error ? e.message : String(e) };
@@ -90,8 +91,13 @@ export function WaiversTab({ bundle, now }: { bundle: LeagueBundle; now: number 
     );
   }
 
-  const { season, board } = w.data;
+  const { season, board, nextUp } = w.data;
   const o = season.outlook;
+  const notes = (r: (typeof board.rows)[number]) => {
+    const starter = nextUp.get(r.player.id);
+    const parts = [r.drop && r.rosGain >= 0.05 ? `drop ${r.drop.name}` : '', starter ? `next up: ${starter.name} is ${starter.injury}` : ''].filter(Boolean);
+    return parts.length ? parts.join(' · ') : undefined;
+  };
   const me = o.teams.get(bundle.myRoster!.rosterId)!;
   const playoffWeight = bundle.league.rules.playoffWeekStart && !o.bracket ? me.weights.at(-1) : undefined;
   const firstRound = o.playoffRounds?.[0]?.[0];
@@ -138,7 +144,7 @@ export function WaiversTab({ bundle, now }: { bundle: LeagueBundle; now: number 
             {board.rows.map((r) => (
               <tr>
                 <td>
-                  <PlayerCell row={r.player} now={now} extra={r.drop && r.rosGain >= 0.05 ? `drop ${r.drop.name}` : undefined} />
+                  <PlayerCell row={r.player} now={now} extra={notes(r)} />
                 </td>
                 <td class="num">{r.gainThisWeek >= 0.05 ? signed(r.gainThisWeek) : '–'}</td>
                 <td class="num">{r.rosGain >= 0.05 ? signed(r.rosGain) : '–'}</td>
@@ -161,7 +167,39 @@ export function WaiversTab({ bundle, now }: { bundle: LeagueBundle; now: number 
           </p>
         ) : null}
       </div>
+      <Handcuffs bundle={bundle} outlook={o} />
       <Streamers bundle={bundle} outlook={o} now={now} />
+    </div>
+  );
+}
+
+/** The next man up behind your QB and RB starters, and what he's worth as insurance (analysis/handcuffs.ts). */
+function Handcuffs({ bundle, outlook }: { bundle: LeagueBundle; outlook: LeagueOutlook }) {
+  const rows = useMemo(() => handcuffs(outlook, bundle.myRoster!.rosterId, bundle.ctx.players), [bundle, outlook]);
+  if (!rows.length) return null;
+  const player = (id: string) => bundle.ctx.players.get(id) ?? outlook.model.player(id);
+  const name = (id: string) => player(id)?.name ?? id;
+  const held = (h: Handcuff) => (h.owner === 'mine' ? 'yours' : h.owner === 'free' ? 'a free agent' : `on ${outlook.teams.get(h.owner)?.name ?? 'another team'}`);
+  const miss = rows.reduce((s, h) => s + h.missChance, 0) / rows.length;
+  return (
+    <div class="card">
+      <h2>Handcuffs</h2>
+      <ul class="handcuffs">
+        {rows.map((h) => (
+          <li>
+            <strong>{name(h.starter)}</strong> <span class="muted small">{player(h.starter)?.pos}</span> → <strong>{name(h.backup)}</strong>, {held(h)}. If{' '}
+            {name(h.starter)} misses a week, {name(h.backup)} projects {pts(h.elevated)} instead of {pts(h.normal)}. Insurance:{' '}
+            <strong>{signed(h.bonus)}</strong> over the rest of the season{h.owner === 'free' || h.owner === 'mine' ? '' : ' if you traded for him'}.
+          </li>
+        ))}
+      </ul>
+      <p class="muted small">
+        Next man up: the depth chart&apos;s No. 2 behind your regular QB and RB starters. In 2019–2025 games a starter sat, his backup gained 76% (QBs)
+        or 40% (RBs) of the starter&apos;s points on top of his own; TE and WR backups gained less, and not reliably, so they aren&apos;t listed.
+        Insurance: each week ahead, the chance the starter misses it (about {pct(miss)} a week on average) times what the backup adds to that
+        week&apos;s best lineup beyond your bench and the best free agent at the position, who you could add instead. Compare it with the ROS
+        values above.
+      </p>
     </div>
   );
 }
