@@ -58,6 +58,13 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             ranges sized that way held 80% of 2022–2025 outcomes.
           </li>
           <li>
+            <strong>Team grades</strong> (Season tab) compare every team with the rest of its league, S to F, on four parts: this week's best
+            lineup, the best lineup's points per week over the rest of the season, what the bench adds by covering byes and injuries, and
+            playoff odds (title odds once the playoffs start). S stands clearly above the rest; A to F step half a standard deviation from the
+            league average. Overall weighs the rest of the season 45%, odds 25%, this week 15% and depth 15%, a design choice rather than a
+            fitted model.
+          </li>
+          <li>
             <strong>Trade ideas</strong> search one-for-one and two-for-one trades with every team, among each team's eight most valuable QBs, RBs,
             WRs and TEs, for trades that improve both best lineups over the rest of the season. It's lineup math only: whether the other manager says
             yes also depends on how they rank players, so market values are shown beside each idea.

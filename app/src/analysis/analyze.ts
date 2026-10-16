@@ -312,6 +312,30 @@ export function teamSide(league: League, roster: Roster, users: readonly LeagueU
   return side;
 }
 
+/** A roster's lineup choice this week: who can start where, with games already under way locked at their points so far. */
+export function lineupProblem(league: League, roster: Roster, matchups: readonly Matchup[], ctx: WeekContext): { problem: LineupProblem; rows: PlayerRow[] } {
+  const slots = startingSlots(league.rosterPositions);
+  const points = matchups.find((m) => m.rosterId === roster.rosterId)?.playersPoints ?? {};
+  const unavailable = new Set([...roster.reserve, ...roster.taxi]);
+  const ids = roster.players.filter((id) => !unavailable.has(id));
+  const rows = ids.map((id) => playerRow(id, league, ctx, points[id]));
+  const indexOf = new Map(ids.map((id, i) => [id, i]));
+  const players: LineupPlayer[] = rows.map((r) => ({
+    id: r.id,
+    fpos: r.fpos,
+    mu: r.mu,
+    p: r.p,
+    kickoff: r.kickoff,
+    locked: r.locked,
+    lockedPoints: r.locked ? starterDist(r, ctx.now).mean : r.ev,
+  }));
+  const current = slots.map((_, s) => {
+    const id = roster.starters[s];
+    return id && id !== '0' ? (indexOf.get(id) ?? -1) : -1;
+  });
+  return { problem: { slots, players, current, now: ctx.now }, rows };
+}
+
 export function analyzeLineup(
   league: League,
   rosters: readonly Roster[],
@@ -324,25 +348,8 @@ export function analyzeLineup(
   const slots = startingSlots(league.rosterPositions);
   const myMatchup = matchups.find((m) => m.rosterId === myRoster.rosterId);
   const points = myMatchup?.playersPoints ?? {};
-  const unavailable = new Set([...myRoster.reserve, ...myRoster.taxi]);
-  const ids = myRoster.players.filter((id) => !unavailable.has(id));
-  const rows = ids.map((id) => playerRow(id, league, ctx, points[id]));
-  const indexOf = new Map(ids.map((id, i) => [id, i]));
-
-  const lineupPlayers: LineupPlayer[] = rows.map((r) => ({
-    id: r.id,
-    fpos: r.fpos,
-    mu: r.mu,
-    p: r.p,
-    kickoff: r.kickoff,
-    locked: r.locked,
-    lockedPoints: r.locked ? starterDist(r, ctx.now).mean : r.ev,
-  }));
-  const current = slots.map((_, s) => {
-    const id = myRoster.starters[s];
-    return id && id !== '0' ? (indexOf.get(id) ?? -1) : -1;
-  });
-  const problem: LineupProblem = { slots, players: lineupPlayers, current, now: ctx.now };
+  const { problem, rows } = lineupProblem(league, myRoster, matchups, ctx);
+  const current = [...problem.current];
   const best = optimizeLineup(problem);
   const pick = (lineup: readonly number[]) => lineup.map((i) => (i >= 0 ? rows[i]! : null));
 

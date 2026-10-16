@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'preact/hooks';
 import { analyzeWaivers, type PlayerRow } from '../analysis/analyze';
 import { marketPrice } from '../analysis/faab';
+import { GRADE_WEIGHTS, leagueGrades, type Grade, type LeagueGrades, type Part } from '../analysis/grades';
 import { evaluateTrade, freeAgentPool, scheduleOutlook, streamers, waiverBoard, type ByeWeek, type LeagueOutlook, type TradeSideResult } from '../analysis/outlook';
 import { carriedForward, longTermRanking } from '../analysis/longterm';
 import { pickAssets, pickLabel, pickTotals, type PickAsset } from '../analysis/picks';
@@ -225,6 +226,7 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
   const schedule = scheduleOutlook(o, myId).filter((x) => x.week <= (rules.playoffWeekStart ? rules.playoffWeekStart - 1 : 18));
   return (
     <div class="stack">
+      <GradesCard bundle={bundle} o={o} />
       <div class="card">
         <h2>Standings outlook</h2>
         {!o.odds ? <p class="muted small">The regular season is over{o.bracket ? '; the playoffs are below' : ''}.</p> : null}
@@ -317,6 +319,93 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
     </div>
   );
 }
+
+const oddsName = (g: LeagueGrades) => (g.odds === 'title' ? 'Title' : g.odds === 'first' ? '1st' : 'Playoffs');
+const PART_SHORT: Record<Part, string> = { week: 'Week', ros: 'ROS', depth: 'Depth', odds: 'Odds' };
+const PART_LONG: Record<Part, string> = { week: "this week's lineup", ros: 'rest of the season', depth: 'bench depth', odds: 'odds' };
+
+function GradeMark({ grade }: { grade: Grade }) {
+  return <span class={`grade grade-${grade}`}>{grade}</span>;
+}
+
+/** Every team graded S–F against the rest of the league, overall and on each part (analysis/grades.ts). */
+function GradesCard({ bundle, o }: { bundle: LeagueBundle; o: LeagueOutlook }) {
+  const grades = useMemo(() => leagueGrades(o, bundle.data.matchups, bundle.ctx), [o, bundle]);
+  if (!grades) return null;
+  const myId = bundle.myRoster?.rosterId;
+  const odds = oddsName(grades);
+  const short = (p: Part) => (p === 'odds' ? odds : PART_SHORT[p]);
+  const long = (p: Part) => (p === 'odds' ? (grades.odds === 'title' ? 'title odds' : grades.odds === 'first' ? '1st-place odds' : 'playoff odds') : PART_LONG[p]);
+  const value = (p: Part, v: number) => (p === 'odds' ? pct(v) : p === 'depth' ? signed(v) : v.toFixed(0));
+  const mine = grades.teams.find((t) => t.rosterId === myId);
+  const n = grades.teams.length;
+  const byZ = mine ? grades.parts.map((p) => [p, mine.parts[p]!] as const).sort((a, b) => b[1].z - a[1].z) : [];
+  const best = byZ[0];
+  const worst = byZ.at(-1);
+  const weights = grades.parts
+    .map((p) => [p, GRADE_WEIGHTS[p]] as const)
+    .sort((a, b) => b[1] - a[1])
+    .map(([p, w]) => `${long(p)} ${Math.round((100 * w) / grades.parts.reduce((s, q) => s + GRADE_WEIGHTS[q], 0))}%`)
+    .join(', ');
+  return (
+    <div class="card">
+      <h2>Team grades</h2>
+      {mine && best && worst ? (
+        <p>
+          Your team: <GradeMark grade={mine.grade} /> ({ordinal(mine.rank)} of {n}). Highest grade: {long(best[0])} (<GradeMark grade={best[1].grade} />,{' '}
+          {ordinal(best[1].rank)})
+          {worst[0] !== best[0] ? (
+            <>
+              ; lowest: {long(worst[0])} (<GradeMark grade={worst[1].grade} />, {ordinal(worst[1].rank)})
+            </>
+          ) : null}
+          .
+        </p>
+      ) : null}
+      <div class="table-wrap">
+        <table class="table grades">
+          <thead>
+            <tr>
+              <th>Team</th>
+              <th class="num">Grade</th>
+              {grades.parts.map((p) => (
+                <th class="num">{short(p)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {grades.teams.map((t) => (
+              <tr class={t.rosterId === myId ? 'mine' : ''}>
+                <td>{o.teams.get(t.rosterId)?.name ?? t.rosterId}</td>
+                <td class="num">
+                  <GradeMark grade={t.grade} />
+                </td>
+                {grades.parts.map((p) => {
+                  const g = t.parts[p]!;
+                  return (
+                    <td class="num">
+                      <GradeMark grade={g.grade} />
+                      <span class="grade-value">{value(p, g.value)}</span>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="muted small">
+        Each team against the rest of this league: S stands clearly above the rest, and A to F step half a standard deviation from the league
+        average. {grades.parts.includes('week') ? 'Week: this week’s best lineup, in expected points (points already scored count). ' : ''}
+        {grades.parts.includes('ros') ? 'ROS: the best lineup’s points per week over the rest of the season, with byes and injury chances. ' : ''}
+        {grades.parts.includes('depth') ? 'Depth: points per week the bench adds by covering byes and injuries. ' : ''}
+        {odds}: {grades.odds === 'title' ? 'title odds from the bracket below' : `${long('odds')} from the simulation below`}. Overall weighs {weights}.
+      </p>
+    </div>
+  );
+}
+
+const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
 
 const roundName = (round: number, rounds: number) => (round === rounds ? 'final' : round === rounds - 1 ? 'semifinals' : `round ${round}`);
 
