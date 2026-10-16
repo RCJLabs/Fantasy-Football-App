@@ -122,6 +122,8 @@ h3 {
 .cards,
 .stack {
   display: grid;
+  /* minmax(0, …): a wide table scrolls inside its card instead of stretching the page past the screen. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.9rem;
 }
 
@@ -155,6 +157,35 @@ h3 {
   border-color: var(--accent);
   color: #fff;
   font-weight: 600;
+}
+.btn-small {
+  min-height: 36px;
+  padding: 0 0.8rem;
+  font-size: 0.85rem;
+}
+/* A button that reads as a link inside text. */
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.link:disabled {
+  opacity: 0.6;
+}
+.idea-list {
+  margin: 0.5rem 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.9rem;
+}
+.idea-list p {
+  margin: 0.15rem 0;
+}
+.idea-list .btn {
+  margin-top: 0.3rem;
 }
 .row {
   display: flex;
@@ -473,6 +504,41 @@ h3 {
 /* Season, trade and streaming views */
 .table-wrap {
   overflow-x: auto;
+}
+/* A second line on phones (e.g. points for under W-L) that is its own column on wider screens. */
+.phone-only {
+  display: none;
+}
+/* Phones: tighter tables, and names (the first column) wrap mid-word if they must, so every number column fits. */
+@media (max-width: 480px) {
+  .wide-only {
+    display: none;
+  }
+  .phone-only {
+    display: block;
+    color: var(--muted);
+    font-weight: 400;
+  }
+  .content {
+    padding: 0.75rem;
+  }
+  .card {
+    padding: 0.85rem 0.75rem;
+  }
+  .table {
+    font-size: 0.8rem;
+  }
+  .table th {
+    font-size: 0.7rem;
+  }
+  .table th,
+  .table td {
+    padding-left: 0.18rem;
+    padding-right: 0.18rem;
+  }
+  .table td:first-child {
+    overflow-wrap: anywhere;
+  }
 }
 .table tr.mine td {
   background: var(--surface-2);

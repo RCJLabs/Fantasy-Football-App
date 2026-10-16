@@ -176,6 +176,16 @@
   - **Shipped** inside `baseline.json` (team codes): a labelled second opinion for defenses, and the DEF fallback for a week without Sleeper
     projections. Kickers stay Sleeper-only.
 
+- **Trade ideas — built (2026-10-16):** not on the original roadmap; added for the trade deadlines (weeks 11–12 in the owner's leagues).
+  Details in [trade-finder.md](trade-finder.md).
+  - **Search:** one-for-one and two-for-one trades with every team, among each team's 8 most valuable QB/RB/WR/TE. Kept when both best
+    lineups gain over the rest of the season. The best get the trade tab's full evaluation (range, odds).
+  - **On the owner's 10-team keeper league:** 6 ideas in about 1 second on a desktop.
+  - **Limit:** lineup math only; market values are shown beside each idea as a check on how the other manager may see it.
+
+- **Phone layout — fixed (2026-10-16):** the standings table pushed the page sideways on a 412px phone. Grid columns now can't grow past
+  the screen, tables are tighter on phones, and points for sits under W-L. An e2e test checks 412px and 360px.
+
 - **P(play) v1 for Questionable players — built (2026-10-16):** the Phase 3 P(play) v1, brought forward; details in
   [calibration.md](calibration.md).
   - **Model:** a logistic regression on the final practice, whether he missed his last game, the injury (9 groups) and position.

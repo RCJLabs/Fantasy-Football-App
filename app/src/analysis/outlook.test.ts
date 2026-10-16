@@ -28,6 +28,7 @@ import {
   weekWeights,
 } from './ros';
 import { bracketOrder, simulateSeason, type SeasonTeam } from './season';
+import { findTrades } from './tradeFinder';
 
 const rawLeague: RawLeague = {
   league_id: 'L',
@@ -501,6 +502,31 @@ describe('league outlook', () => {
       expect(regularSeasonOver(four(14), 14)).toBe(true);
       expect(regularSeasonOver(four(13), 15)).toBe(true);
     });
+  });
+
+  it('finds trades that help both lineups, best for me first', async () => {
+    const fa = freeAgentPool(o, ctx);
+    let calls = 0;
+    const ideas = await findTrades(o, ctx, 1, fa, { onProgress: () => calls++ });
+    expect(calls).toBe(3); // one per other team
+    for (const idea of ideas) {
+      expect(idea.mine).toBeGreaterThanOrEqual(3);
+      expect(idea.theirs).toBeGreaterThanOrEqual(0);
+      // Reported numbers are the trade tab's own evaluation of the same trade.
+      expect(idea.mine).toBeCloseTo(evaluateTrade(o, ctx, 1, idea.partner, idea.give, idea.get, fa).me.delta, 6);
+      expect(idea.result.them.delta).toBeCloseTo(idea.theirs, 9);
+      expect(idea.give.every((id) => rosters[0]!.players.includes(id))).toBe(true);
+    }
+    expect(ideas.map((i) => i.mine)).toEqual([...ideas.map((i) => i.mine)].sort((a, b) => b - a));
+    // At most two ideas per partner by default, for variety.
+    const capped = await findTrades(o, ctx, 1, fa, { minMine: -1e9, minTheirs: -1e9, limit: 40 });
+    for (const partner of [2, 3, 4]) expect(capped.filter((i) => i.partner === partner).length).toBeLessThanOrEqual(2);
+    // With no thresholds and no cap every candidate qualifies, two-for-ones included.
+    const any = await findTrades(o, ctx, 1, fa, { minMine: -1e9, minTheirs: -1e9, limit: 40, perPartner: 100 });
+    expect(any.length).toBe(40);
+    expect(any.some((i) => i.give.length === 2 || i.get.length === 2)).toBe(true);
+    expect(await findTrades(o, ctx, 1, fa, { minMine: 1e9 })).toEqual([]);
+    expect((await findTrades(o, ctx, 1, fa, { minMine: -1e9, minTheirs: -1e9, uneven: false, limit: 40 })).every((i) => i.give.length === 1 && i.get.length === 1)).toBe(true);
   });
 
   it('lists DEF streamers: mine first, then free agents', () => {
