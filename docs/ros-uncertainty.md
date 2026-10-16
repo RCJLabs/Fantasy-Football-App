@@ -1,10 +1,11 @@
 # Rest-of-season uncertainty: projection error that persists
 
 Built 2026-10-16. Code:
-- `app/src/analysis/season.ts` (`drift`);
-- `ros.ts` (`ROS_DRIFT`, `teamDrift`);
-- `outlook.ts` (wiring, trades);
-- `scripts/backtest/season-odds.ts` (the backtest).
+- `app/src/analysis/season.ts` (`drift`; `offset` is kept only for the backtest comparison);
+- `ros.ts` (`ROS_DRIFT`, `teamDrift`, `ROS_OFFSET`, `changeVariance`);
+- `outlook.ts` (wiring, trade odds and ranges);
+- `scripts/backtest/season-odds.ts` (the season backtest);
+- `scripts/calibrate/ros-ranges.ts` (the range calibration).
 
 ## The problem
 
@@ -90,12 +91,65 @@ one claim a week, in random order.
 - Pickups make the old odds worse, not better: the simulation sees only today's rosters, so roster churn is more drift it can't foresee.
 - By anchor, the best drift was 0.2–0.5. It was smaller early in the season, when there's more of the season left for weekly noise.
 
+**Shape at the team level.** A fixed per-team offset (one draw per simulated season) was tried too, with
+`--no-waivers` and without. The random walk predicted standings better:
+
+| | frozen rosters | with waiver pickups |
+|---|---|---|
+| Best random walk | 0.484 (0.3 a week) | 0.505 (0.4) |
+| Best fixed offset | 0.486 (0.4) | 0.510 (0.5–0.6) |
+
+Roster churn piles up over a season, so standings odds keep the walk. A single player is different (next section).
+
+## Ranges on a trade's points `[measured]` (built 2026-10-16)
+
+`scripts/calibrate/ros-ranges.ts` sets the size of a trade's ranges.
+
+**Data.** 14,623 player-anchors from 2022–2025: QB/RB/WR/TE projected 5+, anchors after weeks 3–12, horizons of 4, 8 and 12 weeks.
+- **Predicted total:** the app's own. This week's projection is used as a flat rate, zero on byes, times the availability curve.
+- **Actual total:** missed games count as zero.
+
+**Model.**
+- **Variance:** the app's weekly variance (inactive or a spread around the projection) plus a season-long miss.
+- **Shape:** fitted by maximum likelihood on errors centered by position and horizon.
+  - A fixed offset fits best: `ROS_OFFSET` = 0.41 of the expected points from next week on. Log-likelihood −3.782.
+  - A random walk fits worse (−3.796), and adding one to the offset doesn't help.
+
+| pos | weeks | n | mean error | SD of error | app SD, no offset | 80% held, no offset | with the offset |
+|---|---|---|---|---|---|---|---|
+| QB | 4 | 1169 | −6.2 | 22.7 | 15.8 | 62.3% | 79.6% |
+| QB | 8 | 817 | −15.5 | 41.0 | 23.4 | 50.6% | 82.9% |
+| QB | 12 | 360 | −27.6 | 63.3 | 29.7 | 39.4% | 80.6% |
+| RB | 4 | 1896 | −2.3 | 19.1 | 15.4 | 66.0% | 79.0% |
+| RB | 8 | 1341 | −5.5 | 33.0 | 22.0 | 54.8% | 78.1% |
+| RB | 12 | 599 | −8.8 | 48.4 | 26.8 | 47.6% | 78.0% |
+| WR | 4 | 3096 | −4.4 | 17.7 | 15.5 | 68.7% | 81.1% |
+| WR | 8 | 2158 | −10.5 | 29.8 | 22.3 | 62.0% | 84.7% |
+| WR | 12 | 962 | −15.3 | 42.6 | 27.5 | 55.7% | 85.1% |
+| TE | 4 | 1113 | −0.8 | 16.3 | 13.3 | 66.9% | 77.0% |
+| TE | 8 | 773 | −3.9 | 27.7 | 18.9 | 56.8% | 80.6% |
+| TE | 12 | 339 | −4.2 | 38.2 | 22.7 | 47.2% | 78.2% |
+
+**Reading the table:**
+- **Overall:** 80.8% held (81.1% on 2022–23, 80.5% on 2024–25).
+- **By horizon:** 79.7%, 82.0% and 81.5% over 4, 8 and 12 weeks. The random walk swings from 75.1% to 88.0%.
+- **Bias:** the app's totals run high, by 5–12% (more for QBs). Players miss more games, or get benched, more often than the availability
+  curve expects. A trade compares players with the same lean, so the range is centered on the change.
+
+**In the app** (`changeVariance`):
+- **Which players count:** each player who arrives or leaves, including forced drops and free-agent fills. Each counts in the weeks he'd
+  start for the roster in question, with his weekly variance plus a fixed offset of 0.41 of his weighted points.
+- **Combining:** players are independent.
+- **Shown:** the 80% range of the change, and the chance it adds points (normal approximation).
+
 ## What changes in the app
 
 - Playoff, bye, 1st-place and title odds are less extreme, most of all early in the season.
 - A trade's odds before and after both carry each roster's drift, recomputed for the roster after the trade.
+- Each side of a trade shows an 80% range for its change in rest-of-season points, and the chance it adds points.
+  - Example: swapping two similar starters for about +8 points can still come out anywhere from −55 to +72 (57% to help).
 - Playoff-week weights follow the playoff odds ([title-odds.md](title-odds.md)), so they move with them.
-- Rest-of-season point values don't change: the drift is symmetric, so expected points stay the same.
+- Rest-of-season point values don't change: the drift and the offset are symmetric, so expected points stay the same.
 
 ## Limits
 
@@ -109,11 +163,15 @@ one claim a week, in random order.
   Real leagues differ in size, scoring and how active managers are.
 - **Not unbiased.** The backtest's weekly SD and the app's (from its player model and same-game correlations) are close, but not the same.
 - **Not per player.** The drift is the same share for every starter. The measurement hints it's larger for mid-tier players.
-- **For later:** ranges on a trade's rest-of-season points could use the same drift. The model is here; the display isn't built.
+- **Ranges simplify.** They count only the players who move, in the weeks they'd start. Bench players who start more after a trade aren't
+  counted, and players are treated as independent.
+- **Unmeasured positions.** K, DEF and IDP use the same offset.
+- **Bias left in.** The 5–12% lean in projected totals isn't corrected, because it largely cancels in a trade.
 
 ## Reproduce
 
 ```sh
 npx tsx scripts/backtest/season-odds.ts <decrypted history dir> --leagues 100 --sims 1000               # with waiver pickups
 npx tsx scripts/backtest/season-odds.ts <decrypted history dir> --leagues 100 --sims 1000 --no-waivers  # frozen rosters
+npx tsx scripts/calibrate/ros-ranges.ts <decrypted history dir>                                         # trade ranges
 ```

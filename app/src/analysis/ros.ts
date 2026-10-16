@@ -35,6 +35,14 @@ export const RETURN_PLAY = 0.8;
  * log loss 0.520 → 0.484 (docs/ros-uncertainty.md). [measured]
  */
 export const ROS_DRIFT = 0.3;
+
+/**
+ * A player's rest-of-season points miss his projection by a fixed share for the season, beyond weekly swings: SD 0.41
+ * of his expected points from next week on. Fitted on 2022–2025 QB/RB/WR/TE (missed games as zeros) so 80% ranges
+ * hold 80%: 79.7%, 82.0% and 81.5% over 4, 8 and 12 weeks, 81.1% and 80.5% on each half. A random walk fitted worse
+ * (docs/ros-uncertainty.md). Teams' standings use ROS_DRIFT instead: roster changes pile up over a season. [measured]
+ */
+export const ROS_OFFSET = 0.41;
 const DRIFT_POSITIONS = new Set(['QB', 'RB', 'WR', 'TE']);
 const SIDELINED = new Set<InjuryStatus>(['IR', 'PUP', 'NA', 'Sus', 'DNR', 'COV', 'Out', 'Doubtful']);
 
@@ -158,6 +166,38 @@ export function teamDrift(model: RosModel, ids: readonly string[], weeks = 4): n
     }
   }
   return Math.sqrt(squares / n);
+}
+
+/**
+ * Variance of a roster change's weighted rest-of-season points: each player who arrives (or leaves) counts in the
+ * weeks he'd start for the roster given, with his weekly variance and a fixed offset of ROS_OFFSET of his weighted
+ * points. Players are independent.
+ */
+export function changeVariance(model: RosModel, moves: ReadonlyArray<{ id: string; roster: readonly string[] }>, weights: readonly number[]): number {
+  const startersOf = new Map<readonly string[], Array<Set<string>>>();
+  const starters = (roster: readonly string[]) => {
+    let weeks = startersOf.get(roster);
+    if (!weeks) {
+      weeks = model.weeks.map((_, i) => new Set(model.lineupWeek(roster, i).starters));
+      startersOf.set(roster, weeks);
+    }
+    return weeks;
+  };
+  let total = 0;
+  for (const { id, roster } of moves) {
+    const ev = model.ev(id);
+    const variance = model.variance(id);
+    const starts = starters(roster);
+    let points = 0;
+    for (let i = 0; i < model.weeks.length; i++) {
+      if (!starts[i]!.has(id)) continue;
+      const w = weights[i] ?? 1;
+      points += w * ev[i]!;
+      total += w * w * variance[i]!;
+    }
+    total += (ROS_OFFSET * points) ** 2;
+  }
+  return total;
 }
 
 /** Players a roster can field: everyone except taxi-squad players (IR players count once they return). */

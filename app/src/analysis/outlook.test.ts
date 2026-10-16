@@ -8,6 +8,7 @@ import { faabMarket, marketPrice, suggestBid, tierOf } from './faab';
 import { buildOutlook, byeGrid, evaluateTrade, freeAgentPool, regularStarters, scheduleOutlook, streamers, waiverBoard } from './outlook';
 import {
   addGains,
+  changeVariance,
   futurePlay,
   HEALTHY_PLAY,
   KICKER_PLAY,
@@ -19,6 +20,7 @@ import {
   regularSeasonEnd,
   RETURN_PLAY,
   ROS_DRIFT,
+  ROS_OFFSET,
   RosModel,
   seasonEnd,
   teamDrift,
@@ -125,6 +127,17 @@ describe('RosModel', () => {
     const earlier = new RosModel({ league, weeks: [7, 8], currentWeek: 5, byWeek, players });
     expect(earlier.ev('rb1')[0]).toBeCloseTo(p2 * 10, 9);
     expect(earlier.ev('qb')[1]).toBeCloseTo(HEALTHY_PLAY[2]! * 18, 9);
+  });
+
+  it("sizes a roster change's spread from the weeks each moving player would start", () => {
+    const team = ['qb', 'rb1', 'rb2', 'wr1', 'def'];
+    const [e, v] = [model.ev('rb2'), model.variance('rb2')];
+    // rb2 starts both weeks (FLEX in week 7, RB in week 8): weekly variance plus a season-long miss of ROS_OFFSET.
+    expect(changeVariance(model, [{ id: 'rb2', roster: team }], [1, 1])).toBeCloseTo(v[0]! + v[1]! + (ROS_OFFSET * (e[0]! + e[1]!)) ** 2, 9);
+    expect(changeVariance(model, [{ id: 'rb2', roster: team }], [1, 0.5])).toBeCloseTo(v[0]! + 0.25 * v[1]! + (ROS_OFFSET * (e[0]! + 0.5 * e[1]!)) ** 2, 9);
+    // Only the weeks he'd start count: on a roster he isn't in, he never starts.
+    expect(changeVariance(model, [{ id: 'rb2', roster: ['qb', 'rb1', 'wr1', 'def'] }], [1, 1])).toBe(0);
+    expect(changeVariance(model, [], [1, 1])).toBe(0);
   });
 
   it("sizes a team's drift from its QB/RB/WR/TE starters' expected points", () => {
@@ -393,6 +406,12 @@ describe('league outlook', () => {
     expect(t.me.weekly).toHaveLength(o.weeks.length);
     expect(t.me.pBefore).toBeCloseTo(o.odds!.get(1)!.pPlayoffs, 9);
     expect(t.me.titleBefore).toBeCloseTo(o.odds!.get(1)!.pTitle!, 9);
+    // A range around the change, and the chance it helps, on the same side of even as the change itself.
+    for (const side of [t.me, t.them]) {
+      expect(side.range![0]).toBeLessThan(side.delta);
+      expect(side.range![1]).toBeGreaterThan(side.delta);
+      expect(side.pBetter! > 0.5).toBe(side.delta > 0);
+    }
     expect(t.them.titleAfter).toBeGreaterThanOrEqual(0);
     expect(t.deadlinePassed).toBe(false);
     // 2-for-1: my open spot absorbs the extra player; they may refill only the one spot the trade frees.
