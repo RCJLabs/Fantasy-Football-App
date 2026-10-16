@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { StatLine } from '../domain/types';
 import { indexProjections } from '../sleeper/parse';
 import type { PlayersFile } from './contracts';
-import { baselineProjectionRows, hasOffenseProjections, playersFromFile } from './repo';
+import { baselineProjectionRows, hasOffenseProjections, playersFromFile, staleDataNote } from './repo';
 
 const file = (injuryReportWeek: number | undefined): PlayersFile => ({
   schemaVersion: 1,
@@ -34,6 +34,28 @@ describe('playersFromFile', () => {
       expect(players.get('a')?.practiceFinal).toBeUndefined();
       expect(players.get('a')?.injury).toBe('Questionable');
     }
+  });
+});
+
+describe('staleDataNote', () => {
+  const built = '2026-10-16T16:10:00Z';
+  const at = (hours: number) => Date.parse(built) + hours * 3_600_000;
+  it('stays quiet through a late daily update and the app cache', () => {
+    expect(staleDataNote(built, at(1))).toBeUndefined();
+    expect(staleDataNote(built, at(36))).toBeUndefined();
+  });
+  it('says how old the data is once a day was missed', () => {
+    expect(staleDataNote(built, at(37))).toMatch(/overdue: .* 37 hours old/);
+    expect(staleDataNote(built, at(50))).toMatch(/ 2 days old/);
+    expect(staleDataNote(built, at(24 * 5 + 3))).toMatch(/ 5 days old/);
+  });
+  it("blames the refresh, not the site, for an old saved copy", () => {
+    expect(staleDataNote(built, at(50), true)).toMatch(/^The app couldn't refresh its daily data: .* 2 days old/);
+    expect(staleDataNote(built, at(5), true)).toBeUndefined();
+  });
+  it('ignores a missing or broken date', () => {
+    expect(staleDataNote('', at(100))).toBeUndefined();
+    expect(staleDataNote('not a date', at(100))).toBeUndefined();
   });
 });
 

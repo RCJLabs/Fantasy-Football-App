@@ -189,6 +189,19 @@ test('a week without Sleeper projections falls back to the baseline, labelled', 
   await expect(flanker).not.toContainText('Second opinion');
 });
 
+test("a missed daily data update is called out on the league page", async ({ page }) => {
+  // The daily build didn't run: players.json is two and a half days old.
+  const old = new Date(Date.now() - 60 * 3_600_000).toISOString();
+  await page.route('**/data/players.json', (route) => route.fulfill({ json: { ...fx.playersFile, generatedAt: old } }));
+  await page.goto('./');
+  await page.getByLabel('Sleeper username').fill('testuser');
+  await page.getByRole('button', { name: 'Find my leagues' }).click();
+  await page.locator('.league-card').filter({ hasText: 'Saturday Night Gridiron' }).getByRole('link').first().click();
+  await expect(
+    page.getByText('The daily data update is overdue: practice reports, the official injury report and usage are 2 days old'),
+  ).toBeVisible();
+});
+
 test("playoffs: odds from Sleeper's bracket, for the final under way", async ({ page }, testInfo) => {
   // Week 16, the final: Test Titans and Rival Raiders won round 1 (week 15) in Sleeper's bracket.
   await page.route('https://api.sleeper.app/v1/**', (route) => {

@@ -224,6 +224,21 @@
   - **Ledger key check:** the job derives the secret's public key and compares it with `recipient.txt`. A wrong key now fails at once,
     not when a week comes due.
 
+- **Daily data build: a fallback, and a note when it's stale — built (2026-10-16):**
+  - **The gap:** GitHub never ran the deploy's 16:07 UTC schedule, its first since the cron lines were re-authored. The same day it
+    skipped the archive's 08:17 and 16:17 runs.
+    - The deploy rebuilds the app's data files: practice reports, the official injury report, last-game flags, usage, lines.
+    - Nothing in the app showed their age.
+  - **Fallback:** from 16:00 UTC, each archive run on `main` starts the day's deploy if none has started since 16:00
+    ([scripts/archive/README.md](../scripts/archive/README.md)). After a failure it retries once.
+  - **Note:** when `players.json` is more than 36 hours old, the league page says the daily update is overdue and chances to play may
+    be off. Injury tags themselves come live from Sleeper's projection rows.
+  - **Still exposed:** both depend on GitHub's scheduler. If it skips every archive run after 16:00 as well, the day is missed, and the
+    note shows it. A second deploy time in the cron lines, edited from the owner's account, would add cover that doesn't depend on the
+    archive.
+  - **First weekend:** this session also checks Saturday's deploy and Sunday's archive and deploy slots, and starts any run GitHub
+    skipped.
+
 - **Realization of rest-of-season values — measured (2026-10-16), open:** details in [ros-uncertainty.md](ros-uncertainty.md).
   - **Measured on a flat proxy** (this week's projection for every later week, times availability), 2022–25:
     - from next week on, values came true at 0.89 of expected (QB 0.84, RB 0.93, WR 0.88, TE 0.94);
@@ -651,7 +666,7 @@ Play production release, public ledger, draft tools, more platforms; a paid tier
 | False precision (matchups, win %, injuries) | High | Display-only until backtested; labels; ranges; published calibration |
 | Sleeper terms or CORS change; licensing blocks monetization | High | Non-commercial launch; one fetch wrapper (proxy can be switched on); value comes from computation, not republished data |
 | Scoring mismatches in exotic leagues | Medium | Golden test + scoring coverage panel shown to users |
-| GitHub cron drops game-day runs | Medium | Data-as-of banner; duplicate staggered runs; daily archive jobs run in the first run after their hour (2026-10-16); Cloudflare Cron Trigger in Phase 3 |
+| GitHub cron drops game-day runs (seen 2026-10-16: the deploy's first scheduled run and 2 of 4 archive runs skipped) | Medium | Duplicate staggered runs; daily archive jobs run in the first run after their hour; archive runs start a skipped deploy; the app flags data over 36 h old (all 2026-10-16); Cloudflare Cron Trigger in Phase 3 |
 | PFR-sourced nflverse data stalls (nflverse adopted a paid third-party scraping proxy 2026-09-10; workflows failed repeatedly that month, causes mixed `[verified]`) | Medium | Freshness badges; usage metrics that don't need snaps; Sleeper stats fallback only after spike (g) |
 | Play policy (ESPN access, AI content, gambling references) | Medium | ESPN out of the Play build; AI report button; implied totals only, no sportsbook anything |
 
