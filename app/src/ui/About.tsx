@@ -65,6 +65,12 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             fitted model.
           </li>
           <li>
+            <strong>Handcuffs</strong> (Waivers tab): the depth chart&apos;s next man up behind your QB and RB starters. In 2019–2025 games a starter
+            sat, his backup gained 76% (QBs) or 40% (RBs) of the starter&apos;s points on top of his own, and those shares predicted later seasons
+            better than the backup&apos;s own average. TE and WR backups didn&apos;t pass that test, so they aren&apos;t valued. Insurance is the chance the
+            starter misses each week ahead times what the backup would add then, beyond your bench and the best free agent at the position.
+          </li>
+          <li>
             <strong>Weeks ahead and season so far</strong> (Season tab). Ahead: each week to the end of the season, with regular starters on bye
             or not projected, players coming back, and in weeks with a hole, the free agent who adds most that week. So far: your record against
             all-play (your score against every team each week), which shows how much the schedule has helped or hurt. Each week&apos;s best lineup

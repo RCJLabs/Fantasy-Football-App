@@ -578,6 +578,12 @@ h3 {
   background: var(--surface-2);
   font-weight: 600;
 }
+.handcuffs {
+  padding-left: 1.1rem;
+}
+.handcuffs li {
+  margin: 0.45rem 0;
+}
 /* Weeks ahead: a week's notes sit under its row, as part of it. */
 .table.plan tr.plan-note td {
   border-top: none;

@@ -142,6 +142,15 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(board).toContainText('1520');
   await expect(page.getByText('FAAB: you have $70 of $100 left.')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Streaming' })).toBeVisible();
+  // The board flags the next man up behind a starter who's out now.
+  await expect(board.locator('tbody tr', { hasText: 'Next Man Runner' })).toContainText('next up: Riley Runner is Out');
+  // Handcuffs: the next men up behind my QB and my RB, both free agents. No other QB is free, so the QB's backup would fill an empty slot.
+  const cuffs = page.locator('.card', { has: page.getByRole('heading', { name: 'Handcuffs' }) });
+  await expect(cuffs.locator('li')).toHaveCount(2);
+  await expect(cuffs.locator('li').first()).toContainText(
+    'Casey Quarterback QB → Backup Passer, a free agent. If Casey Quarterback misses a week, Backup Passer projects 15.5 instead of 0.9. Insurance: +15.2',
+  );
+  await expect(cuffs.locator('li').nth(1)).toContainText(/^Riley Runner RB → Next Man Runner, a free agent\. .*projects 11\.8 instead of 5\.5\. Insurance: \+\d+\.\d over the rest of the season\.$/);
   await page.screenshot({ path: testInfo.outputPath('waivers.png'), fullPage: true });
 
   // Season: team grades, standings with playoff odds and my remaining schedule.

@@ -202,6 +202,19 @@
   - **On the owner's leagues:** luck +0.6 and −0.4 wins. Lineups at 89% and 88% of the best possible, against league averages of 89%.
     Bye holes show in weeks 7–11 and 8–13.
 
+- **Handcuffs — built (2026-10-16):** item 2 of the owner's assistance list; details in [handcuffs.md](handcuffs.md).
+  - **Measured on 2019–2025:** in games a starter sat, his backup gained 0.76 of the starter's points (QBs) or 0.40 (RBs).
+    - Fitted on 2019–22, both shares predicted the backup's 2023–25 points better than his own average. QB error fell from 11.8 to 6.4;
+      RB from 6.7 to 6.1, with the 95% interval below zero.
+    - TE (0.28) and WR (0.12) shares didn't pass held out, so those backups aren't valued.
+  - **Waivers tab:** each regular QB/RB starter's depth-chart No. 2, who has him, his projection in a week the starter misses, and
+    his insurance value.
+    - Insurance is the chance the starter misses each week times what the backup adds beyond your bench and the best free agent at the
+      position.
+    - The free-agent board tags backups whose starter is out now.
+  - **On the owner's leagues:** RB handcuffs worth +0.4 to +11 over the rest of the season. QB handcuffs are worth about +0.3, since
+    a free-agent QB fills in nearly as well.
+
 - **Phone layout — fixed (2026-10-16):** the standings table pushed the page sideways on a 412px phone. Grid columns now can't grow past
   the screen, tables are tighter on phones, and points for sits under W-L. An e2e test checks 412px and 360px.
 
@@ -650,12 +663,10 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
 
 **The owner's assistance list (2026-10-16), in order.** Item 1, the season review and weeks-ahead planner, is built
 ([season-review.md](season-review.md)). Whatever isn't live by the freeze moves to Phase 3.
-2. **Handcuffs and next man up.**
-   - For each of your starters: who takes over if he misses time, whether that player is free, and his insurance value. This uses the
-     depth charts in `players.json` and the injury-risk curves.
-   - League-wide, it flags who benefits on waivers when a starter goes on IR.
-   - How much of the workload the backup inherits isn't modelled yet. Version 1 uses his usage in past games the starter missed
-     (nflverse) and stays context-only until a backtest supports it.
+2. **Handcuffs and next man up.** **Built 2026-10-16** ([handcuffs.md](handcuffs.md)).
+   - QB and RB backups are valued with the share they inherited in 2019–2025 games the starter sat. That share passed a held-out test;
+     TE and WR backups didn't, so they aren't valued.
+   - The free-agent board tags backups whose starter is out now.
 3. **IR stash finder.** Free agents who are IR-eligible, ranked by playoff-week value, whose expected return (injury durations by type)
    lands before your playoffs. Shown only with an open IR slot. Small: the models exist.
 4. **Waiver claim plan.**

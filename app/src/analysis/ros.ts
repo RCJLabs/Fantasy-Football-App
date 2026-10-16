@@ -339,18 +339,20 @@ export class RosModel {
     return { mean, variance };
   }
 
-  /** `bestWeek` plus who starts and how many slots nobody with a projection can fill. */
-  lineupWeek(ids: readonly string[], i: number): Dist & { starters: string[]; open: number } {
-    const { assignment, total } = bestAssignment(this.slots.length, ids.length, (s, k) =>
-      canFill(this.slots[s]!, this.fpos(ids[k]!)) ? this.ev(ids[k]!)[i]! : null,
-    );
+  /**
+   * `bestWeek` plus who starts and how many slots nobody with a projection can fill. `override` replaces some players'
+   * expected points this week (a backup in a bigger role, say).
+   */
+  lineupWeek(ids: readonly string[], i: number, override?: ReadonlyMap<string, number>): Dist & { starters: string[]; open: number } {
+    const evAt = (id: string) => override?.get(id) ?? this.ev(id)[i]!;
+    const { assignment, total } = bestAssignment(this.slots.length, ids.length, (s, k) => (canFill(this.slots[s]!, this.fpos(ids[k]!)) ? evAt(ids[k]!) : null));
     const starting = new Set(assignment.filter((k) => k >= 0));
     const starters: string[] = [];
     let open = 0;
     let variance = 0;
     let insurance = 0;
     assignment.forEach((k, s) => {
-      if (k < 0 || this.ev(ids[k]!)[i]! === 0) {
+      if (k < 0 || evAt(ids[k]!) === 0) {
         open++;
         return;
       }
@@ -361,7 +363,7 @@ export class RosModel {
       if (miss <= 0) return;
       let backup = 0;
       ids.forEach((b, j) => {
-        if (!starting.has(j) && canFill(this.slots[s]!, this.fpos(b))) backup = Math.max(backup, this.ev(b)[i]!);
+        if (!starting.has(j) && canFill(this.slots[s]!, this.fpos(b))) backup = Math.max(backup, evAt(b));
       });
       insurance += miss * backup;
     });
