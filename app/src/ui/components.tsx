@@ -1,6 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 import type { PlayerRow, Problem } from '../analysis/analyze';
+import { injuryDuration } from '../engine/injuries';
 import { kickoffLabel, pct, pts, statLabel } from './format';
 
 export function Badge({ kind, children }: { kind: 'ok' | 'warn' | 'error' | 'info' | 'muted'; children: ComponentChildren }) {
@@ -108,6 +109,7 @@ export function Explain({ row }: { row: PlayerRow }) {
       {row.injury === 'Questionable' && row.practice && !row.practiceFinal ? (
         <p class="muted">The final injury report isn't out yet, so this is the rate for all Questionable players.</p>
       ) : null}
+      {row.injury && ABSENT.has(row.injury) ? <InjuryDurationNote body={row.injuryBody} /> : null}
       {row.teamImplied !== undefined ? <p>Vegas implied team total: {row.teamImplied.toFixed(1)}.</p> : null}
       {row.matchup && row.opponent ? <MatchupNote opponent={row.opponent} pos={row.pos} matchup={row.matchup} /> : null}
       <p class="muted">
@@ -115,6 +117,25 @@ export function Explain({ row }: { row: PlayerRow }) {
       </p>
       {row.usage ? <UsageTable usage={row.usage} /> : null}
     </div>
+  );
+}
+
+/** Designations that mean he's missing games (Questionable players usually play). */
+const ABSENT = new Set(['Out', 'Doubtful', 'IR', 'PUP']);
+
+/** How long absences with this injury have lasted (docs/injuries.md): history for context, not a forecast for him. */
+function InjuryDurationNote({ body }: { body?: string | undefined }) {
+  const info = injuryDuration(body);
+  if (!info) return null;
+  const d = info.duration;
+  const what = info.own ? `${info.category} absences` : `Too few ${info.category.toLowerCase()} absences to break out. All injury absences`;
+  return (
+    <p class="muted">
+      {what} (QB/RB/WR/TE, 2019–2025, {d.n.toLocaleString('en-US')}): {pct(d.oneGame)} lasted one game, {pct(d.twoOrFewer)} two or fewer,{' '}
+      {pct(d.fourOrFewer)} four or fewer.
+      {d.seasonEndingN >= 30 ? ` ${pct(d.seasonEnding)} of those that began by week 10 lasted the rest of the season.` : ''} Counted from the first
+      game missed; he may have missed some already.
+    </p>
   );
 }
 

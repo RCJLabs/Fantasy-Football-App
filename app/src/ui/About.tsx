@@ -23,7 +23,8 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           <li>
             <strong>Chance to play</strong> comes from the injury designation and the final practice report. Over 2023–2025, fantasy-relevant players
             listed Questionable were active 92% of the time after a full final practice, 71% after a limited one and 56% after missing it (72% overall,
-            used until the final report is out). Doubtful players played 1 time in 69.
+            used until the final report is out). Doubtful players played 1 time in 69. For players who are out, player details also show how long
+            absences with the same injury have lasted (2019–2025): history, not a forecast.
           </li>
           <li>
             <strong>Lineup advice</strong> maximizes expected points, including the option to swap out a Questionable starter for a backup who kicks off
