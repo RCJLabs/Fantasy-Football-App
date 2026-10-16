@@ -118,15 +118,24 @@ export function Explain({ row }: { row: PlayerRow }) {
   );
 }
 
+/** Backtest accuracy of the in-house baseline next to RotoWire's, by position (docs/baseline.md, docs/dst.md). */
+const BASELINE_ACCURACY: Record<string, string> = {
+  QB: 'less accurate than RotoWire, by about 20% for QBs',
+  DEF: 'about as accurate as RotoWire for defenses (within 1%)',
+};
+
 /** The in-house baseline as a labelled second opinion; the projection above stays RotoWire's. */
 function BaselineNote({ row, baseline }: { row: PlayerRow; baseline: NonNullable<PlayerRow['baseline']> }) {
+  const def = row.pos === 'DEF';
+  const games = baseline.through ? `games through week ${baseline.through}` : 'last season’s games';
   return (
     <p class="small">
-      Second opinion, not used: <strong>{pts(baseline.pts)} pts</strong> if he plays, from our baseline (his recent expected usage × this week's
-      implied team total{baseline.through ? `, games through week ${baseline.through}` : ', last season’s games'}).{' '}
+      Second opinion, not used: <strong>{pts(baseline.pts)} pts</strong>
+      {def ? '' : ' if he plays'}, from our baseline (
+      {def ? `the opponent's implied total and league-average sacks and takeaways, ${games}` : `his recent expected usage × this week's implied team total, ${games}`}).{' '}
       <span class="muted">
-        In backtests it was less accurate than RotoWire ({row.pos === 'QB' ? 'by about 20% for QBs' : 'by about 1–5% for RBs, WRs and TEs'}), and averaging
-        the two gained little and not every season.
+        In backtests it was {BASELINE_ACCURACY[row.pos] ?? 'less accurate than RotoWire, by about 1–5% for RBs, WRs and TEs'}, and averaging the two gained
+        little and not every season.
       </span>
     </p>
   );

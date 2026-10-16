@@ -88,12 +88,13 @@ RB 1.03, WR 1.04, TE 1.00. The blend results follow the same pattern: about zero
   - **Check:** built for 2026 week 5 from the archived inputs, it reproduces the backtest's numbers to within 0.07 points (rounding to 0.01 per
     stat).
   - **Licence:** published CC-BY-SA 4.0, as derived from ffopportunity (PLAN §4 rule 6), credited on the About page and in the manifest.
+- **Team defenses** ride in the same file, keyed by team code: the team defense v0 ([dst.md](dst.md)), about as accurate as RotoWire's.
 - **App:** player details show it below RotoWire's number. Example: "Second opinion, not used: 8.8 pts if he plays, from our baseline …",
   rescored to the league's scoring like any projection, with its backtest accuracy beside it.
   - TE premium and similar position reception bonuses are now derived from receptions when a source lacks them. RotoWire's rows already carry
     them.
 - **Fallback:** if Sleeper returns no QB/RB/WR/TE projections for the week, or the request fails, the app uses the baseline for those
-  positions. Any K/DEF rows Sleeper did return stay, and the page says so.
+  positions and for defenses. Any kicker rows Sleeper did return stay, and the page says so.
   - The prediction ledger follows the same rule, so it records what the app would have shown.
   - Gap: the baseline itself needs Sleeper's stats endpoint (who played). If that goes too, no new baseline is built. The pipeline keeps
     the deployed one for the rest of its week, but not into the next.

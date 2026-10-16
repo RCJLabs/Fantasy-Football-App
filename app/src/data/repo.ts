@@ -190,7 +190,7 @@ export async function loadWeek(season: string, week: number, force = false): Pro
     projectionSource = 'baseline';
     if (baselineAt) asOf = Math.min(asOf, baselineAt);
     notes.push(
-      `Sleeper's projections aren't available for week ${week}, so QB, RB, WR and TE projections come from our baseline (less accurate in backtests). K and DEF have none.`,
+      `Sleeper's projections aren't available for week ${week}, so QB, RB, WR, TE and DEF projections come from our baseline (less accurate in backtests, about equal for DEF). Kickers have none.`,
     );
   }
 

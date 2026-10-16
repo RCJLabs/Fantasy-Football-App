@@ -92,6 +92,13 @@ describe('baseline.json', () => {
     expect(file.players.wr).toEqual({ rec: r2(((5 * 2 + 3) / 3) * f), rec_yd: r2(((55 * 2 + 27.5) / 3) * f) });
   });
 
+  it('adds team defense lines, by team code, for teams that play', () => {
+    const defenses = { KC: { sack: 2.345, pts_allow: 21.004, safe: 0.001 }, LV: { sack: 3 } };
+    const file = buildBaselineFile({ season: 2026, week: 3, now: 'T', weeks, players, playing: new Set(['KC']), defenses, ...src })!;
+    expect(file.players.KC).toEqual({ pts_allow: 21, sack: 2.35 }); // rounded, the near-zero safety dropped
+    expect(file.players.LV).toBeUndefined(); // on bye
+  });
+
   it('is null when no team plays or nobody has a game to average', () => {
     expect(buildBaselineFile({ season: 2026, week: 3, now: 'T', weeks, players, playing: new Set(), ...src })).toBeNull();
     expect(buildBaselineFile({ season: 2026, week: 3, now: 'T', weeks: [], players, playing: new Set(['KC']), ...src })).toBeNull();

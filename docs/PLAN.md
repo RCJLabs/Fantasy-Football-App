@@ -153,6 +153,16 @@
     - JSON-Schema files (the TypeScript validators cover the one consumer);
     - opening issues automatically (it needs a permission change in `deploy.yml`, whose cron lines this session must not touch).
 
+- **Team defense v0 — built (2026-10-16):** roadmap N3; details in [dst.md](dst.md).
+  - **Model:** the opponent's implied total for points allowed, adjusted to Sleeper's definition. Sleeper leaves out the opponent's
+    defensive and return TDs; its points allowed differ from the final score in 8–14% of games. Sacks and takeaways are defense × opponent
+    rates, shrunk to the league average, with home/away factors.
+  - **Out of sample (2024 – 2026 week 5):** MAE 4.43 against RotoWire's 4.41. Blending changes MAE by +0.6%, −0.1% and −1.0%, so no blend.
+  - **Finding:** team sack and turnover rates add nothing beyond league averages. A defense's week is the opponent's implied total plus
+    noise (r ≈ 0.3 for both sources).
+  - **Shipped** inside `baseline.json` (team codes): a labelled second opinion for defenses, and the DEF fallback for a week without Sleeper
+    projections. Kickers stay Sleeper-only.
+
   **Not yet:**
   - matchup or usage adjustments to projections — only if a backtest shows they beat RotoWire alone (RotoWire already prices matchups);
   - scheme matchups (coverage shells, man/zone): FTN charting has them (CC-BY-SA), not yet joined;
@@ -418,7 +428,7 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
 **Stretch, in order** (only after 1–7 are live):
 - N1. Analytic win probability vs. the actual opponent (median game included).
 - N2. Waiver board v0: this week's and next week's lineup gain + trending adds + opportunity-shock flag (Sleeper data only).
-- N3. DST v0 + 2-week DST streaming view (needs implied totals from `schedule.json`).
+- N3. DST v0 + 2-week DST streaming view (needs implied totals from `schedule.json`). **DST v0 built 2026-10-16** ([dst.md](dst.md)): about as accurate as RotoWire (MAE ratio 1.005), no gain from blending, so it ships as a second opinion and the DEF fallback inside `baseline.json`.
 - N4. In-house baseline v0 running in **shadow**: archived and scored, not blended. **Built 2026-10-16** ([baseline.md](baseline.md#shadow-live)).
 
 **Checkpoints:**

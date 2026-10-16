@@ -25,6 +25,7 @@ import type { StatLine } from '../app/src/domain/types';
 import type { RawPlayer, RawState } from '../app/src/sleeper/raw';
 import { buildBaselineFile, ffoppStats, SKILL, type SleeperRow } from './baseline';
 import { compactPlayers, csvRecords, gamesFromCsv, latestInjuryReport, projectionAccuracy, sleeperToGsis, type PointsRow } from './lib';
+import { defGames, dstWeek } from './dst';
 import { buildMatchups } from './matchups';
 import { decideShard, type ShardName } from './shards';
 import { buildUsage, invert } from './usage';
@@ -116,12 +117,19 @@ async function accuracyLedger(season: string, stats: ReadonlyArray<{ week: numbe
   }
 }
 
-const toSleeperRow = (r: PointsRow): SleeperRow => ({ player_id: r.player_id, position: r.player?.position ?? null, team: r.team ?? null, stats: r.stats ?? null });
+const toSleeperRow = (r: PointsRow): SleeperRow => ({
+  player_id: r.player_id,
+  position: r.player?.position ?? null,
+  team: r.team ?? null,
+  opponent: r.opponent ?? null,
+  stats: r.stats ?? null,
+});
 
 /**
  * In-house baseline v0 for this week (docs/baseline.md): ffopportunity expected stats over each player's
- * recent games (this season's and last season's), times this week's implied-total factor. The app shows
- * it as a second opinion; it isn't blended. No RotoWire values go into it.
+ * recent games (this season's and last season's), times this week's implied-total factor, plus team
+ * defense v0 lines (docs/dst.md). The app shows it as a second opinion; it isn't blended. No RotoWire values
+ * go into it.
  */
 async function baselineShard(
   season: string,
@@ -142,15 +150,23 @@ async function baselineShard(
       for (const r of text ? csvRecords(text) : []) if (Number(r.week) <= 18) expected.set(`${r.player_id}|${Number(r.season)}|${Number(r.week)}`, ffoppStats(r));
     }
     const weeks = thisSeason.map((s) => ({ season: Number(season), week: s.week, stats: s.rows.map(toSleeperRow) }));
-    for (let w = 1; w <= 18; w++) weeks.push({ season: prev, week: w, stats: (await sleeperWeek('stats', prev, w, SKILL)).map(toSleeperRow) });
+    for (let w = 1; w <= 18; w++) weeks.push({ season: prev, week: w, stats: (await sleeperWeek('stats', prev, w, [...SKILL, 'DEF'])).map(toSleeperRow) });
     const implied = new Map<string, number>();
+    const context = new Map<string, { home: boolean; oppImplied?: number }>();
     for (const s of [prev, Number(season)]) {
       for (const g of gamesFromCsv(gamesRecords, String(s))) {
         if (g.homeImplied !== undefined) implied.set(`${s}|${g.week}|${g.home}`, g.homeImplied);
         if (g.awayImplied !== undefined) implied.set(`${s}|${g.week}|${g.away}`, g.awayImplied);
+        context.set(`${s}|${g.week}|${g.home}`, { home: true, ...(g.awayImplied !== undefined ? { oppImplied: g.awayImplied } : {}) });
+        context.set(`${s}|${g.week}|${g.away}`, { home: false, ...(g.homeImplied !== undefined ? { oppImplied: g.homeImplied } : {}) });
       }
     }
-    const playing = new Set(gamesFromCsv(gamesRecords, season).filter((g) => g.week === week).flatMap((g) => [g.home, g.away]));
+    const thisWeek = gamesFromCsv(gamesRecords, season).filter((g) => g.week === week);
+    const playing = new Set(thisWeek.flatMap((g) => [g.home, g.away]));
+    // Team defenses (pipeline/dst.ts), from every earlier DEF line of both seasons.
+    const defHistory = weeks.flatMap((w) => defGames(w.season, w.week, w.stats, context));
+    const matchups = new Map(thisWeek.flatMap((g) => [[g.home, g.away], [g.away, g.home]] as Array<[string, string]>));
+    const defenses = dstWeek(Number(season), week, defHistory, matchups, context);
     // The position averages cover everyone Sleeper projects this week, as in the backtest (membership only).
     // The baseline is the fallback for missing projections, so without them it uses the players file instead.
     const teams = new Map(players.map((p) => [p.id, p.t]));
@@ -164,7 +180,7 @@ async function baselineShard(
       console.warn('baseline: no projection rows; position averages use the players file');
       population = players.filter((p) => SKILL.includes(p.pos)).map((p) => ({ id: p.id, pos: p.pos, team: p.t ?? null }));
     }
-    return buildBaselineFile({ season: Number(season), week, now, weeks, players: population, playing, gsisBySleeper, expected, implied });
+    return buildBaselineFile({ season: Number(season), week, now, weeks, players: population, playing, defenses, gsisBySleeper, expected, implied });
   } catch (e) {
     console.warn(`baseline skipped: ${e}`);
     return null;
@@ -255,7 +271,7 @@ async function main() {
     },
     'baseline.json': {
       source:
-        'In-house baseline v0: ffopportunity expected stats over recent games played (games played from Sleeper stats), scaled by implied team totals from nflverse/nfldata lines',
+        'In-house baseline v0: ffopportunity expected stats over recent games played (games played from Sleeper stats), scaled by implied team totals from nflverse/nfldata lines; team defenses from implied totals and Sleeper defense stats',
       license: 'CC-BY-SA 4.0, adapted from ffopportunity (CC-BY-SA 4.0); no Sleeper or RotoWire data is republished',
       credits: 'Expected points via ffopportunity (ffverse); lines via nflverse',
     },
