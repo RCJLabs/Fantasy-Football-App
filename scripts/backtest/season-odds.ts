@@ -35,6 +35,8 @@ const PLAYOFF_TEAMS = 4;
 const ANCHORS = [3, 5, 7, 9];
 /** Relative weekly drift SDs tried: each starter's persistent error grows by this share of his rate each week. */
 const DRIFTS = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6];
+/** Shares of the starters' rates for a fixed offset per team and season, the other shape tried. */
+const OFFSETS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.8];
 const CAPS: Record<string, number> = { QB: 2, RB: 6, WR: 6, TE: 2 };
 /** Managers replace busts and injured players from free agency (off with --no-waivers). */
 const WAIVERS = !args.includes('--no-waivers');
@@ -246,6 +248,19 @@ for (const c of cases) {
     });
     preds.forEach((p, t) => p.p.push(odds.get(t + 1)!.pPlayoffs));
   }
+  for (const off of OFFSETS) {
+    const teams: SeasonTeam[] = c.means.map((m, t) => ({
+      rosterId: t + 1,
+      wins: c.wins[t]!,
+      losses: c.anchor - c.wins[t]!,
+      ties: 0,
+      pointsFor: c.pf[t]!,
+      weeks: m.map((x) => ({ mean: x.mean, variance: (SD_SHARE * x.mean) ** 2 })),
+      offset: off * Math.sqrt(m[0]!.starters.reduce((x, v) => x + v * v, 0)),
+    }));
+    const odds = simulateSeason({ teams, weeks: c.future, pairings, medianGame: false, playoffTeams: PLAYOFF_TEAMS, sims: SIMS, seed: c.season * 7919 + c.league * 31 + c.anchor, freshWeeks: 1 });
+    preds.forEach((p, t) => p.p.push(odds.get(t + 1)!.pPlayoffs));
+  }
   predictions.push(...preds);
 }
 
@@ -259,6 +274,12 @@ console.log('|---|---|---|---|---|');
 const early = predictions.filter((r) => r.season <= 2023);
 const late = predictions.filter((r) => r.season >= 2024);
 DRIFTS.forEach((d, arm) => console.log(`| ${d} | ${logLoss(predictions, arm).toFixed(4)} | ${brier(predictions, arm).toFixed(4)} | ${logLoss(early, arm).toFixed(4)} | ${logLoss(late, arm).toFixed(4)} |`));
+console.log('\n| offset (share of rate, fixed for the season) | log loss, all | Brier, all | log loss 2022–23 | log loss 2024–25 |');
+console.log('|---|---|---|---|---|');
+OFFSETS.forEach((f, i) => {
+  const arm = DRIFTS.length + i;
+  console.log(`| ${f} | ${logLoss(predictions, arm).toFixed(4)} | ${brier(predictions, arm).toFixed(4)} | ${logLoss(early, arm).toFixed(4)} | ${logLoss(late, arm).toFixed(4)} |`);
+});
 console.log('\n| anchor | n | log loss, no drift | best drift | log loss there |');
 console.log('|---|---|---|---|---|');
 for (const a of ANCHORS) {

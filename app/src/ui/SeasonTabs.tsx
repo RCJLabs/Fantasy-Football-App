@@ -529,8 +529,9 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
               <WeeklyBars weeks={o.weeks} deltas={result.me.weekly} />
               <p class="muted small">
                 Rest-of-season points from each team's best lineup by week (playoff weeks weighted by that team's playoff odds, a first-round bye
-                week by its chance of playing it), including the drops a full roster forces and free agents for spots the trade opens. Title odds play
-                out the bracket; changes of a point or less can be simulation noise.
+                week by its chance of playing it), including the drops a full roster forces and free agents for spots the trade opens. Ranges allow
+                for players' weekly swings and season-long misses of their projections (sized on 2022–25). Title odds play out the bracket; changes
+                of a point or less can be simulation noise.
               </p>
             </>
           ) : null}
@@ -573,6 +574,11 @@ function TradeSide({ label, side, name }: { label: string; side: TradeSideResult
         <span class={side.delta >= 0 ? 'good' : 'bad'}>{signed(side.delta)} pts</span> rest of season
         {odds ? ` · ${odds}` : ''}
       </p>
+      {side.range ? (
+        <p class="muted small">
+          80% range {signed(side.range[0])} to {signed(side.range[1])} pts; {pct(side.pBetter)} chance it adds points.
+        </p>
+      ) : null}
       {side.drops.length ? <p class="muted small">Must drop {side.drops.map(name).join(', ')} to make room.</p> : null}
       {side.adds.length ? <p class="muted small">Fills the open spot with {side.adds.map(name).join(', ')} from free agency.</p> : null}
     </div>

@@ -157,6 +157,7 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await page.locator('fieldset', { hasText: 'You get' }).getByText('Opp Rusher').click();
   await expect(page.locator('.trade-side').first()).toContainText('rest of season');
   await expect(page.locator('.trade-side').first()).toContainText(/playoff odds \S+% → \S+% · title odds \S+% → \S+%/);
+  await expect(page.locator('.trade-side').first()).toContainText(/80% range [−+][\d.]+ to [−+][\d.]+ pts; \S+% chance it adds points/);
   await expect(page.locator('.trade-side').nth(1)).toContainText('Rival Raiders');
   await expect(page.locator('.card[aria-live]')).toContainText(/for you/);
   // Market value (FantasyCalc, mocked) shown apart from the lineup verdict, and the week-by-week bye grid.

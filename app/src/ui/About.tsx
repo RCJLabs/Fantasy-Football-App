@@ -50,7 +50,9 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             a must-win, the final as much as the first), except a first-round bye week, which counts only by your chance of playing it. Title odds
             play the bracket out round by round with each team's projected lineups. Playoff and title odds also let every team drift from its
             projection as the season goes on (injuries, role changes, pickups): in a backtest on leagues built from 2022–2025 seasons, odds without
-            that drift were too sure of themselves, and teams given a 1% chance made the playoffs 6% of the time.
+            that drift were too sure of themselves, and teams given a 1% chance made the playoffs 6% of the time. Trades show an 80% range for
+            the change in rest-of-season points, and the chance it adds points: a player's season can miss his projection by about 40%, and
+            ranges sized that way held 80% of 2022–2025 outcomes.
           </li>
           <li>
             <strong>Keeper and dynasty leagues</strong> also get a long-term view. Trades show market value this season and beyond it (FantasyCalc

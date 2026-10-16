@@ -4,7 +4,8 @@ import type { ProjectionIndex } from '../sleeper/parse';
 import type { RawTransaction } from '../sleeper/raw';
 import { playerRow, rosteredIds, startable, teamName, teamSide, thisWeekGain, type PlayerRow, type WeekContext } from './analyze';
 import { faabMarket, suggestBid, tierOf, type BidAdvice, type FaabMarket } from './faab';
-import { activeIds, addGains, cheapestDrops, playoffRoundWeeks, regularSeasonEnd, RosModel, rosterLimit, seasonEnd, teamDrift, teamIds, weekWeights } from './ros';
+import { normCdf } from '../engine/math';
+import { activeIds, addGains, changeVariance, cheapestDrops, playoffRoundWeeks, regularSeasonEnd, RosModel, rosterLimit, seasonEnd, teamDrift, teamIds, weekWeights } from './ros';
 import { simulateSeason, type SeasonTeam, type TeamOdds } from './season';
 
 export interface OutlookInput {
@@ -279,6 +280,10 @@ export interface TradeSideResult {
   before: number;
   after: number;
   delta: number;
+  /** 80% range of `delta` (players' weekly swings and season-long misses; docs/ros-uncertainty.md), when players move. */
+  range?: [number, number];
+  /** Chance the change adds rest-of-season points. */
+  pBetter?: number;
   /** Change in best-lineup expected points per future week. */
   weekly: number[];
   drops: string[];
@@ -298,6 +303,9 @@ export interface TradeResult {
   them: TradeSideResult;
   deadlinePassed: boolean;
 }
+
+/** z of an 80% two-sided range. */
+const Z80 = 1.2816;
 
 /** Evaluate `give` (from my roster) for `get` (from theirs) over the rest of the season, for both teams. */
 export function evaluateTrade(o: LeagueOutlook, ctx: WeekContext, myId: number, theirId: number, give: readonly string[], get: readonly string[], freeAgents: readonly string[]): TradeResult {
@@ -341,6 +349,12 @@ export function evaluateTrade(o: LeagueOutlook, ctx: WeekContext, myId: number, 
       drops,
       adds,
     };
+    const moves = [...[...inn, ...adds].map((id) => ({ id, roster: after })), ...[...out, ...drops].map((id) => ({ id, roster: before }))];
+    const sd = Math.sqrt(changeVariance(o.model, moves, t.weights));
+    if (sd > 0) {
+      res.range = [res.delta - Z80 * sd, res.delta + Z80 * sd];
+      res.pBetter = normCdf(res.delta / sd);
+    }
     return { res, futureAfter, drift: teamDrift(o.model, after) };
   };
   const taken = new Set<string>();

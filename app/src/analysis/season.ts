@@ -16,6 +16,12 @@ export interface SeasonTeam {
    * change), so it accumulates like a random walk from now on instead of averaging out (docs/ros-uncertainty.md).
    */
   drift?: number;
+  /**
+   * SD of a fixed shift in the team's weekly mean for the rest of the season (drawn once per simulated season,
+   * applied from the first week that isn't fresh): projection error that persists without growing. Only the
+   * backtest uses it, to compare shapes; standings predicted better with `drift` (docs/ros-uncertainty.md).
+   */
+  offset?: number;
 }
 
 export interface SeasonInput {
@@ -121,6 +127,8 @@ export function simulateSeason(input: SeasonInput): Map<number, TeamOdds> {
   const bracket = rounds ? bracketOrder(2 ** rounds) : [];
   const playoffSds = teams.map((t) => (t.playoff ?? []).map((d) => Math.sqrt(Math.max(0, d.variance))));
   const drift = teams.map((t) => Math.max(0, t.drift ?? 0));
+  const offset = teams.map((t) => Math.max(0, t.offset ?? 0));
+  const shift = new Float64Array(n);
   const fresh = input.freshWeeks ?? 0;
   /** Each team's accumulated drift in this simulated season, and the part of it carried into each playoff round. */
   const level = new Float64Array(n);
@@ -171,11 +179,12 @@ export function simulateSeason(input: SeasonInput): Map<number, TeamOdds> {
       pf[i] = t.pointsFor;
     });
     level.fill(0);
+    for (let i = 0; i < n; i++) shift[i] = offset[i] ? offset[i]! * gauss() : 0;
     for (let k = 0; k < weeks.length; k++) {
       for (let i = 0; i < n; i++) {
         if (drift[i] && k >= fresh) add(level, i, drift[i]! * gauss());
         const d = teams[i]!.weeks[k];
-        const score = d ? d.mean + level[i]! + sds[i]![k]! * gauss() : 0;
+        const score = d ? d.mean + level[i]! + (k >= fresh ? shift[i]! : 0) + sds[i]![k]! * gauss() : 0;
         scores[i] = score;
         add(pf, i, score);
       }
@@ -204,16 +213,16 @@ export function simulateSeason(input: SeasonInput): Map<number, TeamOdds> {
       seedOf[i] = rank + 1;
     });
     if (rounds) {
-      // The drift goes on through the playoff weeks; a two-week round adds both weeks' levels.
+      // The drift goes on through the playoff weeks and the offset holds; a two-week round adds both weeks'.
       for (let i = 0; i < n; i++) {
-        if (!drift[i]) continue;
+        if (!drift[i] && !offset[i]) continue;
         for (let r = 0; r < rounds; r++) {
-          let shift = 0;
+          let total = 0;
           for (let w = 0; w < (input.playoffRoundWeeks?.[r] ?? 1); w++) {
-            add(level, i, drift[i]! * gauss());
-            shift += level[i]!;
+            if (drift[i]) add(level, i, drift[i]! * gauss());
+            total += level[i]! + shift[i]!;
           }
-          roundShift[i * rounds + r] = shift;
+          roundShift[i * rounds + r] = total;
         }
       }
       // Bracket slots hold team indices; -1 is a bye (a seed beyond the playoff field).
