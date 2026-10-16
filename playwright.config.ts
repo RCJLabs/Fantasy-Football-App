@@ -15,9 +15,9 @@ export default defineConfig({
     { name: 'mobile', use: { ...devices['Pixel 7'] } },
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
   ],
+  // The build uses relative paths; serving it under a sub-path checks it works away from the domain root too.
   webServer: {
-    command: `npx vite build && npx vite preview --port ${PORT} --strictPort`,
-    env: { BASE_PATH: '/Fantasy-Football-App/' },
+    command: `npx vite build && npx vite preview --port ${PORT} --strictPort --base /Fantasy-Football-App/`,
     port: PORT,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

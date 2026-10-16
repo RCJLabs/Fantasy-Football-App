@@ -544,6 +544,12 @@ KeepTradeCut, scraped expert sites, PFF/SumerSports/StatRankings pages, X API, U
    - Installs come from lockfiles.
    - A meta CSP allows `connect-src 'self' api.sleeper.app api.sleeper.com` (plus the Worker later), and no third-party runtime scripts are loaded.
 10. **Hosting:** GitHub Pages at `rcjlabs.github.io/Fantasy-Football-App` for 2026. A custom domain (needed for TWA asset links at the origin root) is added when the Play closed test starts. At that point, deploy with `upload-pages-artifact` v5 using `include-hidden-files: true`, since v4+ drops `/.well-known/assetlinks.json` `[reported]`. Move to Cloudflare before any monetization.
+    - **Moved to `ff.rcjlabs.com` (2026-10-16), ahead of Play.** On the owner's phone, Chrome said the app was "already installed" at
+      the github.io address, then "Could not open app". No installed WebAPK covered it (`chrome://webapks`): a stale install record
+      Chrome keeps for that address. Clearing it means clearing data for all of `rcjlabs.github.io`, where the owner's other apps share
+      one storage bucket.
+    - **Its own origin** gives the app a fresh install identity and its own storage, and is ready for TWA asset links. The build uses
+      relative paths, so it works at both addresses while the old one redirects.
 11. **No DuckDB-WASM.** Client data is <1 MB/week. Measured in V8 `[own calc]`: 50k matchup simulations ≈ 36 ms; 10k 8-week rest-of-season simulations ≈ 0.3 s. Phones are probably several times slower `[unverified]`.
 12. **No logos or headshots.** Team abbreviations only, and "Not affiliated with or endorsed by Sleeper, the NFL or any team."
 13. **iOS is PWA-only.** Storage is treated as a rebuildable cache, the app calls `navigator.storage.persist()` and shows in-app Add-to-Home-Screen instructions, and it is tested on a real iPhone in both Safari and home-screen mode.
