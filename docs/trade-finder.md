@@ -20,7 +20,8 @@ by your gain. Trade deadlines make this most useful in the weeks before them; af
   - Their side is scored first, so a candidate they'd lose on costs one valuation, not two.
 - **Kept:** you gain at least 3 points and they don't lose any. At most two ideas per team and two per player you'd give up, for variety.
 - **Reported:** the six best get the trade tab's full evaluation, and those are the numbers shown:
-  - forced drops and free-agent fills;
+  - forced drops. A spot the trade opens isn't filled from free agency, since you could make that pickup anyway (see "No free-agent
+    fills" below);
   - the 80% range and the chance it adds points;
   - playoff (or 1st-place) and title odds.
 
@@ -73,19 +74,19 @@ You pick a QB, RB, WR or TE on another team, from the card's list or with **What
 - **Order:** best for you first. With FantasyCalc values, packages that give his team under 1/1.4 of his market value go last
   (the same flag as trade ideas). Dynasty leagues use dynasty values; keeper and redraft leagues use this season's.
 
-**No free-agent fills** `[design]`. A two-for-one opens a spot on your roster. The trade builder fills it from free agency, but you
-could make that pickup anyway by dropping someone, so counting it would make two-for-ones look cheaper than they are. The builder
-still adds him, so its number for the same package can be higher. In the e2e league, counting the fill turned a backup QB nobody
-would start into "+32 for you": the whole gain was the free agent.
+**No free-agent fills** `[design]`. A two-for-one opens a spot on your roster. A free agent could fill it, but you could make that
+pickup anyway by dropping someone, so counting it would make two-for-ones look cheaper than they are. In the e2e league, counting
+the fill turned a backup QB nobody would start into "+32 for you": the whole gain was the free agent. The trade builder and trade
+ideas filled such spots until the owner's call on 2026-10-16; since then no trade evaluation does.
 
 ## Checked
 
 - **Unit tests:**
-  - packages help both lineups and match the trade tab's evaluation without free agents;
+  - packages help both lineups and match the trade tab's evaluation;
   - best for you first, with each of your players in at most two;
   - packages they'd see as lopsided go last;
   - the closest packages when none helps both;
-  - no free-agent fills, even with a good free agent available;
+  - a good free agent available doesn't change any package;
   - whether he'd start for you.
 - **End-to-end:** a buy-low running back opens the card with packages, and one loads into the builder. The rival's QB, who'd sit
   behind yours, shows the closest packages.

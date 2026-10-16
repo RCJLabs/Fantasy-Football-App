@@ -427,7 +427,6 @@ export interface TradeSideResult {
   /** Change in best-lineup expected points per future week. */
   weekly: number[];
   drops: string[];
-  adds: string[];
   pBefore?: number;
   pAfter?: number;
   /** Chance of winning the title: while the whole bracket is ahead, and in the playoffs from the real bracket. */
@@ -447,33 +446,25 @@ export interface TradeResult {
 /** z of an 80% two-sided range. */
 const Z80 = 1.2816;
 
-/** Evaluate `give` (from my roster) for `get` (from theirs) over the rest of the season, for both teams. */
-export function evaluateTrade(o: LeagueOutlook, ctx: WeekContext, myId: number, theirId: number, give: readonly string[], get: readonly string[], freeAgents: readonly string[]): TradeResult {
+/**
+ * Evaluate `give` (from my roster) for `get` (from theirs) over the rest of the season, for both teams. A side that ends
+ * up over its roster limit drops its cheapest players. A spot the trade opens stays open: a free agent could fill it, but
+ * that pickup is open to the team without the trade too (with a drop), so counting it would flatter uneven trades.
+ */
+export function evaluateTrade(o: LeagueOutlook, ctx: WeekContext, myId: number, theirId: number, give: readonly string[], get: readonly string[]): TradeResult {
   const me = o.teams.get(myId)!;
   const them = o.teams.get(theirId)!;
   const locked = (id: string) => playerRow(id, o.league, ctx).locked;
-  const side = (t: TeamOutlook, out: readonly string[], inn: readonly string[], taken: Set<string>) => {
+  const side = (t: TeamOutlook, out: readonly string[], inn: readonly string[]) => {
     const before = teamIds(t.roster);
     let after = [...before.filter((id) => !out.includes(id)), ...inn];
     const activeBefore = activeIds(t.roster);
     const active = [...activeBefore.filter((id) => !out.includes(id)), ...inn];
     const limit = rosterLimit(o.league);
     let drops: string[] = [];
-    const adds: string[] = [];
     if (active.length > limit) {
       drops = cheapestDrops(o.model, after, active.filter((id) => !locked(id)), active.length - limit, t.weights);
       after = after.filter((id) => !drops.includes(id));
-    } else {
-      // Only spots the trade frees: spots already open before it are open either way.
-      const freed = Math.max(0, limit - active.length) - Math.max(0, limit - activeBefore.length);
-      for (let open = freed; open > 0; open--) {
-        const pool = freeAgents.filter((id) => !taken.has(id));
-        const best = addGains(o.model, after, [], 1, pool, t.weights).sort((a, b) => b.gain - a.gain)[0];
-        if (!best || best.gain <= 0) break;
-        adds.push(best.id);
-        taken.add(best.id);
-        after.push(best.id);
-      }
     }
     const beforeVal = o.model.value(before, t.weights);
     const afterVal = o.model.value(after, t.weights);
@@ -487,9 +478,8 @@ export function evaluateTrade(o: LeagueOutlook, ctx: WeekContext, myId: number, 
       delta: afterVal - beforeVal,
       weekly: futureAfter.map((d, i) => d.mean - t.future[i]!.mean),
       drops,
-      adds,
     };
-    const moves = [...[...inn, ...adds].map((id) => ({ id, roster: after })), ...[...out, ...drops].map((id) => ({ id, roster: before }))];
+    const moves = [...inn.map((id) => ({ id, roster: after })), ...[...out, ...drops].map((id) => ({ id, roster: before }))];
     const sd = Math.sqrt(changeVariance(o.model, moves, t.weights));
     if (sd > 0) {
       res.range = [res.delta - Z80 * sd, res.delta + Z80 * sd];
@@ -497,9 +487,8 @@ export function evaluateTrade(o: LeagueOutlook, ctx: WeekContext, myId: number, 
     }
     return { res, futureAfter, drift: teamDrift(o.model, after) };
   };
-  const taken = new Set<string>();
-  const a = side(me, give, get, taken);
-  const b = side(them, get, give, taken);
+  const a = side(me, give, get);
+  const b = side(them, get, give);
   if (o.odds) {
     const after = simulate(
       o,
@@ -541,17 +530,6 @@ export function evaluateTrade(o: LeagueOutlook, ctx: WeekContext, myId: number, 
   }
   const deadline = o.league.rules.tradeDeadline;
   return { me: a.res, them: b.res, deadlinePassed: deadline !== undefined && deadline > 0 && ctx.week > deadline };
-}
-
-/** Free agents worth considering as fillers, best rest-of-season value first. */
-export function freeAgentPool(o: LeagueOutlook, ctx: WeekContext, size = 40): string[] {
-  const rostered = rosteredIds([...o.teams.values()].map((t) => t.roster));
-  const ids = new Set<string>();
-  for (let i = 0; i < o.weeks.length; i++) for (const id of o.model.projected(i)) ids.add(id);
-  return [...ids]
-    .filter((id) => !rostered.has(id) && startable(o.league, fposOf(o, ctx, id)))
-    .sort((a, b) => o.model.total(b) - o.model.total(a))
-    .slice(0, size);
 }
 
 // ---- Streaming ---------------------------------------------------------------------------------

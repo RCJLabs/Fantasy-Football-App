@@ -244,8 +244,8 @@
   - **What it does:** for a player on another team, packages of one or two of yours that help both best lineups, best for you
     first, with market values. Packages they'd see as lopsided go last. When none helps both, it shows the cheapest their lineup gains
     from, and it says whether he'd start for you.
-  - **Free agents:** a two-for-one's open spot isn't filled from free agency, unlike the trade builder. You could make that pickup
-    anyway, and counting it made a backup QB look like +32.
+  - **Free agents:** a two-for-one's open spot isn't filled from free agency. You could make that pickup anyway, and counting it
+    made a backup QB look like +32. On the owner's call, trade ideas and the builder stopped counting fills too.
   - **On the owner's leagues:** for rivals' top three players, packages that help both exist for 2 of 27 and 3 of 33. For the rest,
     the cheapest their lineup gains from costs a median 11 points of the owner's.
 

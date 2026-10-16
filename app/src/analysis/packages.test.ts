@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Player, StatLine } from '../domain/types';
 import { parseLeague, parseMatchup, parseRoster, type ProjectionIndex } from '../sleeper/parse';
 import { gamesByTeam, type WeekContext } from './analyze';
-import { buildOutlook, evaluateTrade, freeAgentPool } from './outlook';
+import { buildOutlook, evaluateTrade } from './outlook';
 import { findPackages, LOPSIDED } from './tradeFinder';
 
 // No playoffs; five starters and three bench spots, so every roster below is full.
@@ -60,7 +60,7 @@ function outlook(free: Spec[] = []) {
   const byWeek = new Map(Array.from({ length: 12 }, (_, i) => [7 + i, index(specs, 7 + i)]));
   const matchups = [1, 2, 3, 4].map((r) => parseMatchup({ roster_id: r, matchup_id: r <= 2 ? 1 : 2, starters: [], players: [], points: 0 }));
   const o = buildOutlook({ league, rosters, users: [], matchups, ctx, byWeek, schedule: new Map(), sims: 200 });
-  return { o, ctx, fa: freeAgentPool(o, ctx) };
+  return { o, ctx };
 }
 
 describe('what it would take', () => {
@@ -75,7 +75,7 @@ describe('what it would take', () => {
       expect(p.mine).toBeGreaterThanOrEqual(1);
       expect(p.theirs).toBeGreaterThanOrEqual(0);
       // Reported numbers are the trade tab's own evaluation.
-      expect(p.mine).toBeCloseTo(evaluateTrade(o, ctx, 1, 2, p.give, ['t1'], []).me.delta, 6);
+      expect(p.mine).toBeCloseTo(evaluateTrade(o, ctx, 1, 2, p.give, ['t1']).me.delta, 6);
       // No one player of mine is enough for a 20-point back: their lineup would lose.
       expect(p.give.length).toBe(2);
     }
@@ -113,15 +113,12 @@ describe('what it would take', () => {
     expect(search.closest.map((p) => p.mine)).toEqual([...search.closest.map((p) => p.mine)].sort((a, b) => b - a));
   });
 
-  it("leaves out the free agent a two-for-one's open spot could take: that pickup is open anyway", async () => {
-    const { o, ctx, fa } = outlook([['fa', 'RB', rb(12)]]);
-    expect(fa).toEqual(['fa']);
-    const search = (await findPackages(o, ctx, 1, 't1'))!;
-    expect(search.packages.length).toBeGreaterThan(0);
-    for (const p of search.packages) expect(p.result.me.adds).toEqual([]);
-    // The trade tab would count him: the same trade looks better there.
-    const first = search.packages[0]!;
-    expect(evaluateTrade(o, ctx, 1, 2, first.give, ['t1'], fa).me.delta).toBeGreaterThan(first.mine);
+  it("doesn't count the free agent a two-for-one's open spot could take: that pickup is open anyway", async () => {
+    const plain = outlook();
+    const withFree = outlook([['fa', 'RB', rb(12)]]);
+    const packages = async ({ o, ctx }: ReturnType<typeof outlook>) => (await findPackages(o, ctx, 1, 't1'))!.packages.map((p) => [p.give, p.mine]);
+    expect(await packages(withFree)).toEqual(await packages(plain));
+    expect((await packages(plain)).length).toBeGreaterThan(0);
   });
 
   it('says whether he would start for me', async () => {

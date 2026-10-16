@@ -5,7 +5,7 @@ import { irStash } from '../analysis/irStash';
 import { marketPrice } from '../analysis/faab';
 import { GRADE_WEIGHTS, leagueGrades, type Grade, type LeagueGrades, type Part } from '../analysis/grades';
 import type { Claim } from '../analysis/claims';
-import { claimPlan, evaluateTrade, freeAgentPool, streamers, waiverBoard, type ByeWeek, type LeagueOutlook, type TradeSideResult } from '../analysis/outlook';
+import { claimPlan, evaluateTrade, streamers, waiverBoard, type ByeWeek, type LeagueOutlook, type TradeSideResult } from '../analysis/outlook';
 import { carriedForward, longTermRanking } from '../analysis/longterm';
 import { buyLowSellHigh, STREAK_GAP, type StreakPick } from '../analysis/luck';
 import { pickAssets, pickLabel, pickTotals, type PickAsset } from '../analysis/picks';
@@ -699,7 +699,6 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
   const [givePicks, setGivePicks] = useState<string[]>([]);
   const [getPicks, setGetPicks] = useState<string[]>([]);
   const [target, setTarget] = useState<string | null>(null);
-  const freeAgents = useMemo(() => freeAgentPool(o, bundle.ctx), [o, bundle.ctx]);
   const market = useAsync(async () => {
     const hs = horizons(bundle.league);
     const loaded = await Promise.all(hs.map((h) => loadMarketValues(marketParams(bundle.league, h))));
@@ -721,8 +720,8 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
   const chosen = (keys: string[]) => picks.filter((p) => keys.includes(p.key));
   const anyPicks = givePicks.length + getPicks.length > 0;
   const result = useMemo(
-    () => (partnerId >= 0 && (give.length || get.length) ? evaluateTrade(o, bundle.ctx, myId, partnerId, give, get, freeAgents) : null),
-    [o, bundle.ctx, myId, partnerId, give, get, freeAgents],
+    () => (partnerId >= 0 && (give.length || get.length) ? evaluateTrade(o, bundle.ctx, myId, partnerId, give, get) : null),
+    [o, bundle.ctx, myId, partnerId, give, get],
   );
   const deadline = bundle.league.rules.tradeDeadline;
   const passed = deadline !== undefined && deadline > 0 && bundle.week > deadline;
@@ -781,7 +780,7 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
   return (
     <div class="stack">
       {passed ? <p class="note">This league's trade deadline (week {deadline}) has passed.</p> : null}
-      {passed ? null : <TradeIdeas bundle={bundle} o={o} freeAgents={freeAgents} values={values} name={name} onOpen={(idea) => open(idea.partner, idea.give, idea.get)} />}
+      {passed ? null : <TradeIdeas bundle={bundle} o={o} values={values} name={name} onOpen={(idea) => open(idea.partner, idea.give, idea.get)} />}
       {passed ? null : (
         <BuyLowSellHigh
           bundle={bundle}
@@ -854,7 +853,8 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
                 {o.bracket
                   ? 'in the playoffs, each round a team could still play counts in full, and a team that is out counts nothing'
                   : "playoff weeks weighted by that team's playoff odds, a first-round bye week by its chance of playing it"}
-                ), including the drops a full roster forces and free agents for spots the trade opens. Ranges allow for players' weekly swings and
+                ), including the drops a full roster forces. A spot the trade opens isn't filled from free agency, since you could make that pickup
+                anyway. Ranges allow for players' weekly swings and
                 season-long misses of their projections (sized on 2022–25). Title odds play out {o.bracket ? "Sleeper's bracket from here" : 'the bracket'};
                 changes of a point or less can be simulation noise.
               </p>
@@ -901,14 +901,12 @@ type MarketValues = ReadonlyMap<string, { value: number }> | null;
 function TradeIdeas({
   bundle,
   o,
-  freeAgents,
   values,
   name,
   onOpen,
 }: {
   bundle: LeagueBundle;
   o: LeagueOutlook;
-  freeAgents: readonly string[];
   values: MarketValues;
   name: (id: string) => string;
   onOpen: (idea: TradeIdea) => void;
@@ -918,7 +916,7 @@ function TradeIdeas({
   const run = async () => {
     setState({ running: true, done: 0, total: o.teams.size - 1 });
     try {
-      const ideas = await findTrades(o, bundle.ctx, myId, freeAgents, { onProgress: (done, total) => setState((s) => ({ ...s, done, total })) });
+      const ideas = await findTrades(o, bundle.ctx, myId, { onProgress: (done, total) => setState((s) => ({ ...s, done, total })) });
       setState({ running: false, done: 0, total: 0, ideas });
     } catch (e) {
       logError(e);
@@ -1188,7 +1186,7 @@ function WhatItTakes({
       {target && s && !state.running ? (
         <p class="muted small">
           Lineup math only, as with trade ideas: whether they say yes also depends on how they rank players. A two-for-one&apos;s open spot isn&apos;t filled
-          from free agency here, since you could make that pickup anyway; the builder adds him. Open a package for its odds, byes and drops.
+          from free agency, since you could make that pickup anyway. Open a package for its odds, byes and drops.
         </p>
       ) : null}
     </div>
@@ -1210,7 +1208,6 @@ function TradeSide({ label, side, name }: { label: string; side: TradeSideResult
         </p>
       ) : null}
       {side.drops.length ? <p class="muted small">Must drop {side.drops.map(name).join(', ')} to make room.</p> : null}
-      {side.adds.length ? <p class="muted small">Fills the open spot with {side.adds.map(name).join(', ')} from free agency.</p> : null}
     </div>
   );
 }

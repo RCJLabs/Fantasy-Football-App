@@ -93,8 +93,7 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           <li>
             <strong>What would it take?</strong> (Trade tab): pick a player on another team, and it searches packages of one or two of your players
             for him that improve both best lineups, best for you first, with market values. When none does, it shows the cheapest packages their
-            lineup gains from, and what they&apos;d cost yours. A two-for-one&apos;s open spot isn&apos;t filled from free agency there, since you could
-            make that pickup anyway.
+            lineup gains from, and what they&apos;d cost yours.
           </li>
           <li>
             <strong>Buy low, sell high</strong> (Trade tab and player details): players whose PPR points over recent games ran 3+ a game ahead of
@@ -112,7 +111,8 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           <li>
             <strong>Trade ideas</strong> search one-for-one and two-for-one trades with every team, among each team's eight most valuable QBs, RBs,
             WRs and TEs, for trades that improve both best lineups over the rest of the season. It's lineup math only: whether the other manager says
-            yes also depends on how they rank players, so market values are shown beside each idea.
+            yes also depends on how they rank players, so market values are shown beside each idea. A spot a trade opens isn&apos;t filled from free
+            agency in any trade evaluation: you could make that pickup without the trade.
           </li>
           <li>
             <strong>Keeper and dynasty leagues</strong> also get a long-term view. Trades show market value this season and beyond it (FantasyCalc
