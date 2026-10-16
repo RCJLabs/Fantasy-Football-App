@@ -63,6 +63,59 @@ describe('Sleeper bracket', () => {
   });
 });
 
+// A finished 6-team bracket as Sleeper returns it (a 2025 league, roster ids changed): once a game is decided, Sleeper
+// fills the later slots it feeds and keeps the `from` reference beside them.
+const finished: RawBracketMatch[] = [
+  { m: 1, r: 1, t1: 9, t2: 3, w: 3, l: 9 },
+  { m: 2, r: 1, t1: 5, t2: 8, w: 8, l: 5 },
+  { m: 3, r: 2, t1: 1, t2: 3, t2_from: { w: 1 }, w: 1, l: 3 },
+  { m: 4, r: 2, t1: 4, t2: 8, t2_from: { w: 2 }, w: 8, l: 4 },
+  { m: 5, r: 2, p: 5, t1: 9, t2: 5, t1_from: { l: 1 }, t2_from: { l: 2 }, w: 9, l: 5 },
+  { m: 6, r: 3, p: 1, t1: 1, t2: 8, t1_from: { w: 3 }, t2_from: { w: 4 }, w: 8, l: 1 },
+  { m: 7, r: 3, p: 3, t1: 3, t2: 4, t1_from: { l: 3 }, t2_from: { l: 4 }, w: 4, l: 3 },
+];
+
+describe('a finished bracket as Sleeper returns it', () => {
+  const done = parseBracket(finished);
+  const teams = fixed({ 1: 120, 3: 110, 4: 100, 5: 90, 8: 80, 9: 70 });
+  const seeded = new Map([1, 4, 8, 9, 3, 5].map((t, i) => [t, i + 1]));
+
+  it('reads filled slots with their sources, and the champion', () => {
+    expect(done[2]!.slots[1]).toEqual({ rosterId: 3, from: { match: 1, take: 'winner' } });
+    const st = bracketState(done);
+    expect(st.champion).toBe(8);
+    expect([...st.alive]).toEqual([8]);
+    expect([...st.byes].sort()).toEqual([1, 4]);
+    expect([...st.outIn].sort((a, b) => a[0] - b[0])).toEqual([
+      [1, 3],
+      [3, 2],
+      [4, 2],
+      [5, 1],
+      [9, 1],
+    ]);
+  });
+
+  it('keeps every result, however the projections lean', () => {
+    // The lowest-projected teams won; decided games stand.
+    const odds = simulateBracket({ matches: done, teams, seeds: seeded, sims: 20 });
+    expect(odds.get(8)).toMatchObject({ pTitle: 1, pRound: [1, 1, 1], pWin: [1, 1, 1] });
+    expect(odds.get(1)).toMatchObject({ bye: true, pTitle: 0, pRound: [0, 1, 1], pWin: [0, 1, 0] });
+    expect(odds.get(9)).toMatchObject({ alive: false, pRound: [1, 0, 0] });
+  });
+
+  it('after round 1, with the round-2 slots filled and no winners yet', () => {
+    const mid = done.map((m) => (m.round > 1 ? { ...m, winner: null, loser: null } : m)).map((m) =>
+      m.round === 3 ? { ...m, slots: m.slots.map((s) => ({ ...s, rosterId: null })) as typeof m.slots } : m,
+    );
+    const st = bracketState(mid);
+    expect([...st.alive].sort()).toEqual([1, 3, 4, 8]);
+    expect(st.currentRound).toBe(2);
+    expect(st.games.find((g) => g.match === 3)!.teams).toEqual([1, 3]);
+    // 1 and 3 meet, 4 and 8 meet, then the final: 1 (120) beats everyone.
+    expect(simulateBracket({ matches: mid, teams, seeds: seeded, sims: 20 }).get(1)!.pTitle).toBe(1);
+  });
+});
+
 describe('simulateBracket', () => {
   it('plays out the open games from each round’s scores', () => {
     const odds = simulateBracket({ matches: bracket, teams: fixed(scores), seeds, sims: 20 });
