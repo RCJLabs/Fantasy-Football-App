@@ -550,6 +550,10 @@ KeepTradeCut, scraped expert sites, PFF/SumerSports/StatRankings pages, X API, U
       one storage bucket.
     - **Its own origin** gives the app a fresh install identity and its own storage, and is ready for TWA asset links. The build uses
       relative paths, so it works at both addresses while the old one redirects.
+    - **Live the same day:** the archive and the data build read the deployed files from `ff.rcjlabs.com`.
+    - **Caveat:** a browser that opened the old address keeps a cached copy of the app there. Its service worker serves the page
+      from cache and can't update, because browsers reject a service worker script served through a redirect. The new address is
+      the one to use.
 11. **No DuckDB-WASM.** Client data is <1 MB/week. Measured in V8 `[own calc]`: 50k matchup simulations ≈ 36 ms; 10k 8-week rest-of-season simulations ≈ 0.3 s. Phones are probably several times slower `[unverified]`.
 12. **No logos or headshots.** Team abbreviations only, and "Not affiliated with or endorsed by Sleeper, the NFL or any team."
 13. **iOS is PWA-only.** Storage is treated as a rebuildable cache, the app calls `navigator.storage.persist()` and shows in-app Add-to-Home-Screen instructions, and it is tested on a real iPhone in both Safari and home-screen mode.
