@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { StatLine } from '../app/src/domain/types';
 import { buildUsage, invert } from './usage';
 
 const rosters = [
@@ -62,5 +63,43 @@ describe('usage', () => {
   it('returns nothing without data, and inverts id maps keeping the first', () => {
     expect(buildUsage({ season: '2026', now: '', rosters: [], sleeperByGsis, snaps: [], stats: [] })).toBeNull();
     expect(invert(new Map([['a', 'g1'], ['b', 'g1'], ['c', 'g2']]))).toEqual(new Map([['g1', 'a'], ['g2', 'c']]));
+  });
+});
+
+describe('points against usage', () => {
+  const catches = (week: number, receptions: number, yards: number, tds: number) => ({
+    ...stat(week, '00-0000001', 'WR', receptions + 2, 0.2, 0),
+    receptions: String(receptions),
+    receiving_yards: String(yards),
+    receiving_tds: String(tds),
+  });
+  const runs = (week: number) => ({ ...stat(week, '00-0000002', 'RB', 0, 0, 15), rushing_yards: '80' });
+  const expected = new Map<string, StatLine>([
+    ['00-0000001|1', { rec: 9, rec_yd: 120, rec_td: 1 }], // before the window
+    ['00-0000001|2', { rec: 5, rec_yd: 60, rec_td: 0.4 }],
+    ['00-0000001|3', { rec: 5, rec_yd: 55, rec_td: 0.4 }],
+    ['00-0000001|4', { rec: 5, rec_yd: 60, rec_td: 0.5 }],
+    // week 5 isn't processed yet
+    ['00-0000002|4', { rush_att: 15, rush_yd: 60 }],
+    ['00-0000002|5', { rush_att: 15, rush_yd: 60 }],
+  ]);
+  const file = buildUsage({
+    season: '2026',
+    now: '2026-10-15T12:00:00Z',
+    rosters,
+    sleeperByGsis,
+    snaps: [],
+    stats: [catches(1, 9, 120, 1), catches(2, 5, 60, 1), catches(3, 4, 50, 1), catches(4, 6, 70, 0), catches(5, 3, 30, 0), runs(4), runs(5)],
+    expected,
+  })!;
+
+  it('compares PPR points and touchdowns with what the usage was worth, over the games ffopportunity has', () => {
+    // Points 17, 15, 13 against 13.4, 12.9, 14; week 5 has no expected line yet and week 1 is outside the window.
+    expect(file.players.wr1!.luck).toEqual({ g: 3, pts: [15, 13.4], td: [2, 1.3] });
+  });
+
+  it('needs three games', () => {
+    expect(file.players.rb1!.car).toEqual([null, null, 15, 15]);
+    expect(file.players.rb1!.luck).toBeUndefined();
   });
 });

@@ -80,6 +80,12 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             they add to your lineups once Sleeper projects them back. On IR they take no bench spot until then.
           </li>
           <li>
+            <strong>Buy low, sell high</strong> (Trade tab and player details): players whose PPR points over recent games ran 3+ a game ahead of
+            or behind what their usage was worth (expected points from ffopportunity). Tested on 2022–2025, a streak didn&apos;t predict how
+            players did against RotoWire&apos;s projections afterwards, so values don&apos;t change. The card lists your players running hot and other
+            teams&apos; players running cold who&apos;d start for you, for trading with managers who go by recent points.
+          </li>
+          <li>
             <strong>Weeks ahead and season so far</strong> (Season tab). Ahead: each week to the end of the season, with regular starters on bye
             or not projected, players coming back, and in weeks with a hole, the free agent who adds most that week. So far: your record against
             all-play (your score against every team each week), which shows how much the schedule has helped or hurt. Each week&apos;s best lineup
@@ -131,11 +137,11 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           <li>Practice reports and schedule: nflverse (CC-BY 4.0), processed daily.</li>
           <li>Usage and matchups: nflverse (CC-BY 4.0) weekly stats and snap counts (compiled by Pro Football Reference).</li>
           <li>
-            Second-opinion baseline: expected points from{' '}
+            Second-opinion baseline and points against usage: expected points from{' '}
             <a href="https://github.com/ffverse/ffopportunity" target="_blank" rel="noopener">
               ffopportunity
             </a>{' '}
-            (ffverse, CC-BY-SA 4.0); our baseline file is shared under the same licence.
+            (ffverse, CC-BY-SA 4.0); our baseline file and the usage file&apos;s expected-point figures are shared under the same licence.
           </li>
           <li>Trending adds: Sleeper.</li>
           <li>
