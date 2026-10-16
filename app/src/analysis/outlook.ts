@@ -55,7 +55,7 @@ export function buildOutlook(input: OutlookInput): LeagueOutlook {
   const { league, ctx, rosters } = input;
   const regEnd = regularSeasonEnd(league);
   const weeks = range(ctx.week + 1, seasonEnd(league));
-  const model = new RosModel({ league, weeks, byWeek: input.byWeek, players: ctx.players });
+  const model = new RosModel({ league, weeks, currentWeek: ctx.week, byWeek: input.byWeek, players: ctx.players });
   const currentScored = (league.rules.lastScoredWeek ?? 0) >= ctx.week;
   const includeCurrent = !currentScored && ctx.week <= regEnd;
   const futureRegular = weeks.filter((w) => w <= regEnd);

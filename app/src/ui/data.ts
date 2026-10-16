@@ -107,7 +107,7 @@ async function roundExtra(bundle: LeagueBundle, myRoster: Roster): Promise<Lineu
   }
   const ros = await loadRosWeeks(league.season, [week + 1], projectionPositions(league));
   if (ros.missing.length) return undefined;
-  const model = new RosModel({ league, weeks: [week + 1], byWeek: ros.byWeek, players: ctx.players });
+  const model = new RosModel({ league, weeks: [week + 1], currentWeek: week, byWeek: ros.byWeek, players: ctx.players });
   return { me: model.bestWeek(teamIds(myRoster), 0), opp: model.bestWeek(teamIds(oppRoster), 0) };
 }
 

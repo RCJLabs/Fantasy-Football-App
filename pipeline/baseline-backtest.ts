@@ -194,7 +194,7 @@ export function gateTable(rows: readonly BacktestRow[], minProjected = 5, interv
 export const blend = (r: BacktestRow, w: number): number => (r.baseline === undefined ? r.rotowire : (1 - w) * r.rotowire + w * r.baseline);
 
 /** Deterministic PRNG (mulberry32) so intervals reproduce run to run. */
-function mulberry32(seed: number): () => number {
+export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
