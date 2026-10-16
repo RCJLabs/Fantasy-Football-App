@@ -561,3 +561,85 @@ test('dynasty league: draft picks in trades and the long-term outlook', async ({
   await expect(page.getByText('Your picks:')).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('dynasty-season.png'), fullPage: true });
 });
+
+test('ask the analyst: Claude answers from the app\'s figures, which the app puts in and checks', async ({ page }, testInfo) => {
+  const bodies: Array<Record<string, any>> = [];
+  // The values the app sent for the two facts the answer quotes (they move with the fixture's kickoff times).
+  const sent: Record<string, string> = {};
+  const headers: Array<Record<string, string>> = [];
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'POST, OPTIONS' };
+  await page.route(/^https:\/\/api\.anthropic\.com\/v1\/messages/, (route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+    const body = req.postDataJSON() as Record<string, any>;
+    bodies.push(body);
+    headers.push(req.headers());
+    // Quote the app's own fact ids, plus one id that doesn't exist and one number typed by hand.
+    const sheet = body.system[1].text as string;
+    const id = (key: string, label: string) => {
+      const m = new RegExp(`^\\{(F\\d+)\\} ${label}: (.+)$`, 'm').exec(sheet)!;
+      sent[key] = m[2]!;
+      return m[1];
+    };
+    const points = id('points', "This week: Test Titans's expected points with the app's recommended lineup");
+    const win = id('win', 'This week: chance Test Titans wins with the recommended lineup');
+    const text =
+      bodies.length === 1
+        ? `Start the recommended lineup: it projects {${points}} points with a {${win}} chance to win. {F999} Sam Slot adds 3.77 points.`
+        : `Because {${points}} is the most points any lineup gets.`;
+    return route.fulfill({
+      headers: cors,
+      json: {
+        id: `msg_${bodies.length}`,
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-opus-5-5',
+        content: [{ type: 'text', text }],
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: { input_tokens: 300, output_tokens: 400, cache_creation_input_tokens: bodies.length === 1 ? 4200 : 0, cache_read_input_tokens: bodies.length === 1 ? 0 : 4200 },
+      },
+    });
+  });
+  await page.goto('./');
+  await page.getByLabel('Sleeper username').fill('testuser');
+  await page.getByRole('button', { name: 'Find my leagues' }).click();
+  await page.locator('.league-card').filter({ hasText: 'Saturday Night Gridiron' }).getByRole('link').first().click();
+  await page.getByRole('tab', { name: 'Ask' }).click();
+
+  // The manager's own key, kept on this device.
+  await page.getByLabel('Anthropic API key').fill('sk-ant-test-key');
+  await page.getByRole('button', { name: 'Save key' }).click();
+  await page.getByLabel('Your question').fill('Who should I start at flex?');
+  await page.getByRole('button', { name: 'Ask', exact: true }).click();
+  const first = page.locator('.ask .turn').first();
+  await expect(first.locator('.answer')).toContainText('Start the recommended lineup');
+  expect(sent.points).toMatch(/^\d+\.\d$/);
+  expect(sent.win).toMatch(/%$/);
+  await expect(first.locator('.answer')).toHaveText(
+    `Start the recommended lineup: it projects ${sent.points} points with a ${sent.win} chance to win. {F999} Sam Slot adds 3.77 points.`,
+  );
+  await expect(first.locator('.answer mark.unchecked')).toHaveText(['{F999}', '3.77']);
+  await expect(first).toContainText("2 numbers marked: not from the app's figures. Cost about $0.030.");
+
+  // A follow-up carries the first exchange as context, with the same fact sheet (so the prompt cache can reuse it).
+  await page.getByLabel('Your question').fill('Why?');
+  await page.getByRole('button', { name: 'Ask', exact: true }).click();
+  await expect(page.locator('.ask .turn').nth(1).locator('.answer')).toHaveText(`Because ${sent.points} is the most points any lineup gets.`);
+  await expect(page.locator('.ask .turn').nth(1)).toContainText("Every number comes from the app's figures. Cost about $0.010.");
+  await page.screenshot({ path: testInfo.outputPath('ask.png'), fullPage: true });
+
+  expect(bodies).toHaveLength(2);
+  expect(bodies[0]).toMatchObject({ model: 'claude-opus-5-5', output_config: { effort: 'medium' }, fallbacks: 'default' });
+  expect(bodies[0]!.system[1].cache_control).toEqual({ type: 'ephemeral' });
+  expect(bodies[1]!.system[1].text).toBe(bodies[0]!.system[1].text);
+  expect(bodies[1]!.messages).toHaveLength(1);
+  expect(bodies[1]!.messages[0].content).toContain('Earlier in this conversation:\n\nQ: Who should I start at flex?\nA: Start the recommended lineup');
+  expect(headers[0]!['x-api-key']).toBe('sk-ant-test-key');
+  expect(headers[0]!['anthropic-dangerous-direct-browser-access']).toBe('true');
+  expect(headers[0]!['anthropic-beta']).toContain('server-side-fallback-2026-07-01');
+
+  // Removing the key brings back the key form.
+  await page.getByRole('button', { name: 'Remove key' }).click();
+  await expect(page.getByLabel('Anthropic API key')).toBeVisible();
+});

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { LineupAnalysis, LineupChange, Objective } from '../analysis/analyze';
+import { AskTab } from './AskTab';
 import { ErrorBox, PlayerLine, Problems, slotLabel, Spinner } from './components';
 import { findLeague, lineupFor, loadLeagueBundle, rememberAdvice, type LeagueBundle } from './data';
 import { ago, pct, pts, signed } from './format';
@@ -14,6 +15,7 @@ const TABS = [
   ['waivers', 'Waivers'],
   ['trade', 'Trade'],
   ['season', 'Season'],
+  ['ask', 'Ask'],
 ] as const;
 
 export function LeaguePage({ session, leagueId, tab }: { session: Session; leagueId: string; tab: string }) {
@@ -69,6 +71,8 @@ export function LeaguePage({ session, leagueId, tab }: { session: Session; leagu
         <TradeTab bundle={b} />
       ) : tab === 'season' ? (
         <SeasonTab bundle={b} />
+      ) : tab === 'ask' ? (
+        <AskTab bundle={b} />
       ) : (
         <LineupArea b={b} tab="lineup" now={now} />
       )}

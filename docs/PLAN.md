@@ -221,6 +221,15 @@
   - **FAAB:** each bid comes from the budget left after the claims above. A backup never bids more than its claim.
   - **On the owner's leagues:** three claims each. Bids total $23 of $25 and $9 of $22.
 
+- **Ask the analyst — built (2026-10-16):** item 10 of the owner's assistance list, brought forward with bring-your-own-key; details
+  in [analyst.md](analyst.md).
+  - **League page, Ask tab:** plain-language questions, answered by Claude (Opus 5.5) from a fact sheet of the app's own figures.
+  - **Numbers come from the app:** the model quotes facts by id and the app puts in the values. Numbers it types itself are checked
+    against the facts and marked when they match none.
+  - **The manager's own Anthropic key,** kept on the device, with calls straight from the browser. Each answer shows its cost;
+    follow-ups reuse the cached fact sheet.
+  - **Not yet run against the real API:** no key in this environment.
+
 - **Across your leagues — built (2026-10-16):** item 7 of the owner's assistance list; details in
   [across-leagues.md](across-leagues.md).
   - **Home card**, with two or more in-season leagues:
@@ -735,9 +744,8 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
 9. **Dynasty startup draft assistant.** A live board from Sleeper's draft picks that ranks the best available by league scoring,
    FantasyCalc dynasty values and roster needs. This is Phase 3's draft assistant; it comes forward only if the startup draft is before
    the freeze (date pending). Sleeper's draft data is untested here.
-10. **Ask the analyst.**
-    - Plain-language questions answered only from the app's computed numbers, with every number checked against them. This is Phase 3's
-      LLM layer; it comes forward if you choose bring-your-own-key, which needs no server.
+10. **Ask the analyst.** **Built 2026-10-16** with bring-your-own-key ([analyst.md](analyst.md)).
+    - Plain-language questions answered only from the app's computed numbers, which the app puts in and checks.
     - **Risk:** confidently wrong prose, which the number check reduces but doesn't remove.
 
 **Checkpoint:** **Dec 6 feature freeze.** After that, only fixes until Week 17.
