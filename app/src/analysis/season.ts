@@ -86,7 +86,7 @@ const add = (a: Float64Array, i: number, by: number) => {
   a[i] = a[i]! + by;
 };
 
-function normalSampler(rand: () => number): () => number {
+export function normalSampler(rand: () => number): () => number {
   let spare: number | null = null;
   return () => {
     if (spare !== null) {

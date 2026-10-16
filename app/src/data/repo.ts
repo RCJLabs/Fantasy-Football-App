@@ -1,7 +1,7 @@
-import type { Game, League, LeagueUser, Matchup, Player, Roster, StatLine } from '../domain/types';
+import type { BracketMatch, Game, League, LeagueUser, Matchup, Player, Roster, StatLine } from '../domain/types';
 import { type BaselineIndex, gamesByTeam, type UsageIndex, type WeekContext } from '../analysis/analyze';
 import { sleeperApi, SleeperError } from '../sleeper/api';
-import { indexProjections, parseLeague, parseMatchup, parsePlayersDump, parseRoster, parseUser, type ProjectionIndex } from '../sleeper/parse';
+import { indexProjections, parseBracket, parseLeague, parseMatchup, parsePlayersDump, parseRoster, parseUser, type ProjectionIndex } from '../sleeper/parse';
 import type { RawProjection, RawState, RawTradedPick, RawTransaction, RawUser } from '../sleeper/raw';
 import { cached } from './cache';
 import {
@@ -354,6 +354,21 @@ export async function loadWaiverClaims(leagueId: string, throughWeek: number, fo
     ),
   );
   return results.flatMap((r) => (r.status === 'fulfilled' ? r.value.value : []));
+}
+
+/** The winners' bracket: playoff games and their results (filled in as each round is decided). */
+export async function loadBracket(leagueId: string, force = false): Promise<BracketMatch[]> {
+  return parseBracket((await cached(`bracket:${leagueId}`, 10 * MIN, () => sleeperApi.winnersBracket(leagueId), { force })).value);
+}
+
+/** Final points by roster for weeks already played (e.g. earlier weeks of the playoffs). */
+export async function loadPlayedPoints(leagueId: string, weeks: readonly number[], force = false): Promise<Map<number, Map<number, number>>> {
+  const results = await Promise.allSettled(weeks.map((w) => loadMatchups(leagueId, w, force)));
+  const out = new Map<number, Map<number, number>>();
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') out.set(weeks[i]!, new Map(r.value.map((m) => [m.rosterId, m.points])));
+  });
+  return out;
 }
 
 /** Future draft picks that changed hands (Sleeper lists no others). */

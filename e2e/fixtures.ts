@@ -1,7 +1,7 @@
 // Mock Sleeper responses and pipeline data files for the end-to-end test. Shapes follow the live
 // responses recorded in docs/spikes.md; names and numbers are invented.
 import type { BaselineFile, CompactPlayer, LedgerFile, LedgerWeek, MatchupsFile, PlayersFile, ScheduleFile, UsageFile } from '../app/src/data/contracts';
-import type { RawLeague, RawMatchup, RawProjection, RawRoster, RawTradedPick, RawTransaction } from '../app/src/sleeper/raw';
+import type { RawBracketMatch, RawLeague, RawMatchup, RawProjection, RawRoster, RawTradedPick, RawTransaction } from '../app/src/sleeper/raw';
 
 const H = 3_600_000;
 export const now = Date.now();
@@ -199,6 +199,39 @@ export const futureMatchups = (week: number): RawMatchup[] => {
     [[1, 2], [3, 4]],
   ][week % 3]!;
   return pairs.flatMap(([a, b], i) => [a!, b!].map((r) => ({ roster_id: r, matchup_id: i + 1, starters: [], players: [], points: 0 })));
+};
+
+/** Playoffs: four teams in one-week rounds (weeks 15–16). Round 1 is decided; the final is under way in week 16. */
+export const playoffLeague: RawLeague = { ...league, settings: { ...league.settings, playoff_teams: 4, last_scored_leg: 15 } };
+export const bracket: RawBracketMatch[] = [
+  { m: 1, r: 1, t1: 1, t2: 4, w: 1, l: 4 },
+  { m: 2, r: 1, t1: 2, t2: 3, w: 2, l: 3 },
+  { m: 3, r: 2, p: 1, t1: null, t2: null, t1_from: { w: 1 }, t2_from: { w: 2 }, w: null, l: null },
+  { m: 4, r: 2, p: 3, t1: null, t2: null, t1_from: { l: 1 }, t2_from: { l: 2 }, w: null, l: null },
+];
+export const playoffMatchups = (week: number): RawMatchup[] =>
+  week === 15
+    ? [
+        { roster_id: 1, matchup_id: 1, starters: me.starters, players: me.players, points: 128.4 },
+        { roster_id: 4, matchup_id: 1, starters: [], players: [], points: 97.1 },
+        { roster_id: 2, matchup_id: 2, starters: opp.starters, players: opp.players, points: 110.2 },
+        { roster_id: 3, matchup_id: 2, starters: [], players: [], points: 101.5 },
+      ]
+    : [
+        { roster_id: 1, matchup_id: 1, starters: me.starters, players: me.players, points: 0 },
+        { roster_id: 2, matchup_id: 1, starters: opp.starters, players: opp.players, points: 0 },
+        { roster_id: 3, matchup_id: 2, starters: [], players: [], points: 0 },
+        { roster_id: 4, matchup_id: 2, starters: [], players: [], points: 0 },
+      ];
+/** Week 16: every team plays later today or tomorrow. */
+export const playoffSchedule: ScheduleFile = {
+  ...schedule,
+  games: [
+    ['AAA', 'BBB', 4],
+    ['CCC', 'DDD', 6],
+    ['EEE', 'FFF', 8],
+    ['GGG', 'HHH', 30],
+  ].map(([away, home, h]) => ({ id: `2026_16_${away}_${home}`, week: 16, away: away as string, home: home as string, kickoff: iso(h as number), total: 44, homeImplied: 22, awayImplied: 22 })),
 };
 
 /** Winning and losing FAAB claims for weeks 1–5. */

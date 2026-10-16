@@ -117,6 +117,24 @@ export interface Roster {
   waiverBudgetUsed: number;
 }
 
+/** A slot in a playoff game: the team once it's known, and until then the earlier game that decides it. */
+export interface BracketSlot {
+  rosterId: number | null;
+  from?: { match: number; take: 'winner' | 'loser' };
+}
+
+/** A game of Sleeper's winners' bracket. */
+export interface BracketMatch {
+  id: number;
+  /** From 1. */
+  round: number;
+  slots: [BracketSlot, BracketSlot];
+  winner: number | null;
+  loser: number | null;
+  /** Placement game (1 = championship, 3 = third place, …); absent for the games that lead to the final. */
+  place?: number;
+}
+
 export interface Matchup {
   rosterId: number;
   matchupId: number | null;

@@ -182,6 +182,46 @@ test('a week without Sleeper projections falls back to the baseline, labelled', 
   await expect(flanker).not.toContainText('Second opinion');
 });
 
+test("playoffs: odds from Sleeper's bracket, for the final under way", async ({ page }, testInfo) => {
+  // Week 16, the final: Test Titans and Rival Raiders won round 1 (week 15) in Sleeper's bracket.
+  await page.route('https://api.sleeper.app/v1/**', (route) => {
+    const path = new URL(route.request().url()).pathname.replace('/v1/', '/');
+    const body =
+      path === '/state/nfl' ? { ...fx.state, week: 16, leg: 16, display_week: 16 }
+      : path === '/user/u1/leagues/nfl/2026' ? [fx.playoffLeague]
+      : path === '/league/1001/winners_bracket' ? fx.bracket
+      : path === '/league/1001/matchups/15' || path === '/league/1001/matchups/16' ? fx.playoffMatchups(Number(path.split('/').pop()))
+      : undefined;
+    return body === undefined ? route.fallback() : route.fulfill({ json: body });
+  });
+  await page.route('**/data/schedule.json', (route) => route.fulfill({ json: fx.playoffSchedule }));
+  await page.goto('./');
+  await page.getByLabel('Sleeper username').fill('testuser');
+  await page.getByRole('button', { name: 'Find my leagues' }).click();
+  await page.locator('.league-card').filter({ hasText: 'Saturday Night Gridiron' }).getByRole('link').first().click();
+
+  await page.getByRole('tab', { name: 'Season' }).click();
+  await expect(page.getByText('The regular season is over; the playoffs are below.')).toBeVisible();
+  const card = page.locator('.card').filter({ has: page.getByRole('heading', { name: 'Playoffs: final' }) });
+  const mine = card.locator('tr.mine');
+  await expect(mine).toContainText('Test Titans');
+  await expect(mine).toContainText('vs Rival Raiders');
+  await expect(card.locator('tbody tr')).toHaveCount(2);
+  // In the final, winning the round is winning the title; the two finalists' odds add up to 100%.
+  const cells = async (row: number) => (await card.locator('tbody tr').nth(row).locator('td.num').allTextContents()).map((t) => parseFloat(t.replace(/[<>]/g, '')));
+  const [a, b] = [await cells(0), await cells(1)];
+  expect(a[0]).toBe(a[1]);
+  expect(a[1]! + b[1]!).toBeGreaterThanOrEqual(98);
+  expect(a[1]! + b[1]!).toBeLessThanOrEqual(101);
+  await expect(card).toContainText('Out: Three (semifinals), Four (semifinals).');
+  await expect(card).toContainText("From Sleeper's bracket");
+  await page.screenshot({ path: testInfo.outputPath('playoffs.png'), fullPage: true });
+
+  // Waivers: still alive, so the rest of the bracket counts in full (here there's no week after this one).
+  await page.getByRole('tab', { name: 'Waivers' }).click();
+  await expect(page.getByText(/In the playoffs, each round you could still play counts in full/)).toBeVisible();
+});
+
 test('dynasty league: draft picks in trades and the long-term outlook', async ({ page }, testInfo) => {
   await page.goto('./');
   await page.getByLabel('Sleeper username').fill('testuser');

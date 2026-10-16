@@ -1,5 +1,5 @@
-import type { League, LeagueRules, LeagueUser, Matchup, Player, Projection, Roster } from '../domain/types';
-import type { RawLeague, RawMatchup, RawPlayer, RawProjection, RawRoster, RawUser } from './raw';
+import type { BracketMatch, BracketSlot, League, LeagueRules, LeagueUser, Matchup, Player, Projection, Roster } from '../domain/types';
+import type { RawBracketMatch, RawLeague, RawMatchup, RawPlayer, RawProjection, RawRoster, RawUser } from './raw';
 
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
 
@@ -83,6 +83,27 @@ export function parseMatchup(raw: RawMatchup): Matchup {
     points: raw.points ?? 0,
     playersPoints: raw.players_points ?? {},
   };
+}
+
+/** Sleeper's winners' bracket; rows without a round or match id are dropped. */
+export function parseBracket(raw: readonly RawBracketMatch[] | null): BracketMatch[] {
+  const slot = (team: number | null | undefined, from: RawBracketMatch['t1_from']): BracketSlot => {
+    const s: BracketSlot = { rosterId: num(team) ?? null };
+    const w = num(from?.w);
+    const l = num(from?.l);
+    if (w !== undefined) s.from = { match: w, take: 'winner' };
+    else if (l !== undefined) s.from = { match: l, take: 'loser' };
+    return s;
+  };
+  return (raw ?? [])
+    .filter((m) => num(m?.r) !== undefined && num(m?.m) !== undefined)
+    .map((m) => {
+      const match: BracketMatch = { id: m.m, round: m.r, slots: [slot(m.t1, m.t1_from), slot(m.t2, m.t2_from)], winner: num(m.w) ?? null, loser: num(m.l) ?? null };
+      const place = num(m.p);
+      if (place !== undefined) match.place = place;
+      return match;
+    })
+    .sort((a, b) => a.round - b.round || a.id - b.id);
 }
 
 export function parseUser(raw: RawUser): LeagueUser {

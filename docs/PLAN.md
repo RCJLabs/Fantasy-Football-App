@@ -176,6 +176,19 @@
   - **Shipped** inside `baseline.json` (team codes): a labelled second opinion for defenses, and the DEF fallback for a week without Sleeper
     projections. Kickers stay Sleeper-only.
 
+- **Playoffs from Sleeper's bracket — built (2026-10-16):** for the Phase 2 exit (running the fantasy playoffs on the app); details in
+  [title-odds.md](title-odds.md).
+  - **The gap:** once the regular season ended, the app stopped simulating. Every team, in the playoffs or out, kept the share of teams
+    that make the playoffs as its weight for the playoff weeks, and no title odds showed.
+  - **Now:** the odds play out Sleeper's `winners_bracket` from the games already decided.
+    - Open games use final points for weeks already played, this week's lineups with points so far, then projected lineups with drift.
+    - A team still alive counts each remaining round in full (a first-round bye week not at all); a team that's out counts nothing.
+  - **Shown:** a Playoffs card in the Season tab (this round's games, chance to win them, title odds, who's out); trades show title odds.
+  - **Checked:** the parser on the owner's two real 6-team brackets (pre-filled, week 6); unit tests for decided, live and two-week rounds;
+    an end-to-end test of a final under way.
+  - **Unverified:** how soon Sleeper records each round's winners after the games, and the tie rule. Points from weeks already played
+    cover the first.
+
 - **Archive and ledger hardening — built (2026-10-16):**
   - **Daily archive jobs survive late runs.** On Oct 16 GitHub started the 12:17 UTC run at 13:16 and skipped the 08:17 one.
     - The day's all-weeks projections and players dump were tied to the 12:xx hour, so they were missed. Only a manual run saved them.
@@ -235,9 +248,9 @@
     - Simulated title-odds gains from extra points are as large in the final as in round 2, and smaller in round 1.
   - **Noise:** at 4,000 simulations, a trade-sized change in title odds varies by about ±0.4 points. A change of a point or less can be
     noise.
-  - **Not yet:**
-    - odds once the playoffs start (Sleeper's `winners_bracket` has the real bracket);
-    - uncertainty in team strength: added the same day ([ros-uncertainty.md](ros-uncertainty.md)).
+  - **Since added (same day):**
+    - uncertainty in team strength ([ros-uncertainty.md](ros-uncertainty.md));
+    - odds once the playoffs start, from Sleeper's own bracket (below).
 
 - **Injury absences by type — built (2026-10-16):** the rest of the Phase 3 injury-context item; details in [injuries.md](injuries.md).
   - **Data:** 1,538 QB/RB/WR/TE absences in 2019–2025, with Kaplan–Meier shares because absences running at a season's end are censored.

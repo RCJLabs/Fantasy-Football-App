@@ -73,6 +73,28 @@ export interface RawTradedPick {
   previous_owner_id?: number | null;
 }
 
+/**
+ * Row of /league/{id}/winners_bracket (seen on real leagues 2026-10-15: during the regular season it's pre-filled
+ * with the current seeds). Later rounds name their teams by the match they come from until it's decided.
+ */
+export interface RawBracketMatch {
+  /** Round, from 1. */
+  r: number;
+  /** Match id. */
+  m: number;
+  /** Roster ids, once known. */
+  t1: number | null;
+  t2: number | null;
+  /** The slot's team is the winner (w) or loser (l) of match `w`/`l`. */
+  t1_from?: { w?: number; l?: number } | null;
+  t2_from?: { w?: number; l?: number } | null;
+  /** Winner and loser roster ids, once decided. */
+  w: number | null;
+  l: number | null;
+  /** Placement game: 1 = championship, 3 = third place, 5 = fifth place. Absent for the bracket's other games. */
+  p?: number | null;
+}
+
 export interface RawMatchup {
   roster_id: number;
   matchup_id: number | null;

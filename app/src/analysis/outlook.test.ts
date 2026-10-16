@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { League, Matchup, Player, Roster, StatLine } from '../domain/types';
+import type { Game, League, Matchup, Player, Roster, StatLine } from '../domain/types';
 import type { ProjectionIndex } from '../sleeper/parse';
-import { parseLeague, parseMatchup, parseRoster } from '../sleeper/parse';
-import type { RawLeague, RawTransaction } from '../sleeper/raw';
+import { parseBracket, parseLeague, parseMatchup, parseRoster } from '../sleeper/parse';
+import type { RawBracketMatch, RawLeague, RawTransaction } from '../sleeper/raw';
 import { gamesByTeam, type WeekContext } from './analyze';
 import { faabMarket, marketPrice, suggestBid, tierOf } from './faab';
 import { buildOutlook, byeGrid, evaluateTrade, freeAgentPool, regularStarters, scheduleOutlook, streamers, waiverBoard } from './outlook';
@@ -18,6 +18,7 @@ import {
   projectionPositions,
   QUESTIONABLE_PLAY,
   regularSeasonEnd,
+  regularSeasonOver,
   RETURN_PLAY,
   ROS_DRIFT,
   ROS_OFFSET,
@@ -437,6 +438,69 @@ describe('league outlook', () => {
       const firstRound = Math.max(0, x.pPlayoffs - x.pBye);
       expect(b.teams.get(x.rosterId)!.weights.slice(8)).toEqual([firstRound, firstRound, x.pPlayoffs, x.pPlayoffs]);
     }
+  });
+
+  describe('in the playoffs, from the real bracket', () => {
+    // Four teams, two-week rounds: round 1 in weeks 15–16, the final in weeks 17–18. Seeds by record: 2, 1, 3, 4.
+    const four = (lastScored: number) =>
+      parseLeague({ ...rawLeague, settings: { ...rawLeague.settings, playoff_teams: 4, playoff_round_type: 2, last_scored_leg: lastScored } });
+    const raw: RawBracketMatch[] = [
+      { m: 1, r: 1, t1: 2, t2: 4, w: null, l: null },
+      { m: 2, r: 1, t1: 1, t2: 3, w: null, l: null },
+      { m: 3, r: 2, p: 1, t1: null, t2: null, t1_from: { w: 1 }, t2_from: { w: 2 }, w: null, l: null },
+      { m: 4, r: 2, p: 3, t1: null, t2: null, t1_from: { l: 1 }, t2_from: { l: 2 }, w: null, l: null },
+    ];
+    const toWeek18 = new Map(Array.from({ length: 12 }, (_, i) => [7 + i, index(weekRows, 7 + i, (id) => `T${id}`)]));
+    // Every player's team plays this week, after `now`: nobody is locked yet.
+    const games = (week: number): Game[] => all.map((id) => ({ id: `g${week}${id}`, week, away: `T${id}`, home: `X${id}`, kickoff: '2026-12-20T18:00:00Z' }));
+    const at = (week: number): WeekContext => ({ ...ctx, week, projections: index(weekRows, week, (id) => `T${id}`), gamesByTeam: gamesByTeam(games(week), week) });
+
+    it('plays out a two-week round from the first week’s points and this week’s lineups', () => {
+      const lg = four(15);
+      const played = new Map([[15, new Map([[2, 150], [4, 80], [1, 100], [3, 104]])]]);
+      const b = buildOutlook({ league: lg, rosters, users: [], matchups: pair([2, 4], [1, 3]), ctx: at(16), byWeek: toWeek18, schedule: new Map(), bracket: parseBracket(raw), played, sims: 3000 });
+      expect(b.odds).toBeUndefined();
+      expect(b.weeks).toEqual([17, 18]);
+      expect(b.bracket!.roundWeeks).toEqual([[15, 16], [17, 18]]);
+      expect(b.bracket!.futureIdx).toEqual([[], [0, 1]]);
+      const odds = b.bracket!.odds;
+      expect([...odds.values()].reduce((a, x) => a + x.pTitle, 0)).toBeCloseTo(1, 9);
+      // A 70-point lead after week one all but settles it; a 4-point lead doesn't, against a better lineup this week.
+      expect(odds.get(2)!.pWin[0]).toBeGreaterThan(0.97);
+      expect(odds.get(3)!.pWin[0]).toBeGreaterThan(0.2);
+      expect(odds.get(3)!.pWin[0]).toBeLessThan(0.6);
+      expect(b.bracket!.fixed.get(3)![0]!.mean).toBeGreaterThan(104); // week 15's points plus this week's lineup
+      // Everyone is still alive, so the final's weeks count in full.
+      for (const t of b.teams.values()) expect(t.weights).toEqual([1, 1]);
+    });
+
+    it("counts nothing for a team that's out, and prices a trade by title odds", () => {
+      const lg = four(16);
+      const decided = parseBracket(raw.map((m) => (m.m === 1 ? { ...m, w: 2, l: 4 } : m.m === 2 ? { ...m, w: 3, l: 1 } : m)));
+      const c17 = at(17);
+      const b = buildOutlook({ league: lg, rosters, users: [], matchups: pair([2, 3], [1, 4]), ctx: c17, byWeek: toWeek18, schedule: new Map(), bracket: decided, sims: 2000 });
+      expect([...b.bracket!.state.alive].sort()).toEqual([2, 3]);
+      expect(b.bracket!.state.currentRound).toBe(2);
+      expect(b.teams.get(1)!.weights).toEqual([0]);
+      expect(b.teams.get(2)!.weights).toEqual([1]);
+      expect(b.bracket!.odds.get(1)!.pTitle).toBe(0);
+      expect(b.bracket!.odds.get(2)!.pTitle + b.bracket!.odds.get(3)!.pTitle).toBeCloseTo(1, 9);
+      // My team is out: the free-agent RB adds nothing for the rest of the season.
+      expect(waiverBoard(b, rosters[0]!, c17, new Map(), []).rows.every((r) => r.rosGain === 0)).toBe(true);
+      const t = evaluateTrade(b, c17, 2, 3, ['wb'], ['wc'], freeAgentPool(b, c17));
+      expect(t.me.pBefore).toBeUndefined();
+      expect(t.me.titleBefore).toBeCloseTo(b.bracket!.odds.get(2)!.pTitle, 9);
+      expect(t.me.titleAfter).toBeGreaterThanOrEqual(0);
+    });
+
+    it("isn't used while regular-season weeks are left", () => {
+      const o2 = buildOutlook({ league, rosters, users: [], matchups: pair([1, 2], [3, 4]), ctx, byWeek, schedule, bracket: parseBracket(raw), sims: 200 });
+      expect(o2.bracket).toBeUndefined();
+      expect(o2.odds).toBeDefined();
+      expect(regularSeasonOver(league, 14)).toBe(false);
+      expect(regularSeasonOver(four(14), 14)).toBe(true);
+      expect(regularSeasonOver(four(13), 15)).toBe(true);
+    });
   });
 
   it('lists DEF streamers: mine first, then free agents', () => {

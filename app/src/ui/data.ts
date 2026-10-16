@@ -1,11 +1,13 @@
 import { analyzeLineup, type LineupAnalysis, type LineupOptions, type WeekContext } from '../analysis/analyze';
 import { buildOutlook, type LeagueOutlook } from '../analysis/outlook';
-import { playoffWeekInfo, projectionPositions, regularSeasonEnd, RosModel, seasonEnd, teamIds } from '../analysis/ros';
+import { playoffWeekInfo, projectionPositions, regularSeasonEnd, regularSeasonOver, RosModel, seasonEnd, teamIds } from '../analysis/ros';
 import type { League, Roster } from '../domain/types';
 import {
+  loadBracket,
   loadLeagueData,
   loadLeagues,
   loadMatchups,
+  loadPlayedPoints,
   loadRosWeeks,
   loadSchedule,
   loadState,
@@ -138,14 +140,30 @@ async function buildSeason(bundle: LeagueBundle): Promise<SeasonBundle> {
   const { league, week, data, ctx } = bundle;
   const weeks = range(week + 1, seasonEnd(league));
   const withPicks = league.rules.type === 'dynasty' && league.rules.pickTrading;
-  const [ros, schedule, claims, tradedPicks] = await Promise.all([
+  // Once the regular season is over, the odds come from Sleeper's bracket and the points already scored in it.
+  const start = league.rules.playoffWeekStart;
+  const playoffs = !!start && regularSeasonOver(league, week);
+  const playedWeeks = playoffs ? range(start, Math.min(week - 1, seasonEnd(league))) : [];
+  const [ros, schedule, claims, tradedPicks, bracket, played] = await Promise.all([
     loadRosWeeks(league.season, weeks, projectionPositions(league)),
     loadSchedule(league.id, weeks.filter((w) => w <= regularSeasonEnd(league))),
     league.rules.waiverType === 2 ? loadWaiverClaims(league.id, week).catch(() => []) : Promise.resolve([]),
     withPicks ? loadTradedPicks(league.id).catch(() => null) : Promise.resolve(undefined),
+    playoffs ? loadBracket(league.id).catch(() => []) : Promise.resolve([]),
+    playedWeeks.length ? loadPlayedPoints(league.id, playedWeeks) : Promise.resolve(undefined),
   ]);
   if (weeks.length && ros.missing.length === weeks.length) throw new Error('Could not load future-week projections from Sleeper.');
-  const outlook = buildOutlook({ league, rosters: data.rosters, users: data.users, matchups: data.matchups, ctx, byWeek: ros.byWeek, schedule });
+  const outlook = buildOutlook({
+    league,
+    rosters: data.rosters,
+    users: data.users,
+    matchups: data.matchups,
+    ctx,
+    byWeek: ros.byWeek,
+    schedule,
+    ...(bracket.length ? { bracket } : {}),
+    ...(played ? { played } : {}),
+  });
   return { outlook, missingWeeks: ros.missing, claims, ...(tradedPicks !== undefined ? { tradedPicks } : {}) };
 }
 
