@@ -33,6 +33,9 @@ const LEDGER_LEAGUE: RawLeague = {
   settings: { type: 0, num_teams: 12 },
 };
 
+/** The ledger's reference scoring (full PPR), also used to score outcomes. */
+export const LEDGER_SCORING: Readonly<Record<string, number>> = LEDGER_LEAGUE.scoring_settings ?? {};
+
 /** Archive rows are slimmed: the player fields the app reads sit at the top level. Both shapes are accepted. */
 export interface ArchivedProjection {
   player_id: string;

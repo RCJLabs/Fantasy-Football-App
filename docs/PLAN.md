@@ -130,6 +130,29 @@
   - **Found on the way:** Sleeper's stored 2022–25 projection rows count QB interceptions as +2 in their own `pts_ppr` (2026 rows are fine).
     The app rescores stat lines, so it was never affected; the accuracy shard now rescores too.
 
+- **Pipeline hardening — built (2026-10-16):** roadmap Phase 2 item 8.
+  - **nflverse → Sleeper stat mapping** ([stat-mapping.md](stat-mapping.md)). On 19,427 played QB/RB/WR/TE player-weeks (2023 – 2026 week 5),
+    mapped nflverse lines score within 0.1 of Sleeper's own lines:
+    - 99.99% in PPR;
+    - 99.82% with half PPR, TE premium, first downs, bonuses and sacks.
+  - **Three definitions it surfaced, now fixed:**
+    - Sleeper doesn't count a touchdown as a first down; nflverse and ffopportunity do. The in-house baseline overstated first downs.
+    - Sleeper's first-down bonus counts passing, rushing and receiving first downs.
+    - Yardage bonus tiers are exclusive (86 of 86 games). The app priced them cumulatively, slightly overstating bonuses in leagues with
+      two tiers.
+  - **Ledger outcomes** now score the mapped line with the ledger's own scoring. nflverse's `fantasy_points_ppr` differs on 0.7% of
+    player-weeks (return TDs, return fumbles).
+  - **Shards:**
+    - Each optional shard is validated before publishing: schema version, shape, minimum rows, finite values.
+    - A failed or invalid build keeps the deployed copy while it's still current (same season; same week for the baseline). The manifest
+      says so.
+    - The job summary gets a shard health table, with a warning when rows fall by half.
+    - This closes the baseline gap above for a one-day Sleeper outage.
+  - **Not done:**
+    - a Python package (the stack stayed TypeScript);
+    - JSON-Schema files (the TypeScript validators cover the one consumer);
+    - opening issues automatically (it needs a permission change in `deploy.yml`, whose cron lines this session must not touch).
+
   **Not yet:**
   - matchup or usage adjustments to projections — only if a backtest shows they beat RotoWire alone (RotoWire already prices matchups);
   - scheme matchups (coverage shells, man/zone): FTN charting has them (CC-BY-SA), not yet joined;
@@ -265,7 +288,7 @@ What we build instead is a **calculated consensus**: an average of independent *
 | **nfldata `games.csv`** | Kickoff times (locks), lines → implied totals, QB IDs, rest/roof | Pipeline | **No licence file; line provenance unknown** `[verified]`. Publish derived implied totals only | Commits every ~10–30 min; lines only for near weeks `[verified]` |
 | **Player IDs**: Sleeper cross-IDs + nflverse weekly rosters (`sleeper_id`, gsis, pfr, espn) | Public `players.json` | Pipeline | CC-BY / Sleeper terms | — |
 | **DynastyProcess `db_playerids`** | `fantasypros_id`/`mfl_id` joins, **pipeline-only** | Pipeline | Repo is GPL-3.0 `[verified]`, so **nothing derived from it is published** `[design]` | Weekly; partial coverage `[verified]` |
-| **The Odds API** v4 (player props) | Second independent stat-level source (props → conditional medians → means) | Pipeline, key in secrets | Display ToS **unchecked**; show derived numbers only | Free 500 credits/mo incl. props; ~1 credit per market per region per event; $30/mo for 20K `[reported]`. One weekly snapshot fits the free tier. Phase 2 |
+| **The Odds API** v4 (player props) | Second independent stat-level source (props → conditional medians → means) | Pipeline, key in secrets | Terms (updated 2026-08-31) allow storing the data, showing it in an app and "calculating and displaying values you derive"; no redistribution "as a standalone data product", downloadable files included, so publish derived means only (no lines, prices or books, nothing raw in logs or artifacts); attribution not required `[reported: third-party captures of the terms page, 2026]` | Free 500 credits/mo incl. props; an event-odds call costs markets × regions, so 16 games × 6 markets ≈ 96 a week (≤ 480 in a five-Sunday month: fits, with nothing to spare); $30 for 20K. Historical props from 2023-05-03, paid plans only, 10× the cost: ≈ 49K credits for 2023–25, one $59 month `[reported: copies of the official pages, 2026; the live site wasn't reachable]`. Phase 2, needs your key |
 | **FantasyCalc** | Trade "market value", dynasty | Pipeline ≤ hourly | Non-commercial with attribution and link `[reported]` | Phase 2 |
 | **NWS** api.weather.gov | Wind/precip for pass/rush split and K | Pipeline | Public domain `[unverified]` | Phase 3 |
 | **FantasyPros ECR via DynastyProcess** (`fp_latest_weekly.csv`) | **Private benchmark only** | Private pipeline | FantasyPros' scraped data; never shown publicly unless licensed | PPR-only for RB/WR/TE `[verified]` |
@@ -412,7 +435,7 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
 5. **Accuracy ledger v0** (private) + commit-reveal hashes start.
 6. **Odds API props** as a second stat-level source, once its ToS is checked.
 7. If time remains: DvP residual and CB-depletion flag, **display-only**, labelled.
-8. Pipeline grows: Python package, usage/env shards, JSON-Schema contracts, nflverse→Sleeper stat-mapping test (tolerance 0.1 pt; DEF/K/IDP and distance tiers excluded from the gate).
+8. Pipeline grows: Python package, usage/env shards, JSON-Schema contracts, nflverse→Sleeper stat-mapping test (tolerance 0.1 pt; DEF/K/IDP and distance tiers excluded from the gate). **Done 2026-10-16** in TypeScript: usage shard, shard validators, last-good shards, stat mapping ([stat-mapping.md](stat-mapping.md)).
 
 **Checkpoint:** **Dec 6 feature freeze.** After that, only fixes until Week 17.
 
@@ -447,7 +470,7 @@ Play production release, public ledger, draft tools, more platforms; a paid tier
 - **Engine golden test** (Phase 1 gate), as above. Engine bugs are separated from stat-source differences: the nflverse→Sleeper mapping test is Phase 2 and logged separately.
 - **Optimizer fixtures:** every slot type (SUPER_FLEX, REC_FLEX, WRRB_FLEX, IDP_FLEX), locks, the inactive-swap value, median games, best ball (no lineup output).
 - **Unit tests for conventions:** spread sign / implied totals, availability conversion, bye-as-missing.
-- **Pipeline:** validates its outputs before publishing, keeps the last good shard on failure, opens an issue on row-count drops or column changes (nflverse injuries already lost `date_modified` in 2026 `[verified]`), and runs idempotently by polling nflverse `timestamp.json`.
+- **Pipeline:** validates its outputs before publishing, keeps the last good shard on failure, opens an issue on row-count drops or column changes (nflverse injuries already lost `date_modified` in 2026 `[verified]`), and runs idempotently by polling nflverse `timestamp.json`. Built so far: validation, last-good shards and a health table with row-drop warnings in the job summary (`pipeline/shards.ts`); issues and `timestamp.json` polling are not.
 - **Backtests** (Phase 2–3) with pre-registered bars `[design]`:
   - a source joins the blend only if within ~5–10% of RotoWire's MAE **and** blending it, with weights fit on earlier seasons, lowers MAE out of sample (pooled 95% interval below zero). The second test was added 2026-10-16: baseline v0 passed the first for RB/WR/TE but blending gained only 0–1% ([baseline.md](baseline.md))
   - P(play) Brier score better than the v0 table

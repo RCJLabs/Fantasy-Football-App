@@ -7,14 +7,26 @@
 //   data/baseline.json  in-house baseline v0, a second opinion the app shows but doesn't blend (ffopportunity, CC-BY-SA)
 //   data/manifest.json  timestamps, sources and licences
 // Usage: tsx pipeline/build-data.ts [--out dist/data] [--cache .cache]
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { DATA_SCHEMA_VERSION, type AccuracyFile, type BaselineFile, type CompactPlayer, type Manifest, type PlayersFile, type ScheduleFile } from '../app/src/data/contracts';
+import {
+  DATA_SCHEMA_VERSION,
+  type AccuracyFile,
+  type BaselineFile,
+  type CompactPlayer,
+  type Manifest,
+  type ManifestEntry,
+  type MatchupsFile,
+  type PlayersFile,
+  type ScheduleFile,
+  type UsageFile,
+} from '../app/src/data/contracts';
 import type { StatLine } from '../app/src/domain/types';
 import type { RawPlayer, RawState } from '../app/src/sleeper/raw';
 import { buildBaselineFile, ffoppStats, SKILL, type SleeperRow } from './baseline';
 import { compactPlayers, csvRecords, gamesFromCsv, latestInjuryReport, projectionAccuracy, sleeperToGsis, type PointsRow } from './lib';
 import { buildMatchups } from './matchups';
+import { decideShard, type ShardName } from './shards';
 import { buildUsage, invert } from './usage';
 
 const args = new Map<string, string>();
@@ -22,6 +34,8 @@ for (let i = 2; i < process.argv.length; i += 2) args.set(process.argv[i]!.repla
 const OUT = args.get('out') || 'dist/data';
 const CACHE = args.get('cache') || '.cache';
 const UA = 'Fantasy-Football-App pipeline (+https://github.com/RCJLabs/Fantasy-Football-App)';
+/** The deployed app, whose data files are the "last good" copies. */
+const SITE = process.env.DATA_SITE || 'https://rcjlabs.github.io/Fantasy-Football-App';
 
 async function fetchText(url: string): Promise<string> {
   for (let attempt = 0; ; attempt++) {
@@ -42,6 +56,15 @@ const optional = (url: string) =>
     console.warn(`optional source unavailable: ${e}`);
     return '';
   });
+
+/** The currently deployed copy of a data file, if there is one. */
+async function deployedShard(name: string): Promise<unknown> {
+  try {
+    return JSON.parse(await fetchText(`${SITE}/data/${name}`)) as unknown;
+  } catch {
+    return undefined;
+  }
+}
 
 /** Sleeper asks for at most one /players/nfl call per day: cache it by UTC date. */
 async function sleeperPlayers(): Promise<Record<string, RawPlayer>> {
@@ -209,60 +232,78 @@ async function main() {
   const sleeperByGsis = invert(gsisBySleeper);
   const usage = buildUsage({ season, now, snaps: snapRecords, stats: statRecords, rosters: rosterRecords, sleeperByGsis });
   const matchups = buildMatchups({ season, now, snaps: snapRecords, stats: statRecords, rosters: rosterRecords, sleeperByGsis });
-  if (usage) {
-    manifest.files['usage.json'] = {
-      updatedAt: now,
+  const stats = await seasonStats(season, week);
+  const accuracy = stats ? await accuracyLedger(season, stats, now) : null;
+  const baseline = stats ? await baselineShard(season, week, now, stats, gamesRecords, gsisBySleeper, playersFile.players) : null;
+
+  // Optional shards: publish a fresh build that checks out, otherwise keep the deployed copy while it still
+  // describes this season (this week, for the baseline), so one upstream outage doesn't take a feature down.
+  const entries: Record<ShardName, Omit<ManifestEntry, 'updatedAt'>> = {
+    'usage.json': {
       source: 'nflverse snap counts (compiled by Pro Football Reference) and weekly player stats, joined via nflverse weekly rosters',
       license: 'nflverse data CC-BY 4.0; snap shares, targets and carries for recent weeks only',
       credits: 'Usage via nflverse',
-    };
-  }
-  if (matchups) {
-    manifest.files['matchups.json'] = {
-      updatedAt: now,
+    },
+    'matchups.json': {
       source: 'nflverse weekly player stats (PPR by opponent) and snap counts (cornerbacks), joined via nflverse weekly rosters',
       license: 'nflverse data CC-BY 4.0; per-defense aggregates and cornerback snap shares only',
       credits: 'Matchup data via nflverse',
-    };
-  }
-
-  const stats = await seasonStats(season, week);
-  const accuracy = stats ? await accuracyLedger(season, stats, now) : null;
-  if (accuracy) {
-    manifest.files['accuracy.json'] = {
-      updatedAt: now,
+    },
+    'accuracy.json': {
       source: 'Sleeper projections (RotoWire) for completed weeks vs Sleeper stats, PPR',
       license: 'Aggregate error statistics only; no projections or stats are republished',
-    };
-  }
-  const baseline = stats ? await baselineShard(season, week, now, stats, gamesRecords, gsisBySleeper, playersFile.players) : null;
-  if (baseline) {
-    manifest.files['baseline.json'] = {
-      updatedAt: now,
+    },
+    'baseline.json': {
       source:
         'In-house baseline v0: ffopportunity expected stats over recent games played (games played from Sleeper stats), scaled by implied team totals from nflverse/nfldata lines',
       license: 'CC-BY-SA 4.0, adapted from ffopportunity (CC-BY-SA 4.0); no Sleeper or RotoWire data is republished',
       credits: 'Expected points via ffopportunity (ffverse); lines via nflverse',
-    };
+    },
+  };
+  const fresh: Record<ShardName, unknown> = { 'usage.json': usage, 'matchups.json': matchups, 'accuracy.json': accuracy, 'baseline.json': baseline };
+  const shards = new Map<ShardName, Record<string, unknown>>();
+  const health: string[] = [];
+  for (const name of Object.keys(entries) as ShardName[]) {
+    const d = decideShard(name, fresh[name], await deployedShard(name), season, week);
+    if (d.use === 'none') {
+      health.push(`| ${name} | missing | 0 | ${d.reason} |`);
+      continue;
+    }
+    shards.set(name, d.shard);
+    if (d.use === 'kept') {
+      const from = String(d.shard.generatedAt);
+      manifest.files[name] = { ...entries[name], updatedAt: from, note: `Kept from the last good build: ${d.reason}` };
+      health.push(`| ${name} | kept from ${from.slice(0, 16)}Z | ${d.rows} | ${d.reason} |`);
+      console.warn(`${name}: kept the deployed copy from ${from} (${d.reason})`);
+    } else {
+      manifest.files[name] = { ...entries[name], updatedAt: now };
+      health.push(`| ${name} | fresh | ${d.rows} | ${d.warning ?? ''} |`);
+      if (d.warning) console.warn(`${name}: ${d.warning}`);
+    }
   }
 
   await mkdir(OUT, { recursive: true });
   await writeFile(join(OUT, 'players.json'), JSON.stringify(playersFile));
   await writeFile(join(OUT, 'schedule.json'), JSON.stringify(scheduleFile));
-  if (accuracy) await writeFile(join(OUT, 'accuracy.json'), JSON.stringify(accuracy));
-  if (usage) await writeFile(join(OUT, 'usage.json'), JSON.stringify(usage));
-  if (matchups) await writeFile(join(OUT, 'matchups.json'), JSON.stringify(matchups));
-  if (baseline) await writeFile(join(OUT, 'baseline.json'), JSON.stringify(baseline));
+  for (const [name, shard] of shards) await writeFile(join(OUT, name), JSON.stringify(shard));
   await writeFile(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    await appendFile(process.env.GITHUB_STEP_SUMMARY, `### Data shards\n\n| shard | status | rows | note |\n|---|---|---|---|\n${health.join('\n')}\n\n`);
+  }
   const withPractice = playersFile.players.filter((p) => p.prac).length;
-  const all = accuracy?.rows.find((r) => r.pos === 'ALL');
+  const acc = shards.get('accuracy.json') as AccuracyFile | undefined;
+  const all = acc?.rows.find((r) => r.pos === 'ALL');
+  const use = shards.get('usage.json') as UsageFile | undefined;
+  const mat = shards.get('matchups.json') as MatchupsFile | undefined;
+  const base = shards.get('baseline.json') as BaselineFile | undefined;
   console.log(
     `season ${season} week ${week}: ${playersFile.players.length} players (${withPractice} with practice status, report week ${report?.week ?? '-'}), ${scheduleFile.games.length} games` +
-      `${all ? `, accuracy weeks ${accuracy!.weeks.join(',')} n=${all.n} MAE ${all.mae} within±1sd ${Math.round(all.within1 * 100)}%` : ''}` +
-      `${usage ? `, usage weeks ${usage.weeks.join(',')} for ${Object.keys(usage.players).length} players` : ''}` +
-      `${matchups ? `, matchups for ${Object.keys(matchups.defense).length} defenses` : ''}` +
-      `${baseline ? `, baseline for ${Object.keys(baseline.players).length} players through week ${baseline.throughWeek}` : ''} → ${OUT}`,
+      `${all ? `, accuracy weeks ${acc!.weeks.join(',')} n=${all.n} MAE ${all.mae} within±1sd ${Math.round(all.within1 * 100)}%` : ''}` +
+      `${use ? `, usage weeks ${use.weeks.join(',')} for ${Object.keys(use.players).length} players` : ''}` +
+      `${mat ? `, matchups for ${Object.keys(mat.defense).length} defenses` : ''}` +
+      `${base ? `, baseline for ${Object.keys(base.players).length} players through week ${base.throughWeek}` : ''} → ${OUT}`,
   );
+  for (const line of health) console.log(line);
 }
 
 main().catch((e) => {

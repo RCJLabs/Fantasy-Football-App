@@ -82,6 +82,9 @@ RB 1.03, WR 1.04, TE 1.00. The blend results follow the same pattern: about zero
     population for the position averages, as in the backtest. No RotoWire values go in.
   - A week counts only once ffopportunity has processed it. Otherwise his game would count as zero opportunities. The file says which week
     the averages run through, and the app shows it.
+  - Expected first downs exclude expected touchdowns, which is how Sleeper counts first downs ([stat-mapping.md](stat-mapping.md)). Before
+    2026-10-16 the live file overstated first downs; the gate's PPR scoring doesn't score them, so its results are unchanged.
+  - If a day's build fails, the deployed file is kept while it's still for the current week (`pipeline/shards.ts`).
   - **Check:** built for 2026 week 5 from the archived inputs, it reproduces the backtest's numbers to within 0.07 points (rounding to 0.01 per
     stat).
   - **Licence:** published CC-BY-SA 4.0, as derived from ffopportunity (PLAN §4 rule 6), credited on the About page and in the manifest.
@@ -92,8 +95,8 @@ RB 1.03, WR 1.04, TE 1.00. The blend results follow the same pattern: about zero
 - **Fallback:** if Sleeper returns no QB/RB/WR/TE projections for the week, or the request fails, the app uses the baseline for those
   positions. Any K/DEF rows Sleeper did return stay, and the page says so.
   - The prediction ledger follows the same rule, so it records what the app would have shown.
-  - Gap: the baseline itself needs Sleeper's stats endpoint (who played). If that goes too, no new baseline is built; the last deployed one
-    keeps serving its week.
+  - Gap: the baseline itself needs Sleeper's stats endpoint (who played). If that goes too, no new baseline is built. The pipeline keeps
+    the deployed one for the rest of its week, but not into the next.
 - **Ledger:** each committed prediction carries `bl`, the baseline's full-PPR points if active, next to the app's `mu`.
   `scripts/ledger/score.ts` reports both MAEs on active QB/RB/WR/TE that either source put at 5+ points (the backtest's population).
   - The first scored week is 7: week 6's committed predictions predate this.

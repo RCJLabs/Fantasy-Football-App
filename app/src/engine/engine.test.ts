@@ -44,11 +44,15 @@ describe('scoring', () => {
 
   it('prices yardage bonuses from the projected mean, not as all-or-nothing', () => {
     const exp = expectedStats({ rec_yd: 100, rec: 7 }, 'WR');
-    expect(exp.bonus_rec_yd_100).toBeCloseTo(0.5, 6);
+    // Sleeper's tiers are exclusive: the 100-yard bonus is for 100–199 yards, the 200-yard one above that.
+    expect(exp.bonus_rec_yd_100! + exp.bonus_rec_yd_200!).toBeCloseTo(0.5, 6);
+    expect(exp.bonus_rec_yd_200).toBeGreaterThan(0);
+    expect(exp.bonus_rec_yd_100).toBeCloseTo(0.5 - exp.bonus_rec_yd_200!, 6);
     const low = expectedStats({ rec_yd: 40 }, 'WR');
     expect(low.bonus_rec_yd_100).toBeGreaterThan(0);
     expect(low.bonus_rec_yd_100).toBeLessThan(0.1);
-    expect(projectedPoints({ rec_yd: 100 }, { bonus_rec_yd_100: 3 }, 'WR')).toBeCloseTo(1.5, 6);
+    expect(projectedPoints({ rec_yd: 100 }, { bonus_rec_yd_100: 3, bonus_rec_yd_200: 3 }, 'WR')).toBeCloseTo(1.5, 6);
+    expect(expectedStats({ pass_cmp: 22 }, 'QB').bonus_pass_cmp_25).toBeGreaterThan(0); // single-tier bonuses unchanged
   });
 
   it('replaces one-hot DEF buckets with probabilities around projected points allowed', () => {

@@ -124,6 +124,8 @@ export interface ManifestEntry {
   source: string;
   license: string;
   credits?: string;
+  /** Set when a failed build kept the previously published copy (its own date is `updatedAt`). */
+  note?: string;
 }
 
 export interface Manifest {

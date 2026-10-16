@@ -27,18 +27,25 @@ export const FFOPP_STATS: ReadonlyArray<readonly [string, string]> = [
   ['pass_touchdown_exp', 'pass_td'],
   ['pass_interception_exp', 'pass_int'],
   ['pass_two_point_conv_exp', 'pass_2pt'],
-  ['pass_first_down_exp', 'pass_fd'],
   ['rec_attempt', 'rec_tgt'],
   ['receptions_exp', 'rec'],
   ['rec_yards_gained_exp', 'rec_yd'],
   ['rec_touchdown_exp', 'rec_td'],
   ['rec_two_point_conv_exp', 'rec_2pt'],
-  ['rec_first_down_exp', 'rec_fd'],
   ['rush_attempt', 'rush_att'],
   ['rush_yards_gained_exp', 'rush_yd'],
   ['rush_touchdown_exp', 'rush_td'],
   ['rush_two_point_conv_exp', 'rush_2pt'],
-  ['rush_first_down_exp', 'rush_fd'],
+];
+
+/**
+ * Expected first downs less expected touchdowns: ffopportunity, like nflverse, counts a touchdown as a first
+ * down and Sleeper doesn't (actuals agree 99.8–100% once TDs are taken out; docs/stat-mapping.md).
+ */
+const FFOPP_FIRST_DOWNS: ReadonlyArray<readonly [string, string, string]> = [
+  ['pass_first_down_exp', 'pass_touchdown_exp', 'pass_fd'],
+  ['rush_first_down_exp', 'rush_touchdown_exp', 'rush_fd'],
+  ['rec_first_down_exp', 'rec_touchdown_exp', 'rec_fd'],
 ];
 
 const num = (s: string | undefined): number => {
@@ -51,6 +58,10 @@ export function ffoppStats(r: Readonly<Record<string, string>>): StatLine {
   const out: StatLine = {};
   for (const [col, key] of FFOPP_STATS) {
     const v = num(r[col]);
+    if (v !== 0) out[key] = v;
+  }
+  for (const [fd, td, key] of FFOPP_FIRST_DOWNS) {
+    const v = Math.max(0, num(r[fd]) - num(r[td]));
     if (v !== 0) out[key] = v;
   }
   const fum = num(r.rec_fumble_lost) + num(r.rush_fumble_lost);
