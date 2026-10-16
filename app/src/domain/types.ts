@@ -31,6 +31,8 @@ export interface Player {
   practice?: PracticeStatus;
   /** The report is the week's final one for this player (a game status was given). */
   practiceFinal?: boolean;
+  /** Not active in his team's last game (inactive, or on a reserve list). */
+  missedLast?: boolean;
   depthPos?: string;
   depthOrder?: number;
   rank?: number; // Sleeper search_rank (lower = more relevant)

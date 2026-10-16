@@ -57,10 +57,12 @@ describe('prediction ledger', () => {
     expect(by.get('q1')).toMatchObject({ gsis: '00-0000001', pos: 'QB', team: 'CCC', game: '2026_06_CCC_DDD', p: 0.99 });
     expect(by.get('q1')!.mu).toBeCloseTo(250 * 0.04 + 2 * 4, 1);
     expect(by.get('q1')!.sd).toBeGreaterThan(0);
-    // Final report: practice sets the odds. Mid-week: the overall Questionable rate.
-    expect(by.get('w1')).toMatchObject({ inj: 'Questionable', prac: 'Limited', final: true, p: playProbability('Questionable', 'Limited') });
+    // Final report: practice sets the odds. Mid-week: the model without practice. Stored to 4 decimals.
+    expect(by.get('w1')).toMatchObject({ inj: 'Questionable', prac: 'Limited', final: true });
+    expect(by.get('w1')!.p).toBeCloseTo(playProbability('Questionable', 'Limited', { pos: 'WR' }), 4);
     expect(by.get('w1')!.mu).toBeCloseTo(5 + 6, 1); // full PPR
-    expect(by.get('w2')).toMatchObject({ inj: 'Questionable', prac: 'DNP', p: playProbability('Questionable') });
+    expect(by.get('w2')).toMatchObject({ inj: 'Questionable', prac: 'DNP' });
+    expect(by.get('w2')!.p).toBeCloseTo(playProbability('Questionable', undefined, { pos: 'WR' }), 4);
     expect(by.get('w2')!.final).toBeUndefined();
     expect(by.get('o1')).toMatchObject({ inj: 'Out', p: 0, mu: 0 });
     expect(file).toMatchObject({ schemaVersion: 1, season: '2026', week: 6, scoring: 'ppr', code: 'abc123', createdAt: new Date(now).toISOString() });

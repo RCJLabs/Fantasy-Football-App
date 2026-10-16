@@ -123,6 +123,7 @@ function fromCompact(c: CompactPlayer, currentReport: boolean): Player {
   if (c.do !== undefined) p.depthOrder = c.do;
   if (c.rk !== undefined) p.rank = c.rk;
   if (c.gsis) p.gsis = c.gsis;
+  if (c.ml) p.missedLast = true;
   return p;
 }
 

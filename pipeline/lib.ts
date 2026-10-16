@@ -160,8 +160,30 @@ export function sleeperToGsis(dump: Record<string, RawPlayer>, rosterRecords: Ar
   return out;
 }
 
+/**
+ * gsis ids of players who weren't active in their team's last game before `beforeWeek`: inactive, or on a reserve
+ * list (nflverse weekly rosters). A game counts once games.csv has its final score. The Questionable model uses it.
+ */
+export function missedLastGame(rosterRecords: Array<Record<string, string>>, gamesRecords: Array<Record<string, string>>, season: string, beforeWeek: number): Set<string> {
+  const played = new Set<string>();
+  for (const g of gamesRecords) {
+    if (g.season !== season || g.game_type !== 'REG' || !g.home_score || g.home_score === 'NA') continue;
+    played.add(`${g.week}:${g.home_team}`);
+    played.add(`${g.week}:${g.away_team}`);
+  }
+  const last = new Map<string, { week: number; status: string }>();
+  for (const r of rosterRecords) {
+    if ((r.game_type || 'REG') !== 'REG' || !r.gsis_id || r.gsis_id === 'NA') continue;
+    const week = Number(r.week);
+    if (!(week < beforeWeek) || !played.has(`${week}:${r.team}`)) continue;
+    const cur = last.get(r.gsis_id);
+    if (!cur || week > cur.week) last.set(r.gsis_id, { week, status: r.status ?? '' });
+  }
+  return new Set([...last].filter(([, v]) => v.status !== 'ACT').map(([gsis]) => gsis));
+}
+
 /** Sleeper players dump → compact records for rostered/injured players, joined with the injury report. */
-export function compactPlayers(dump: Record<string, RawPlayer>, report?: InjuryReport, gsisBySleeper?: Map<string, string>): CompactPlayer[] {
+export function compactPlayers(dump: Record<string, RawPlayer>, report?: InjuryReport, gsisBySleeper?: Map<string, string>, missed?: ReadonlySet<string>): CompactPlayer[] {
   const out: CompactPlayer[] = [];
   for (const [id, p] of Object.entries(dump)) {
     if (!p.team && !p.injury_status) continue;
@@ -183,6 +205,7 @@ export function compactPlayers(dump: Record<string, RawPlayer>, report?: InjuryR
       if (inj?.prac) cp.prac = inj.prac;
       if (inj?.rpt) cp.rpt = inj.rpt;
       if (!cp.body && inj?.body) cp.body = inj.body;
+      if (missed?.has(gsis)) cp.ml = 1;
     }
     out.push(cp);
   }

@@ -6,7 +6,8 @@
 // Regular-season games already played, QB/RB/WR/TE/K.
 // "Relevant" players averaged at least 8 PPR points (QB 12; any kicker) in their earlier games
 // that season: roughly the players fantasy lineups are built from. Week 1 has no such history.
-// With --test, also scores the app's current playProbability() on a held-out season.
+// With --test, also scores the app's playProbability() on a held-out season. Questionable players are scored as the
+// model's reference case (WR, ankle, played last week): the Questionable model itself is tested in pplay-v1.ts.
 // Prints markdown tables (counts, Wilson 95% intervals): aggregates only.
 //
 // Usage: tsx scripts/calibrate/pplay.ts <dir> <season>... [--test <season>]

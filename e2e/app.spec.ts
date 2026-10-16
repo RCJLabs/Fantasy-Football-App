@@ -85,7 +85,8 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   const flanker = page.locator('.pl').filter({ hasText: 'Drew Flanker' }).first();
   await expect(flanker).toContainText('Q · L');
   await flanker.getByRole('button').click();
-  await expect(flanker).toContainText('Chance to play: 71%');
+  // Questionable WR, hamstring, limited Friday, played last week (the v1 model): 74%.
+  await expect(flanker).toContainText('Chance to play: 74%');
   await expect(flanker).toContainText('limited practice on the final report');
   // Recent usage from nflverse: weeks 2–5, a missed game shown as a dash.
   const usage = flanker.locator('table.usage');

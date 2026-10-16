@@ -14,6 +14,7 @@ export interface CompactPlayer {
   body?: string; // injury body part
   prac?: PracticeStatus; // latest practice status on the official report (nflverse); final once rpt is set
   rpt?: string; // official game status (Questionable/Doubtful/Out), given only on the week's final report
+  ml?: 1; // not active in his team's last game (inactive, or on a reserve list): the Questionable model uses it
   dp?: string; // depth chart position
   do?: number; // depth chart order
   rk?: number; // Sleeper search_rank
