@@ -95,6 +95,22 @@ export async function loadLeagueBundle(league: League, week: number, session: Se
   return bundle;
 }
 
+// Home's league cards and its across-leagues card share one bundle load per league. Kept briefly, so coming back to
+// Home still picks up lineup changes made in Sleeper; a forced reload reuses one another card forced a moment ago.
+const bundleMemo = new Map<string, { at: number; promise: Promise<LeagueBundle> }>();
+export function sharedBundle(league: League, week: number, session: Session, force: boolean): Promise<LeagueBundle> {
+  const key = `${session.userId}:${league.id}:${week}`;
+  const hit = bundleMemo.get(key);
+  const age = hit ? Date.now() - hit.at : Infinity;
+  if (hit && age < (force ? 2000 : 30_000)) return hit.promise;
+  const promise = loadLeagueBundle(league, week, session, force);
+  bundleMemo.set(key, { at: Date.now(), promise });
+  promise.catch(() => {
+    if (bundleMemo.get(key)?.promise === promise) bundleMemo.delete(key);
+  });
+  return promise;
+}
+
 /** Keeps the week's recommended starters on this device (until the main Sunday kickoff) for the season review. */
 export function rememberAdvice(bundle: LeagueBundle, a: LineupAnalysis): void {
   if (bundle.league.rules.bestBall || a.week !== bundle.week) return;

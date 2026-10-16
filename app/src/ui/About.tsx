@@ -80,6 +80,11 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             they add to your lineups once Sleeper projects them back. On IR they take no bench spot until then.
           </li>
           <li>
+            <strong>Across your leagues</strong> (Home, with two or more in-season leagues): players in the recommended lineup in more than one
+            league, NFL games holding three or more of your starter spots, and on request, free agents who are top waiver targets in more than one
+            league, with what each adds in each and where he adds more.
+          </li>
+          <li>
             <strong>What would it take?</strong> (Trade tab): pick a player on another team, and it searches packages of one or two of your players
             for him that improve both best lineups, best for you first, with market values. When none does, it shows the cheapest packages their
             lineup gains from, and what they&apos;d cost yours. A two-for-one&apos;s open spot isn&apos;t filled from free agency there, since you could
