@@ -1,6 +1,7 @@
 // Pure helpers for the data pipeline (tested in lib.test.ts).
 import type { AccuracyRow, CompactPlayer } from '../app/src/data/contracts';
-import type { Game, PracticeStatus } from '../app/src/domain/types';
+import type { Game, PracticeStatus, ScoringSettings } from '../app/src/domain/types';
+import { scoreStats } from '../app/src/engine/scoring';
 import { pointSd } from '../app/src/engine/winprob';
 import type { RawPlayer } from '../app/src/sleeper/raw';
 
@@ -196,6 +197,19 @@ export interface PointsRow {
 }
 
 const LEDGER_POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
+const OFFENSE = new Set(['QB', 'RB', 'WR', 'TE']);
+
+/**
+ * Sleeper's default PPR on offensive stats; reproduces its `pts_ppr` on actual stat lines. Offensive
+ * projections are rescored from their stats, as the app does: Sleeper's own projected `pts_ppr` counted QB
+ * interceptions as +2 instead of −1 in its stored 2022–25 rows (≈ +2.2 points per QB; correct in 2026 so
+ * far, docs/baseline.md).
+ */
+export const SLEEPER_PPR: ScoringSettings = {
+  pass_yd: 0.04, pass_td: 4, pass_int: -1, pass_2pt: 2,
+  rush_yd: 0.1, rush_td: 6, rush_2pt: 2,
+  rec: 1, rec_yd: 0.1, rec_td: 6, rec_2pt: 2, fum_lost: -2,
+};
 
 /**
  * Accuracy of past weeks' projections against actual PPR points, by position, for players projected at
@@ -222,7 +236,8 @@ export function projectionAccuracy(weeks: ReadonlyArray<{ proj: readonly PointsR
     const byId = new Map(stats.map((r) => [r.player_id, r]));
     for (const p of proj) {
       const pos = p.player?.position ?? '';
-      const projected = p.stats?.pts_ppr ?? 0;
+      // K and DEF keep Sleeper's own projected points.
+      const projected = OFFENSE.has(pos) ? scoreStats(p.stats ?? {}, SLEEPER_PPR) : (p.stats?.pts_ppr ?? 0);
       if (!LEDGER_POSITIONS.includes(pos) || projected < minProjected) continue;
       const s = byId.get(p.player_id)?.stats;
       // DEF rows have no games-played stat; any points-allowed line means the team played.

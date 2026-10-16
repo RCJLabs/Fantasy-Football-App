@@ -11,11 +11,6 @@ on:
       last_week:
         description: 'Last regular-season week to pull'
         default: '18'
-  # Temporary, removed before merge: a workflow can't be dispatched until it is on main, so the first
-  # pull runs on push to the dev branch (with the script's default seasons).
-  push:
-    branches: [ccr-69671e8a-4aenns]
-    paths: [scripts/history/pull.sh, .github/workflows/history-pull.yml]
 
 permissions:
   contents: write # upload the encrypted bundle to the history prerelease
@@ -44,6 +39,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          HISTORY_SEASONS: ${{ inputs.seasons || '2026' }}
-          HISTORY_LAST_WEEK: ${{ inputs.last_week || '5' }}
+          HISTORY_SEASONS: ${{ inputs.seasons }}
+          HISTORY_LAST_WEEK: ${{ inputs.last_week }}
         run: bash scripts/history/pull.sh
