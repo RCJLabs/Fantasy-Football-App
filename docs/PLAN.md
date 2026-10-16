@@ -215,6 +215,12 @@
   - **On the owner's leagues:** RB handcuffs worth +0.4 to +11 over the rest of the season. QB handcuffs are worth about +0.3, since
     a free-agent QB fills in nearly as well.
 
+- **Waiver claim plan — built (2026-10-16):** item 4 of the owner's assistance list; details in [claims.md](claims.md).
+  - **What it shows:** up to three claims in order, each with its cheapest drop for the roster the claims above would leave, and a
+    backup for the same drop that lands only if its claim fails.
+  - **FAAB:** each bid comes from the budget left after the claims above. A backup never bids more than its claim.
+  - **On the owner's leagues:** three claims each. Bids total $23 of $25 and $9 of $22.
+
 - **IR stash finder — built (2026-10-16):** item 3 of the owner's assistance list; details in [ir-stash.md](ir-stash.md).
   - **What it shows:** with an open IR slot, injured free agents the league allows on IR whom Sleeper projects back. Each comes with
     his return week, points a game once back, and his weighted rest-of-season gain (no drop while on IR), with the playoff part split
@@ -677,10 +683,9 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
    - Shown only with an open IR slot. It ranks IR-eligible free agents by what they add once back, using Sleeper's return week; the
      playoff part is shown.
    - Injury-type durations stay in the player details as context.
-4. **Waiver claim plan.**
-   - Ordered claims, each paired with its drop: the player whose loss costs least over the coming weeks, keeping bye and injury cover.
-   - Backup claims in case a first choice fails, and the FAAB budget split across several claims.
-   - Builds on the waiver board's values and the calibrated bids.
+4. **Waiver claim plan.** **Built 2026-10-16** ([claims.md](claims.md)).
+   - Ordered claims with drops and bids, each assuming the ones above went through.
+   - A backup per claim for the same drop.
 5. **Buy low / sell high.**
    - Actual points against what usage predicts (the in-house baseline), flagging players running hot or cold on touchdowns. These feed
      trade ideas.

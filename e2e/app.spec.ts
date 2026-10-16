@@ -151,6 +151,9 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
     'Casey Quarterback QB → Backup Passer, a free agent. If Casey Quarterback misses a week, Backup Passer projects 15.5 instead of 0.9. Insurance: +15.2',
   );
   await expect(cuffs.locator('li').nth(1)).toContainText(/^Riley Runner RB → Next Man Runner, a free agent\. .*projects 11\.8 instead of 5\.5\. Insurance: \+\d+\.\d over the rest of the season\.$/);
+  // Claim plan: with two open roster spots, the best free agent goes into one, bid from the league's prices.
+  const plan = page.locator('.card', { has: page.getByRole('heading', { name: 'Claim plan' }) });
+  await expect(plan.locator('ol > li').first()).toContainText('Add Free Agent Runner RB·EEE into an open spot · bid $21');
   // My IR slot is taken (Pat Injured), so no IR stash card.
   await expect(page.getByRole('heading', { name: 'IR stash' })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('waivers.png'), fullPage: true });
@@ -220,6 +223,43 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(page.getByRole('heading', { name: 'Your weeks after the trade' })).toBeVisible();
   await expect(page.locator('table.byes tbody tr')).toHaveCount(9); // weeks 7–15
   await page.screenshot({ path: testInfo.outputPath('trade.png'), fullPage: true });
+});
+
+test("claim plan: a full roster gets drops, a backup for the same drop, and bids from what's left", async ({ page }, testInfo) => {
+  // Two more bench players fill my roster; two good receivers are free agents.
+  const rosters = fx.rosters.map((r) => (r.roster_id === 1 ? { ...r, players: [...(r.players ?? []), 'fa2', 'q2'] } : r));
+  const wr = (id: string, name: string, recYd: number) => ({
+    player_id: id,
+    stats: { rec: recYd / 13, rec_yd: recYd, rec_td: recYd / 160, pts_ppr: 10 },
+    team: 'HHH',
+    company: 'rotowire',
+    player: { first_name: name.split(' ')[0], last_name: name.split(' ')[1], position: 'WR', fantasy_positions: ['WR'], team: 'HHH', injury_status: null },
+  });
+  const receivers = [wr('x1', 'Deep Threat', 95), wr('x2', 'Route Runner', 85)];
+  await page.route('https://api.sleeper.app/v1/**', (route) => {
+    const path = new URL(route.request().url()).pathname.replace('/v1/', '/');
+    return path === '/league/1001/rosters' ? route.fulfill({ json: rosters }) : route.fallback();
+  });
+  await page.route(/^https:\/\/api\.sleeper\.com\/projections\/nfl\/2026\/\d+\?/, (route) => {
+    const week = Number(new URL(route.request().url()).pathname.split('/').pop());
+    return route.fulfill({ json: [...(week === 6 ? fx.projections : fx.futureProjections(week)), ...receivers] });
+  });
+  await page.goto('./');
+  await page.getByLabel('Sleeper username').fill('testuser');
+  await page.getByRole('button', { name: 'Find my leagues' }).click();
+  await page.locator('.league-card').filter({ hasText: 'Saturday Night Gridiron' }).getByRole('link').first().click();
+  await page.getByRole('tab', { name: 'Waivers' }).click();
+  const claims = page.locator('.card', { has: page.getByRole('heading', { name: 'Claim plan' }) }).locator('ol > li');
+  await expect(claims).toHaveCount(3);
+  await expect(claims.nth(0)).toContainText('Add Free Agent Runner RB·EEE, drop Waiver Receiver · bid $21');
+  // If the runner goes elsewhere, the IR stash takes the same roster spot, for no more than the claim's bid.
+  await expect(claims.nth(0)).toContainText(/If that fails: Stash Runner RB·HHH, same drop · bid \$(\d+)/);
+  const backupBid = Number(/same drop · bid \$(\d+)/.exec((await claims.nth(0).textContent()) ?? '')![1]);
+  expect(backupBid).toBeLessThanOrEqual(21);
+  // The next claims assume the first went through: new drops, and bids from the $49 left.
+  await expect(claims.nth(1)).toContainText('Add Deep Threat WR·HHH, drop Backup Passer · bid $17');
+  await expect(claims.nth(2)).toContainText('Add Route Runner WR·HHH, drop Sam Slot · bid $11');
+  await page.locator('.card', { has: page.getByRole('heading', { name: 'Claim plan' }) }).screenshot({ path: testInfo.outputPath('claims.png') });
 });
 
 test('IR stash: with an open IR slot, an injured free agent who comes back in week 10', async ({ page }, testInfo) => {
