@@ -1,6 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 import type { PlayerRow, Problem } from '../analysis/analyze';
+import { streak, type Streak } from '../analysis/luck';
 import { injuryDuration } from '../engine/injuries';
 import { kickoffLabel, pct, pts, statLabel } from './format';
 
@@ -120,8 +121,31 @@ export function Explain({ row }: { row: PlayerRow }) {
       <p class="muted">
         Expected {pts(row.ev)} = {pts(row.mu)} × {pct(row.p)}. Weekly spread ±{pts(row.sd)}.
       </p>
+      {row.usage ? <StreakNote usage={row.usage} /> : null}
       {row.usage ? <UsageTable usage={row.usage} /> : null}
     </div>
+  );
+}
+
+/** "4 TDs, 1.5 expected". */
+export function touchdowns(s: Streak): string {
+  return `${s.td} TD${s.td === 1 ? '' : 's'}, ${s.expectedTd.toFixed(1)} expected`;
+}
+
+/** Running hot or cold: recent points against what his usage was worth (docs/luck.md). Context only. */
+function StreakNote({ usage }: { usage: NonNullable<PlayerRow['usage']> }) {
+  const s = streak(usage);
+  if (!s) return null;
+  const hot = s.pts > s.expected;
+  return (
+    <p class="small">
+      Running <strong>{hot ? 'hot' : 'cold'}</strong>: {s.pts.toFixed(1)} PPR points a game over {s.games} recent games, against {s.expected.toFixed(1)} his usage was
+      worth ({touchdowns(s)}).{' '}
+      <span class="muted">
+        Streaks don't throw the projection: in 2022–25, one like this didn't predict how players did against their projections afterwards. Managers who go by
+        recent points may value him {hot ? 'higher' : 'lower'}.
+      </span>
+    </p>
   );
 }
 

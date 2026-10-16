@@ -26,6 +26,12 @@ describe('data shards', () => {
     const misaligned = usage(300);
     misaligned.players.p0!.snap = [50];
     expect(validateShard('usage.json', misaligned)).toEqual(['1 players not aligned with weeks']);
+    const luck = usage(300) as { players: Record<string, Record<string, unknown>> };
+    luck.players.p0!.luck = { g: 3, pts: [-0.4, 1.2], td: [0, 0.1] }; // a fumble and little else
+    expect(validateShard('usage.json', luck)).toEqual([]);
+    luck.players.p1!.luck = { g: 3, pts: [10, 8] };
+    luck.players.p2!.luck = { g: 3, pts: [10, 8], td: [-1, 0.5] };
+    expect(validateShard('usage.json', luck)).toEqual(['2 players with a bad luck entry']);
     expect(validateShard('baseline.json', baseline(6, 5))).toEqual([]);
     expect(validateShard('baseline.json', baseline(6, 6))).toEqual(['averages include this week']);
     const negative = baseline(6, 5);

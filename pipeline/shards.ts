@@ -36,6 +36,12 @@ export function validateShard(name: ShardName, shard: unknown): string[] {
     else if (isObject(shard.players)) {
       const misaligned = Object.values(shard.players).filter((p) => !isObject(p) || ['snap', 'tgt', 'car'].some((k) => !Array.isArray(p[k]) || (p[k] as unknown[]).length !== weeks.length));
       if (misaligned.length) out.push(`${misaligned.length} players not aligned with weeks`);
+      // Points can average below zero (a fumble and little else); touchdowns can't.
+      const pair = (v: unknown, min: number) => Array.isArray(v) && v.length === 2 && v.every((x) => finite(x) && (x as number) >= min);
+      const badLuck = Object.values(shard.players).filter(
+        (p) => isObject(p) && p.luck !== undefined && !(isObject(p.luck) && finite(p.luck.g) && pair(p.luck.pts, -Infinity) && pair(p.luck.td, 0)),
+      );
+      if (badLuck.length) out.push(`${badLuck.length} players with a bad luck entry`);
     }
   }
   if (name === 'baseline.json') {

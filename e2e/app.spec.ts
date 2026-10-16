@@ -100,6 +100,8 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(usage.locator('tr', { hasText: 'Snaps' })).toContainText('80%85%–90%');
   await expect(usage.locator('tr', { hasText: 'Targets' })).toContainText('9 (25%)');
   await expect(usage).not.toContainText('Carries');
+  // Points against what his usage was worth: context only.
+  await expect(flanker).toContainText('Running hot: 19.4 PPR points a game over 3 recent games, against 13.1 his usage was worth (4 TDs, 1.2 expected).');
   // Matchup context: CCC against WRs, and its regular cornerback who's out.
   await expect(flanker).toContainText('WRs facing CCC have scored 2.3 PPR more a game than their usual (5 games');
   await expect(flanker).toContainText('CCC cornerbacks out: Corner Back (92% of snaps, Out).');
@@ -206,6 +208,13 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await page.getByRole('tab', { name: 'Trade' }).click();
   await page.locator('.card.ideas').getByRole('button', { name: 'Find trades' }).click();
   await expect(page.locator('.card.ideas')).toContainText('No trade found that helps both lineups by enough to matter.');
+  // Buy low, sell high: my receiver is running hot; their running back is running cold and would start for me.
+  const streaks = page.locator('.card.streaks .streak-list');
+  await expect(streaks.first()).toContainText('Drew Flanker');
+  await expect(streaks.first()).toContainText('19.4 a game over 3 games, usage worth 13.1 · 4 TDs, 1.2 expected');
+  await expect(streaks.nth(1)).toContainText('Opp Rusher');
+  await expect(streaks.nth(1)).toContainText('Rival Raiders');
+  await expect(streaks.nth(1)).toContainText('8.2 a game over 4 games, usage worth 13.6 · 0 TDs, 2.1 expected');
 
   // Trade: give a WR for their RB and see both sides.
   await page.getByLabel('Trade with').selectOption({ label: 'Rival Raiders' });
@@ -223,6 +232,11 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(page.getByRole('heading', { name: 'Your weeks after the trade' })).toBeVisible();
   await expect(page.locator('table.byes tbody tr')).toHaveCount(9); // weeks 7–15
   await page.screenshot({ path: testInfo.outputPath('trade.png'), fullPage: true });
+  // A buy-low target opens in the builder against his team.
+  await streaks.nth(1).getByRole('button', { name: 'Open in the builder' }).click();
+  await expect(page.getByLabel('Trade with')).toHaveValue('2');
+  await expect(page.locator('fieldset', { hasText: 'You get' }).getByRole('checkbox', { name: /Opp Rusher/ })).toBeChecked();
+  await expect(page.locator('fieldset', { hasText: 'You give' }).getByRole('checkbox', { checked: true })).toHaveCount(0);
 });
 
 test("claim plan: a full roster gets drops, a backup for the same drop, and bids from what's left", async ({ page }, testInfo) => {

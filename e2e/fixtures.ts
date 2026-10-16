@@ -165,7 +165,10 @@ export const baseline: BaselineFile = {
   players: { w2: { rec: 4, rec_yd: 50, rec_td: 0.3 }, d1: { sack: 2.5, int: 0.8, fum_rec: 0.6, pts_allow: 21 } },
 };
 
-/** Recent usage (nflverse-shaped, numbers invented): the free-agent RB's role is growing. */
+/**
+ * Recent usage (nflverse-shaped, numbers invented): the free-agent RB's role is growing. My WR is running hot (points
+ * well above what his usage was worth), the rival's RB cold.
+ */
 export const usage: UsageFile = {
   schemaVersion: 1,
   generatedAt: iso(-3),
@@ -173,7 +176,22 @@ export const usage: UsageFile = {
   weeks: [2, 3, 4, 5],
   players: {
     fa1: { snap: [30, 45, 61, 84], tgt: [1, 2, 2, 3], car: [5, 8, 12, 18], tshare: [3, 6, 6, 9], cshare: [20, 30, 45, 62] },
-    w2: { snap: [80, 85, null, 90], tgt: [6, 7, null, 9], car: [0, 0, null, 0], tshare: [20, 22, null, 25], cshare: [0, 0, null, 0] },
+    w2: {
+      snap: [80, 85, null, 90],
+      tgt: [6, 7, null, 9],
+      car: [0, 0, null, 0],
+      tshare: [20, 22, null, 25],
+      cshare: [0, 0, null, 0],
+      luck: { g: 3, pts: [19.4, 13.1], td: [4, 1.2] },
+    },
+    o2: {
+      snap: [70, 72, 68, 71],
+      tgt: [3, 2, 4, 3],
+      car: [16, 18, 15, 17],
+      tshare: [9, 7, 12, 10],
+      cshare: [60, 65, 58, 62],
+      luck: { g: 4, pts: [8.2, 13.6], td: [0, 2.1] },
+    },
   },
 };
 

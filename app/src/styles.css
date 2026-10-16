@@ -579,8 +579,15 @@ h3 {
   font-weight: 600;
 }
 .handcuffs,
-.claims {
+.claims,
+.streak-list {
   padding-left: 1.1rem;
+}
+.streak-list li {
+  margin: 0.5rem 0;
+}
+.streak-list li p {
+  margin: 0.1rem 0;
 }
 .claims li {
   margin: 0.5rem 0;

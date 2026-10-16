@@ -221,6 +221,19 @@
   - **FAAB:** each bid comes from the budget left after the claims above. A backup never bids more than its claim.
   - **On the owner's leagues:** three claims each. Bids total $23 of $25 and $9 of $22.
 
+- **Buy low / sell high — built, display only (2026-10-16):** item 5 of the owner's assistance list; details in [luck.md](luck.md).
+  - **Backtest, 2022–2025:** a player's luck is his points a game over his last four games above what his usage was worth
+    (ffopportunity). It didn't predict how players did against RotoWire's projection, this week or over the next four.
+    - Every slope's interval includes zero.
+    - Held out on 2024–25, adjusting the projection for luck changed MAE by +0.002 (−0.002 to +0.005). QBs got slightly worse.
+    - Usage does predict the next four weeks better than recent points (correlation 0.564 against 0.529), but the projection beats both
+      (0.687). It already prices streaks in.
+  - **So no values change.** The usage file now carries each player's PPR points against what his usage was worth, and touchdowns
+    against expected, over 3+ recent games.
+    - Player details say "running hot" or "running cold" at a gap of 3+ a game.
+    - A Trade-tab card lists your players running hot (sell high) and other teams' players running cold who'd start for you (buy low).
+  - **On the owner's leagues:** 31 and 34 rostered players have a streak. The card shows 2 and 1 to sell, 5 and 10 to buy (four shown).
+
 - **IR stash finder — built (2026-10-16):** item 3 of the owner's assistance list; details in [ir-stash.md](ir-stash.md).
   - **What it shows:** with an open IR slot, injured free agents the league allows on IR whom Sleeper projects back. Each comes with
     his return week, points a game once back, and his weighted rest-of-season gain (no drop while on IR), with the playoff part split
@@ -686,11 +699,9 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
 4. **Waiver claim plan.** **Built 2026-10-16** ([claims.md](claims.md)).
    - Ordered claims with drops and bids, each assuming the ones above went through.
    - A backup per claim for the same drop.
-5. **Buy low / sell high.**
-   - Actual points against what usage predicts (the in-house baseline), flagging players running hot or cold on touchdowns. These feed
-     trade ideas.
-   - That usage predicts future points better than recent points is `[reported]`, not ours. It stays display-only until our own
-     backtest shows lift, as with matchups ([matchups-gate.md](matchups-gate.md)).
+5. **Buy low / sell high.** **Built 2026-10-16, display only** ([luck.md](luck.md)).
+   - Points against what usage was worth (ffopportunity), with touchdowns against expected, in player details and a Trade-tab card.
+   - The backtest found no lift over RotoWire's projections, which already price streaks in, so it doesn't feed values or trade ideas.
 6. **"What would it take" for one player.** You name a player on another team; it finds your cheapest packages where both lineups gain
    and market values roughly match. It's the trade finder turned around.
 7. **Across all your leagues (Home).** Players you start in several leagues, NFL games where your starters bunch up, and the same waiver

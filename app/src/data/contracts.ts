@@ -112,6 +112,11 @@ export interface PlayerUsage {
   /** Share of the team's targets and carries, whole percent. */
   tshare: Array<number | null>;
   cshare: Array<number | null>;
+  /**
+   * Over his games in these weeks that ffopportunity has processed (3+): PPR points a game, scored and what his usage
+   * was worth, and touchdowns, scored and expected (docs/luck.md). Display only.
+   */
+  luck?: { g: number; pts: [number, number]; td: [number, number] };
 }
 
 /** A defense against one position: extra PPR per game beyond those players' usual (shrunk), over `n` games. */

@@ -54,6 +54,8 @@ async function fetchText(url: string): Promise<string> {
   }
 }
 
+const FFOPPORTUNITY = 'https://github.com/ffverse/ffopportunity/releases/download/latest-data';
+
 const optional = (url: string) =>
   fetchText(url).catch((e) => {
     console.warn(`optional source unavailable: ${e}`);
@@ -153,11 +155,11 @@ async function baselineShard(
   gamesRecords: Array<Record<string, string>>,
   gsisBySleeper: ReadonlyMap<string, string>,
   players: readonly CompactPlayer[],
+  cur: string | null,
 ): Promise<BaselineFile | null> {
   const prev = Number(season) - 1;
-  const ffo = 'https://github.com/ffverse/ffopportunity/releases/download/latest-data';
   try {
-    const [cur, last] = await Promise.all([optional(`${ffo}/ep_weekly_${season}.csv`), optional(`${ffo}/ep_weekly_${prev}.csv`)]);
+    const last = await optional(`${FFOPPORTUNITY}/ep_weekly_${prev}.csv`);
     if (!cur && !last) return null;
     const expected = new Map<string, StatLine>();
     for (const text of [cur, last]) {
@@ -208,13 +210,14 @@ async function main() {
   const week = Math.max(1, state.week);
 
   const nflverse = 'https://github.com/nflverse/nflverse-data/releases/download';
-  const [dump, injuriesCsv, rostersCsv, gamesCsv, snapsCsv, statsCsv] = await Promise.all([
+  const [dump, injuriesCsv, rostersCsv, gamesCsv, snapsCsv, statsCsv, ffoCurrent] = await Promise.all([
     sleeperPlayers(),
     optional(`${nflverse}/injuries/injuries_${season}.csv`),
     optional(`${nflverse}/weekly_rosters/roster_weekly_${season}.csv`),
     fetchText('https://raw.githubusercontent.com/nflverse/nfldata/master/data/games.csv'),
     optional(`${nflverse}/snap_counts/snap_counts_${season}.csv`),
     optional(`${nflverse}/stats_player/stats_player_week_${season}.csv`),
+    optional(`${FFOPPORTUNITY}/ep_weekly_${season}.csv`),
   ]);
 
   const report = injuriesCsv ? latestInjuryReport(csvRecords(injuriesCsv), week) : undefined;
@@ -260,20 +263,25 @@ async function main() {
   const snapRecords = snapsCsv ? csvRecords(snapsCsv) : [];
   const statRecords = statsCsv ? csvRecords(statsCsv) : [];
   const sleeperByGsis = invert(gsisBySleeper);
-  const usage = buildUsage({ season, now, snaps: snapRecords, stats: statRecords, rosters: rosterRecords, sleeperByGsis });
+  // ffopportunity's expected stats this season: points against usage in the usage shard (the baseline reads them too).
+  const expected = new Map<string, StatLine>();
+  for (const r of ffoCurrent ? csvRecords(ffoCurrent) : []) if (Number(r.season) === Number(season) && Number(r.week) <= 18) expected.set(`${r.player_id}|${Number(r.week)}`, ffoppStats(r));
+  const usage = buildUsage({ season, now, snaps: snapRecords, stats: statRecords, rosters: rosterRecords, sleeperByGsis, expected });
   const matchups = buildMatchups({ season, now, snaps: snapRecords, stats: statRecords, rosters: rosterRecords, sleeperByGsis });
   const stats = await seasonStats(season, week);
   const accuracy = stats ? await accuracyLedger(season, stats, now) : null;
-  const baseline = stats ? await baselineShard(season, week, now, stats, gamesRecords, gsisBySleeper, playersFile.players) : null;
+  const baseline = stats ? await baselineShard(season, week, now, stats, gamesRecords, gsisBySleeper, playersFile.players, ffoCurrent) : null;
   const ledger = await scoredLedger();
 
   // Optional shards: publish a fresh build that checks out, otherwise keep the deployed copy while it still
   // describes this season (this week, for the baseline), so one upstream outage doesn't take a feature down.
   const entries: Record<ShardName, Omit<ManifestEntry, 'updatedAt'>> = {
     'usage.json': {
-      source: 'nflverse snap counts (compiled by Pro Football Reference) and weekly player stats, joined via nflverse weekly rosters',
-      license: 'nflverse data CC-BY 4.0; snap shares, targets and carries for recent weeks only',
-      credits: 'Usage via nflverse',
+      source:
+        'nflverse snap counts (compiled by Pro Football Reference) and weekly player stats, joined via nflverse weekly rosters; ffopportunity expected stats for points and touchdowns against usage',
+      license:
+        'nflverse data CC-BY 4.0; snap shares, targets and carries for recent weeks only. Expected points and touchdowns: CC-BY-SA 4.0, adapted from ffopportunity (CC-BY-SA 4.0), recent-game totals only',
+      credits: 'Usage via nflverse; expected points via ffopportunity (ffverse)',
     },
     'matchups.json': {
       source: 'nflverse weekly player stats (PPR by opponent) and snap counts (cornerbacks), joined via nflverse weekly rosters',

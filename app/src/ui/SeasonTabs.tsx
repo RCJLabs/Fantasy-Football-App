@@ -7,11 +7,12 @@ import { GRADE_WEIGHTS, leagueGrades, type Grade, type LeagueGrades, type Part }
 import type { Claim } from '../analysis/claims';
 import { claimPlan, evaluateTrade, freeAgentPool, streamers, waiverBoard, type ByeWeek, type LeagueOutlook, type TradeSideResult } from '../analysis/outlook';
 import { carriedForward, longTermRanking } from '../analysis/longterm';
+import { buyLowSellHigh, STREAK_GAP, type StreakPick } from '../analysis/luck';
 import { pickAssets, pickLabel, pickTotals, type PickAsset } from '../analysis/picks';
 import { findTrades, type TradeIdea } from '../analysis/tradeFinder';
 import { FANTASYCALC_URL, horizons, loadMarketValues, marketParams, marketTotals, type Horizon, type Market } from '../data/fantasycalc';
 import { loadTrending } from '../data/repo';
-import { InjuryBadge, ErrorBox, Spinner, usageNote } from './components';
+import { InjuryBadge, ErrorBox, Spinner, touchdowns, usageNote } from './components';
 import { loadSeason, type LeagueBundle, type SeasonBundle } from './data';
 import { logError } from './errorLog';
 import { kickoffLabel, ordinal, pct, pts, roundName, signed } from './format';
@@ -764,10 +765,10 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
     </fieldset>
   );
 
-  const openIdea = (idea: TradeIdea) => {
-    setPartnerId(idea.partner);
-    setGive(idea.give);
-    setGet(idea.get);
+  const open = (partner: number, giving: string[], getting: string[]) => {
+    setPartnerId(partner);
+    setGive(giving);
+    setGet(getting);
     setGivePicks([]);
     setGetPicks([]);
     document.getElementById('trade-builder')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -776,7 +777,10 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
   return (
     <div class="stack">
       {passed ? <p class="note">This league's trade deadline (week {deadline}) has passed.</p> : null}
-      {passed ? null : <TradeIdeas bundle={bundle} o={o} freeAgents={freeAgents} values={values} name={name} onOpen={openIdea} />}
+      {passed ? null : <TradeIdeas bundle={bundle} o={o} freeAgents={freeAgents} values={values} name={name} onOpen={(idea) => open(idea.partner, idea.give, idea.get)} />}
+      {passed ? null : (
+        <BuyLowSellHigh bundle={bundle} o={o} name={name} onBuy={(p) => open(p.rosterId, [], [p.id])} onSell={(p) => open(partnerId, [p.id], [])} />
+      )}
       <div class="card" id="trade-builder">
         <h2>Build a trade</h2>
         <label class="field">
@@ -952,6 +956,69 @@ function TradeIdeas({
           </button>
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/** Your players running hot and other teams' running cold who'd start for you (docs/luck.md). Values don't change. */
+function BuyLowSellHigh({
+  bundle,
+  o,
+  name,
+  onBuy,
+  onSell,
+}: {
+  bundle: LeagueBundle;
+  o: LeagueOutlook;
+  name: (id: string) => string;
+  onBuy: (pick: StreakPick) => void;
+  onSell: (pick: StreakPick) => void;
+}) {
+  const usage = bundle.ctx.usage?.players;
+  const myId = bundle.myRoster!.rosterId;
+  // Nothing to say until the usage file carries points against usage.
+  const picks = useMemo(() => (usage && [...usage.values()].some((u) => u.luck) ? buyLowSellHigh(o, myId, usage) : null), [o, myId, usage]);
+  if (!picks) return null;
+  const list = (rows: readonly StreakPick[], buying: boolean) =>
+    rows.length ? (
+      <ul class="streak-list">
+        {rows.map((p) => {
+          const pl = o.model.player(p.id) ?? bundle.ctx.players.get(p.id);
+          const s = p.streak;
+          return (
+            <li>
+              <p>
+                <strong>{name(p.id)}</strong>{' '}
+                <span class="muted small">
+                  {pl ? `${pl.pos}${pl.team ? `·${pl.team}` : ''}` : ''}
+                  {buying ? ` · ${o.teams.get(p.rosterId)?.name ?? 'other team'}` : ''}
+                </span>
+              </p>
+              <p class="small">
+                {s.pts.toFixed(1)} a game over {s.games} games, usage worth {s.expected.toFixed(1)} · {touchdowns(s)} · {pts(p.perWeek)}/wk ahead
+              </p>
+              <button type="button" class="btn btn-small" onClick={() => (buying ? onBuy(p) : onSell(p))}>
+                Open in the builder
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    ) : (
+      <p class="muted small">None right now.</p>
+    );
+  return (
+    <div class="card streaks">
+      <h2>Buy low, sell high</h2>
+      <p class="muted small">
+        Players whose PPR points over recent games ran {STREAK_GAP}+ a game ahead of or behind what their usage was worth (expected points from ffopportunity).
+        Values here don't change: projections already price streaks in (in 2022–25 one didn't predict how players did against their projections afterwards).
+        The opening is a manager who goes by recent points.
+      </p>
+      <h3>Sell high: yours running hot</h3>
+      {list(picks.sell, false)}
+      <h3>Buy low: theirs running cold who'd start for you</h3>
+      {list(picks.buy, true)}
     </div>
   );
 }
