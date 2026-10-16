@@ -70,3 +70,9 @@ For each player-game the scorer takes the **last prediction committed before kic
 Only games with stats count. Weekly rosters exist before kickoff too, so counting them early would score pre-game statuses. The output is
 aggregates only.
 
+
+## Past seasons for backtests
+
+`.github/workflows/history-pull.yml` (run by hand) fetches past seasons' weekly Sleeper projections and stats with
+`scripts/history/pull.sh`, slims the rows, and uploads them encrypted to the same key in the `history` prerelease. The job summary shows row
+counts only. The baseline blend gate ([docs/baseline.md](../../docs/baseline.md)) runs on it with `scripts/backtest/baseline.ts`.

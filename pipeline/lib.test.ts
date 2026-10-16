@@ -104,7 +104,8 @@ describe('accuracy ledger', () => {
   it('scores projections of players who played, by position, against the app spread', () => {
     const rows = projectionAccuracy([
       {
-        proj: [row('a', 'WR', { pts_ppr: 10 }), row('b', 'WR', { pts_ppr: 20 }), row('c', 'WR', { pts_ppr: 12 }), row('d', 'WR', { pts_ppr: 3 }), row('e', 'DEF', { pts_ppr: 8 })],
+        // Offense is rescored from stat lines; Sleeper's own projected pts_ppr is ignored for it.
+        proj: [row('a', 'WR', { rec: 5, rec_yd: 50, pts_ppr: 1 }), row('b', 'WR', { rec: 10, rec_yd: 100 }), row('c', 'WR', { rec: 6, rec_yd: 60 }), row('d', 'WR', { rec: 1, rec_yd: 20, pts_ppr: 9 }), row('e', 'DEF', { pts_ppr: 8 })],
         stats: [row('a', 'WR', { pts_ppr: 14, gp: 1 }), row('b', 'WR', { pts_ppr: 10, gp: 1 }), row('c', 'WR', { pts_ppr: 0 }), row('d', 'WR', { pts_ppr: 30, gp: 1 }), row('e', 'DEF', { pts_ppr: 8, pts_allow: 17 })],
       },
     ]);
@@ -115,5 +116,10 @@ describe('accuracy ledger', () => {
     expect(wr.within1).toBe(1);
     expect(rows.find((r) => r.pos === 'DEF')).toMatchObject({ n: 1, mae: 0 });
     expect(rows.at(-1)).toMatchObject({ pos: 'ALL', n: 3 });
+  });
+
+  it("rescores QB projections instead of trusting Sleeper's pts_ppr (2022–25 rows counted INTs as +2)", () => {
+    const [qb] = projectionAccuracy([{ proj: [row('q', 'QB', { pass_yd: 250, pass_td: 1, pass_int: 1, pts_ppr: 16 })], stats: [row('q', 'QB', { pts_ppr: 13, gp: 1 })] }]);
+    expect(qb).toMatchObject({ pos: 'QB', n: 1, mae: 0, bias: 0 }); // 10 + 4 − 1 = 13
   });
 });
