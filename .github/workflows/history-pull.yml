@@ -1,0 +1,49 @@
+name: history-pull
+
+# Private pull of past seasons' Sleeper projections and stats for backtesting (scripts/history/pull.sh).
+# Run by hand only; the bundle is age-encrypted before upload and the log shows only row counts.
+on:
+  workflow_dispatch:
+    inputs:
+      seasons:
+        description: 'Seasons, space-separated'
+        default: '2022 2023 2024 2025'
+      last_week:
+        description: 'Last regular-season week to pull'
+        default: '18'
+  # Temporary, removed before merge: a workflow can't be dispatched until it is on main, so the first
+  # pull runs on push to the dev branch (with the script's default seasons).
+  push:
+    branches: [ccr-69671e8a-4aenns]
+    paths: [scripts/history/pull.sh, .github/workflows/history-pull.yml]
+
+permissions:
+  contents: write # upload the encrypted bundle to the history prerelease
+
+concurrency:
+  group: history-pull
+  cancel-in-progress: false
+
+jobs:
+  pull:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install age
+        run: |
+          curl -sSL -o "$RUNNER_TEMP/age.tgz" https://github.com/FiloSottile/age/releases/download/v1.2.1/age-v1.2.1-linux-amd64.tar.gz
+          echo "7df45a6cc87d4da11cc03a539a7470c15b1041ab2b396af088fe9990f7c79d50  $RUNNER_TEMP/age.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/age.tgz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/age" >> "$GITHUB_PATH"
+
+      - name: Pull, encrypt, upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HISTORY_SEASONS: ${{ inputs.seasons }}
+          HISTORY_LAST_WEEK: ${{ inputs.last_week }}
+        run: bash scripts/history/pull.sh
