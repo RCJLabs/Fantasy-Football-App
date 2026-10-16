@@ -70,6 +70,8 @@ export interface LeagueRules {
   playoffTeams?: number;
   /** 0 = one week per round, 1 = two-week final, 2 = two weeks per round. [unverified] Sleeper codes */
   playoffRoundType?: number;
+  /** 0 = fixed bracket (Sleeper's default), 1 = re-seed each round. [unverified] Sleeper codes */
+  playoffSeedType?: number;
   /** Last week trades are allowed. */
   tradeDeadline?: number;
   /** 2 = FAAB; 0/1 = rolling / reverse-standings priority. */

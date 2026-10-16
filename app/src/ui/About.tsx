@@ -43,7 +43,9 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             <strong>Rest of season</strong> (waivers, trades, playoff odds) uses Sleeper's projections for every remaining week, so byes and expected
             injury returns are built in. Each week also counts the chance a player is still active by then: for a healthy player 94% next week, 85%
             eight weeks out and 80% thirteen weeks out (game-day rosters, 2019–2025). Each team's best lineup is valued week by week, with
-            bench players covering absences, so depth counts for more later in the season. Playoff weeks count in proportion to your playoff odds.
+            bench players covering absences, so depth counts for more later in the season. Playoff weeks count by your playoff odds (every round is
+            a must-win, the final as much as the first), except a first-round bye week, which counts only by your chance of playing it. Title odds
+            play the bracket out round by round with each team's projected lineups.
           </li>
           <li>
             <strong>Keeper and dynasty leagues</strong> also get a long-term view. Trades show market value this season and beyond it (FantasyCalc

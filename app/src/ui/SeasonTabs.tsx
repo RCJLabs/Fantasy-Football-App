@@ -91,6 +91,8 @@ export function WaiversTab({ bundle, now }: { bundle: LeagueBundle; now: number 
   const o = season.outlook;
   const me = o.teams.get(bundle.myRoster!.rosterId)!;
   const playoffWeight = bundle.league.rules.playoffWeekStart ? me.weights.at(-1) : undefined;
+  const firstRound = o.playoffRounds?.[0]?.[0];
+  const byeWeight = playoffWeight !== undefined && firstRound !== undefined ? me.weights[firstRound] : undefined;
   const budget = bundle.league.rules.waiverBudget ?? 0;
   const showBids = board.remaining !== undefined;
   return (
@@ -100,7 +102,11 @@ export function WaiversTab({ bundle, now }: { bundle: LeagueBundle; now: number 
         <p class="muted small">
           Ranked by what each player adds to your best lineups: this week (<strong>Wk</strong>) plus {weekSpan(o.weeks)} (<strong>ROS</strong>, after
           dropping the player shown)
-          {playoffWeight !== undefined ? `. Playoff weeks count at your ${pct(playoffWeight)} playoff odds` : ''}.
+          {playoffWeight !== undefined ? `. Playoff weeks count at your ${pct(playoffWeight)} playoff odds` : ''}
+          {byeWeight !== undefined && playoffWeight !== undefined && byeWeight < playoffWeight - 0.005
+            ? ` (round 1 at ${pct(byeWeight)}: you may have a bye)`
+            : ''}
+          .
         </p>
         <MissingWeeks season={season} />
         <table class="table">
@@ -196,6 +202,7 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
   const rules = bundle.league.rules;
   const playoffs = !!rules.playoffWeekStart;
   const byes = playoffs && (o.odds ? [...o.odds.values()].some((x) => x.pBye > 0) : false);
+  const titles = playoffs && (o.odds ? [...o.odds.values()].some((x) => x.pTitle !== undefined) : false);
   const teams = [...o.teams.values()].sort(
     (a, b) =>
       (o.odds?.get(a.rosterId)?.avgSeed ?? 0) - (o.odds?.get(b.rosterId)?.avgSeed ?? 0) ||
@@ -219,6 +226,7 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
                 {o.odds && playoffs ? <th class="num">Playoffs</th> : null}
                 {o.odds && byes ? <th class="num">Bye</th> : null}
                 {o.odds ? <th class="num">1st</th> : null}
+                {titles ? <th class="num">Title</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -241,6 +249,7 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
                     {odds && playoffs ? <td class="num">{pct(odds.pPlayoffs)}</td> : null}
                     {odds && byes ? <td class="num">{pct(odds.pBye)}</td> : null}
                     {odds ? <td class="num">{pct(odds.pFirst)}</td> : null}
+                    {titles ? <td class="num">{pct(odds?.pTitle)}</td> : null}
                   </tr>
                 );
               })}
@@ -251,7 +260,11 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
           {o.sims.toLocaleString()} simulations of {weekSpan(o.regularWeeks)}
           {rules.medianGame ? ' (head-to-head plus the league-median game)' : ''}: every team plays its best projected lineup each week; ties go to points
           for.
-          {playoffs ? ` Top ${rules.playoffTeams} make the playoffs.` : ' This league has no playoffs.'} Trades and pickups aren't predicted.
+          {playoffs ? ` Top ${rules.playoffTeams} make the playoffs.` : ' This league has no playoffs.'}
+          {titles
+            ? ` Title odds play the bracket out the same way${byes ? ', top seeds on byes' : ''}${rules.playoffSeedType === 1 ? ', re-seeded each round' : ''}.`
+            : ''}{' '}
+          Trades and pickups aren't predicted.
         </p>
         <MissingWeeks season={s.data} />
       </div>
@@ -515,8 +528,9 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
             <>
               <WeeklyBars weeks={o.weeks} deltas={result.me.weekly} />
               <p class="muted small">
-                Rest-of-season points from each team's best lineup by week (playoff weeks weighted by that team's playoff odds), including the drops a full
-                roster forces and free agents for spots the trade opens.
+                Rest-of-season points from each team's best lineup by week (playoff weeks weighted by that team's playoff odds, a first-round bye
+                week by its chance of playing it), including the drops a full roster forces and free agents for spots the trade opens. Title odds play
+                out the bracket; changes of a point or less can be simulation noise.
               </p>
             </>
           ) : null}
@@ -542,12 +556,16 @@ function verdict(me: number, them: number): string {
 }
 
 function TradeSide({ label, side, name }: { label: string; side: TradeSideResult; name: (id: string) => string }) {
-  const odds =
+  const odds = [
     side.pBefore !== undefined
       ? `playoff odds ${pct(side.pBefore)} → ${pct(side.pAfter)}`
       : side.firstBefore !== undefined
         ? `chance of 1st ${pct(side.firstBefore)} → ${pct(side.firstAfter)}`
-        : '';
+        : '',
+    side.titleBefore !== undefined ? `title odds ${pct(side.titleBefore)} → ${pct(side.titleAfter)}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <div class="trade-side">
       <p>
