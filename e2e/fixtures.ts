@@ -191,6 +191,32 @@ export const matchups: RawMatchup[] = [
   { roster_id: 3, matchup_id: 2, starters: [], players: [], points: 0 },
   { roster_id: 4, matchup_id: 2, starters: [], players: [], points: 0 },
 ];
+/**
+ * Weeks 1–5, final: 4-1 on scores that beat 10 of 15 others (all-play), and 3-2 against the median. My starters are the same
+ * every week; the bench outscored them in weeks 3 (Morgan Halfback, 22) and 5 (Casey Depth, 12).
+ */
+const PAST: Array<{ pairs: number[][]; me: Record<string, number>; others: Record<number, number> }> = [
+  { pairs: [[1, 4], [2, 3]], me: {}, others: { 2: 105, 3: 110, 4: 90 } },
+  { pairs: [[1, 2], [3, 4]], me: { q1: 29 }, others: { 2: 120, 3: 100, 4: 85 } },
+  { pairs: [[1, 3], [2, 4]], me: { w1: 33, r2: 22 }, others: { 2: 125, 3: 105, 4: 121 } },
+  { pairs: [[1, 4], [2, 3]], me: { q1: 30, r1: 24, w2: 18, r2: 5 }, others: { 2: 120, 3: 115, 4: 95 } },
+  { pairs: [[1, 2], [3, 4]], me: { w1: 30, t1: 20, d1: 15, r4: 12 }, others: { 2: 100, 3: 120, 4: 90 } },
+];
+const BASE_POINTS: Record<string, number> = { q1: 20, r1: 14, r2: 9, r3: 9, r4: 3, w1: 15, w2: 11, w3: 10, t1: 8, k1: 8, d1: 6 };
+export const pastMatchups = (week: number): RawMatchup[] => {
+  const w = PAST[week - 1]!;
+  const pp = { ...BASE_POINTS, ...w.me };
+  const points = (r: number) => (r === 1 ? (me.starters ?? []).reduce((s, id) => s + (pp[id] ?? 0), 0) : w.others[r]!);
+  return [1, 2, 3, 4].map((r) => ({
+    roster_id: r,
+    matchup_id: w.pairs.findIndex((p) => p.includes(r)) + 1,
+    starters: r === 1 ? me.starters : [],
+    players: r === 1 ? me.players : [],
+    points: points(r),
+    ...(r === 1 ? { players_points: pp } : {}),
+  }));
+};
+
 /** Regular season runs through week 14: pairings rotate among the four teams. */
 export const futureMatchups = (week: number): RawMatchup[] => {
   const pairs = [

@@ -344,7 +344,10 @@ export async function loadMatchups(leagueId: string, week: number, force = false
   return (await cached(`matchups:${leagueId}:${week}`, 10 * MIN, () => sleeperApi.matchups(leagueId, week), { force })).value.map(parseMatchup);
 }
 
-/** Matchup pairings for future weeks (Sleeper generates the whole regular-season schedule up front). */
+/**
+ * Matchups for other weeks: pairings for future weeks (Sleeper generates the whole regular-season schedule up front), or
+ * final scores for weeks played.
+ */
 export async function loadSchedule(leagueId: string, weeks: readonly number[], force = false): Promise<Map<number, Matchup[]>> {
   const results = await Promise.allSettled(weeks.map((w) => cached(`matchups:${leagueId}:${w}`, 6 * HOUR, () => sleeperApi.matchups(leagueId, w), { force })));
   const out = new Map<number, Matchup[]>();

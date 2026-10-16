@@ -65,6 +65,13 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             fitted model.
           </li>
           <li>
+            <strong>Weeks ahead and season so far</strong> (Season tab). Ahead: each week to the end of the season, with regular starters on bye
+            or not projected, players coming back, and in weeks with a hole, the free agent who adds most that week. So far: your record against
+            all-play (your score against every team each week), which shows how much the schedule has helped or hurt. Each week&apos;s best lineup
+            in hindsight, against the league&apos;s average share. Your players against their projections. And, from now on, the app&apos;s own
+            lineup pick, saved on this device until the main Sunday kickoff.
+          </li>
+          <li>
             <strong>Trade ideas</strong> search one-for-one and two-for-one trades with every team, among each team's eight most valuable QBs, RBs,
             WRs and TEs, for trades that improve both best lineups over the rest of the season. It's lineup math only: whether the other manager says
             yes also depends on how they rank players, so market values are shown beside each idea.
@@ -137,7 +144,7 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
       <div class="card" id="privacy">
         <h2>Privacy</h2>
         <ul>
-          <li>No accounts and no server-side storage. Your Sleeper username and the data the app loads stay on this device.</li>
+          <li>No accounts and no server-side storage. Your Sleeper username, the lineup picks the app saves for its season review and the data the app loads stay on this device.</li>
           <li>Your browser requests data directly from Sleeper (username, league IDs) and from this site (GitHub Pages, which keeps standard access logs).</li>
           <li>Errors are logged only on this device; “Report a problem” opens a pre-filled GitHub issue that you choose whether to submit.</li>
         </ul>
