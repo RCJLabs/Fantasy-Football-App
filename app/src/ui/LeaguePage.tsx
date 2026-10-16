@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { LineupAnalysis, LineupChange, Objective } from '../analysis/analyze';
 import { AskTab } from './AskTab';
+import { BeforeLockCard } from './BeforeLock';
 import { ErrorBox, PlayerLine, Problems, slotLabel, Spinner } from './components';
 import { findLeague, lineupFor, loadLeagueBundle, rememberAdvice, type LeagueBundle } from './data';
 import { ago, pct, pts, signed } from './format';
@@ -197,6 +198,8 @@ function LineupTab({ a, bestBall, now, onObjective }: { a: LineupAnalysis; bestB
         )}
         <Problems problems={a.problems} />
       </div>
+
+      {bestBall ? null : <BeforeLockCard a={a} now={now} />}
 
       {a.changes.length ? (
         <div class="card">

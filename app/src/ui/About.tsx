@@ -80,6 +80,12 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             they add to your lineups once Sleeper projects them back. On IR they take no bench spot until then.
           </li>
           <li>
+            <strong>Before lock</strong> (Lineup tab, and a line on each Home league card): your lineup as set in Sleeper, kickoff by kickoff, with
+            the changes due before each game starts. For Questionable starters it says when inactives come out (90 minutes before kickoff) and who
+            would replace him if he&apos;s out, including a better fill-in whose game starts before the news. The app can&apos;t send alerts, so this
+            tells you when to look again.
+          </li>
+          <li>
             <strong>Ask the analyst</strong> (a league&apos;s Ask tab, with your own Anthropic API key): questions in plain words, answered by Claude from
             the app&apos;s own figures for that league. The model quotes figures by reference and the app puts in the numbers, so they match the other
             tabs; any number it types itself is checked and marked when it isn&apos;t one of the app&apos;s. It can still misread a figure, so the

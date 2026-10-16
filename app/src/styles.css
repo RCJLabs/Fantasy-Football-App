@@ -814,3 +814,10 @@ mark.unchecked {
   border-radius: 3px;
   padding: 0 0.15em;
 }
+/* Before lock. */
+.before-lock h3 {
+  margin: 0.8rem 0 0.3rem;
+}
+.next-lock {
+  margin: 0.4rem 0 0;
+}

@@ -81,6 +81,7 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(card).toContainText('Riley Runner (RB) is Out');
   await expect(card).toContainText('Better lineup available');
   await expect(page.locator('.league-card').filter({ hasText: 'Dynasty Startup' })).toContainText('pre draft');
+  await expect(card.locator('.next-lock')).toHaveText(/^Next lock .+: 2 changes due, 1 Questionable to check at inactives\.$/);
   // Across leagues: the keeper and dynasty test leagues share one roster, so every starter is in both lineups.
   const across = page.locator('.card.across');
   const lists = across.locator('.across-list');
@@ -102,6 +103,17 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(page.getByRole('heading', { name: 'Make these changes' })).toBeVisible();
   await expect(page.locator('.changes')).toContainText('over Riley Runner');
   await expect(page.locator('.changes')).toContainText('Start Morgan Halfback');
+  // Before lock: the lineup set in Sleeper, kickoff by kickoff.
+  const lock = page.locator('.card.before-lock');
+  await expect(lock).toContainText('1 starter is already playing.');
+  await expect(lock.locator('ul.problems').first()).toHaveText('Start Casey Depth over Jordan Back, who has no game this week.');
+  await expect(lock.locator('h3').nth(1)).toContainText('· 5 starters lock');
+  await expect(lock.locator('ul.problems').nth(1)).toContainText('Start Morgan Halfback over Riley Runner, who is Out.');
+  await expect(lock.locator('ul.problems').nth(1)).toContainText(
+    /Drew Flanker is Questionable \(74% to play\)\. Inactives come out about .+\. Nobody on your bench can fill WR if he's out\./,
+  );
+  await expect(lock.locator('h3').nth(2)).toContainText('· 2 starters lock');
+  await expect(lock).toContainText('Nothing to change.');
   const flanker = page.locator('.pl').filter({ hasText: 'Drew Flanker' }).first();
   await expect(flanker).toContainText('Q · L');
   await flanker.getByRole('button').click();
