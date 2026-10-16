@@ -1,14 +1,17 @@
 import { useState } from 'preact/hooks';
+import { groupLabel, poolLedger, type PooledLedger } from '../analysis/ledger';
 import { clearCache } from '../data/cache';
 import type { AccuracyFile } from '../data/contracts';
-import { loadAccuracy, loadManifest } from '../data/repo';
-import { dateTime, pct } from './format';
+import { loadAccuracy, loadLedger, loadManifest } from '../data/repo';
+import { dateTime, pct, signed } from './format';
 import { reportProblemUrl } from './errorLog';
 import { useAsync } from './hooks';
 
 export function About({ onSignOut }: { onSignOut?: () => void }) {
   const manifest = useAsync(() => loadManifest(), []);
   const accuracy = useAsync(() => loadAccuracy(), []);
+  const ledger = useAsync(() => loadLedger(), []);
+  const pooled = poolLedger(ledger.data);
   const [cleared, setCleared] = useState(false);
 
   return (
@@ -77,6 +80,7 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
       </div>
 
       {accuracy.data ? <AccuracyCard file={accuracy.data} /> : null}
+      {pooled ? <LedgerCard ledger={pooled} /> : null}
 
       <div class="card">
         <h2>Data and credits</h2>
@@ -179,6 +183,63 @@ function AccuracyCard({ file }: { file: AccuracyFile }) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+const RELEASES = 'https://github.com/RCJLabs/Fantasy-Football-App/releases';
+
+/** The app's own predictions, saved before each kickoff and scored after the games (published aggregates; docs/ledger.md). */
+function LedgerCard({ ledger }: { ledger: PooledLedger }) {
+  const w = ledger.weeks;
+  const contiguous = w.every((x, i) => i === 0 || x === w[i - 1]! + 1);
+  const span = w.length > 1 && contiguous ? `weeks ${w[0]}–${w.at(-1)}` : `week${w.length > 1 ? 's' : ''} ${w.join(', ')}`;
+  const p = ledger.points;
+  return (
+    <div class="card">
+      <h2>How did the app's own predictions do?</h2>
+      <p class="muted small">
+        Before every kickoff the app saves each player's chance to play and points, and publishes a fingerprint of them so they can't be changed
+        afterwards. After the games they're checked against what happened: {ledger.season} {span}, {ledger.games} games.
+      </p>
+      {ledger.calibration.length ? (
+        <div class="table-wrap">
+          <table class="table">
+            <caption class="muted small">Chance to play, players with an injury tag</caption>
+            <thead>
+              <tr>
+                <th>Tag</th>
+                <th class="num">Players</th>
+                <th class="num">Predicted</th>
+                <th class="num">Played</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ledger.calibration.map((r) => (
+                <tr>
+                  <td>{groupLabel(r.group)}</td>
+                  <td class="num">{r.n}</td>
+                  <td class="num">{pct(r.predicted)}</td>
+                  <td class="num">{pct(r.observed)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      {p.n ? (
+        <p class="small">
+          <strong>Points if active:</strong> {p.n} players projected for {p.minProjected}+ PPR who played. Average miss {p.mae.toFixed(1)} points, bias{' '}
+          {signed(p.bias)}; {pct(p.within1)} landed within the app's ±1 SD range (about 68% means the range is right).
+        </p>
+      ) : null}
+      <p class="muted small">
+        Groups of a few dozen players are a rough read. The weekly scores and the fingerprints are public on{' '}
+        <a href={RELEASES} target="_blank" rel="noopener">
+          GitHub
+        </a>
+        .
+      </p>
     </div>
   );
 }

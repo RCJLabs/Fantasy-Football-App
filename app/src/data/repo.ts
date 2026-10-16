@@ -9,6 +9,7 @@ import {
   type AccuracyFile,
   type BaselineFile,
   type CompactPlayer,
+  type LedgerFile,
   type Manifest,
   type MatchupsFile,
   type PlayersFile,
@@ -372,6 +373,15 @@ export async function loadTrending(): Promise<Map<string, number>> {
 export async function loadAccuracy(): Promise<AccuracyFile | null> {
   try {
     return (await cached('data:accuracy', 6 * HOUR, () => fetchDataFile<AccuracyFile>('accuracy.json'))).value;
+  } catch {
+    return null;
+  }
+}
+
+/** The app's pre-kickoff predictions, scored each finished week (null before the first is scored). */
+export async function loadLedger(): Promise<LedgerFile | null> {
+  try {
+    return (await cached('data:ledger', 6 * HOUR, () => fetchDataFile<LedgerFile>('ledger.json'))).value;
   } catch {
     return null;
   }

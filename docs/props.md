@@ -92,7 +92,7 @@ A `props: test` run fetched HOU at JAX (week 6, Sunday):
   - Props must be within ~5–10% of RotoWire's MAE.
   - A blend with weights fit on earlier weeks must lower MAE out of sample, with the pooled 95% interval below zero.
   - That needs several weeks. Historical props (paid plans only) would shorten it: about 49,000 credits for 2023–25, one month of the $59
-    plan.
+    plan. Not bought for now (2026-10-16), so the gate waits for live weeks.
 
 ## Limits
 

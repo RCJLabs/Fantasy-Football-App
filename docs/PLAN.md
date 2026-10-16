@@ -10,6 +10,11 @@
 - `main` was created.
 - The private archive repo couldn't be created by the integration, so the archive runs in this repo instead, age-encrypted (only the key holder can read it).
 
+**Decisions (2026-10-16):**
+- The ledger is scored automatically in Actions with the current archive key, accepting the single-key risk for now ([ledger.md](ledger.md)).
+- The scored ledger goes on the About page once 3 weeks are in, with sample sizes.
+- No historical props for now: the props blend gate waits for live weeks.
+
 **Progress:**
 - **Phase 0 — done.**
   - Archive running since Week 6 (pre-TNF).
@@ -91,7 +96,7 @@
   - `scripts/ledger/score.ts` takes the last prediction committed before each kickoff and checks it against nflverse outcomes:
     - chance to play: Brier, log loss, calibration by tag, against game-day actives;
     - points if active: MAE, bias, ±1/±2 SD coverage, against PPR results.
-  - Only played games count. It runs where the archive key is: a session now, or Actions if the key is added as a secret (your call).
+  - Only played games count. Since 2026-10-16 it runs in Actions on every archive run, once the key is a secret ([ledger.md](ledger.md)).
   - It's live-tested on the archive's real assets. The first committed set (00:03 UTC Friday, 418 players, 14 games) predates Thursday
     night's kickoff.
 
@@ -162,6 +167,14 @@
     noise (r ≈ 0.3 for both sources).
   - **Shipped** inside `baseline.json` (team codes): a labelled second opinion for defenses, and the DEF fallback for a week without Sleeper
     projections. Kickers stay Sleeper-only.
+
+- **Ledger scoring automated, and shown on About — built (2026-10-16):** details in [ledger.md](ledger.md).
+  - **Job:** the archive workflow's `ledger` job scores each finished week once, two days after its last game, and publishes the aggregates
+    to the `ledger` release. The site copies them as `data/ledger.json`. It skips until the `ARCHIVE_AGE_KEY` secret exists.
+  - **About page:** a card with chance to play by tag, points-if-active error and sample sizes, once 3 weeks are scored.
+  - **Dry run on the real archive:** week 6 so far (Thursday's game) scored 29 player-games: 6 tagged players, all Out and all inactive;
+    12 points-if-active predictions with an average miss of 4.6.
+  - **Fixed on the way:** `fetch.sh` now pages through release assets, since a monthly archive release will hold several hundred.
 
 - **Title odds — built (2026-10-16):** part of the Phase 3 full trade analyzer, brought forward; details in [title-odds.md](title-odds.md).
   - **Bracket:** each simulated season plays on through the winners' bracket.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlayerPrediction, PredictionFile } from './ledger';
-import { lastBeforeKickoff, nflverseOutcomes, scoreLedger } from './ledger-score';
+import { combineLedger, dueWeeks, GIVE_UP_DAYS, lastBeforeKickoff, nflverseOutcomes, playedGames, scoreLedger, SETTLE_DAYS, validateLedgerWeek } from './ledger-score';
 
 const KICK = '2026-10-18T17:00:00.000Z';
 const LATE = '2026-10-18T20:25:00.000Z';
@@ -111,5 +111,56 @@ describe('ledger scoring', () => {
     // a: app 10 off 5, props off 1, blend 12 off 3. b: app off 4, props off 2, blend 7 off 3.
     expect(s.props).toEqual({ n: 2, appMae: 4.5, propsMae: 1.5, blendMae: 3, ratio: 0.333 });
     expect(s.points.mae).toBe(4); // the app's own score still uses its last prediction (a: 11)
+  });
+});
+
+describe('ledger automation', () => {
+  const schedule = [
+    { id: '2026_06_SEA_DEN', week: 6, kickoff: '2026-10-16T00:15:00.000Z' },
+    { id: '2026_06_HOU_JAX', week: 6, kickoff: '2026-10-18T13:30:00.000Z' },
+    { id: '2026_06_TB_DET', week: 6, kickoff: '2026-10-20T00:15:00.000Z' }, // Monday night
+    { id: '2026_07_DEN_KC', week: 7, kickoff: '2026-10-23T00:15:00.000Z' },
+  ];
+  const at = (iso: string) => Date.parse(iso);
+  const all = new Set(['2026_06_SEA_DEN', '2026_06_HOU_JAX', '2026_06_TB_DET']);
+
+  it('scores a week once every game has stats and the last one has settled', () => {
+    expect(SETTLE_DAYS).toBe(2);
+    expect(dueWeeks([6, 7], schedule, all, at('2026-10-21T12:00:00Z'))).toEqual([]); // 1.5 days after MNF
+    expect(dueWeeks([7, 6], schedule, all, at('2026-10-22T01:00:00Z'))).toEqual([6]);
+    // Monday's game not in the stats yet: wait, then give up after a week and score what was played.
+    const noMnf = new Set(['2026_06_SEA_DEN', '2026_06_HOU_JAX']);
+    expect(dueWeeks([6], schedule, noMnf, at('2026-10-24T00:00:00Z'))).toEqual([]);
+    expect(dueWeeks([6], schedule, noMnf, at('2026-10-20T00:15:00Z') + GIVE_UP_DAYS * 86_400_000)).toEqual([6]);
+    // Weeks without a schedule, and postseason weeks, are never due.
+    expect(dueWeeks([5, 19], schedule, all, at('2026-12-01T00:00:00Z'))).toEqual([]);
+  });
+
+  it('knows played games from regular-season stat rows', () => {
+    const played = playedGames([
+      { game_id: 'G1', season_type: 'REG' },
+      { game_id: 'G1', season_type: 'REG' },
+      { game_id: 'P1', season_type: 'POST' },
+      { game_id: '', season_type: 'REG' },
+    ]);
+    expect([...played]).toEqual(['G1']);
+  });
+
+  it('publishes only weeks that validate, one per week, in order', () => {
+    const week = (w: number, over: object = {}) => ({
+      ...scoreLedger('2026', w, new Map(), { played: new Set(), byGsis: new Map() }),
+      ...over,
+    });
+    expect(validateLedgerWeek(week(6), '2026')).toEqual([]);
+    expect(validateLedgerWeek(week(6), '2027')).toEqual(['season 2026']);
+    expect(validateLedgerWeek(week(19), '2026')).toEqual(['week 19']);
+    expect(validateLedgerWeek(week(6, { points: { n: 3 } }), '2026')).toEqual(['bad points']);
+    expect(validateLedgerWeek(null, '2026')).toEqual(['not an object']);
+    const file = combineLedger([week(8), week(6), week(6, { scored: 7 }), { ...week(5), season: '2025' }], '2026', '2026-10-28T00:00:00.000Z');
+    expect(file.weeks.map((w) => [w.week, w.scored])).toEqual([
+      [6, 7],
+      [8, 0],
+    ]);
+    expect(file).toMatchObject({ schemaVersion: 1, season: '2026', generatedAt: '2026-10-28T00:00:00.000Z' });
   });
 });

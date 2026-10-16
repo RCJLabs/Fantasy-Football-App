@@ -13,9 +13,10 @@ out="$4"
 repo="${GH_REPO:-RCJLabs/Fantasy-Football-App}"
 mkdir -p "$out"
 
-# A week's snapshots can span two monthly releases (archive-YYYY-MM).
-for tag in $(gh api "repos/$repo/releases?per_page=100" --jq ".[].tag_name | select(startswith(\"archive-$season\"))"); do
-  gh api "repos/$repo/releases/tags/$tag" --jq ".assets[] | select(.name | startswith(\"snap_${season}w${week}_\")) | \"\(.id) \(.name)\"" |
+# A week's snapshots can span two monthly releases (archive-YYYY-MM), each holding hundreds of assets: page them.
+for tag in $(gh api --paginate "repos/$repo/releases?per_page=100" --jq ".[].tag_name | select(startswith(\"archive-$season\"))"); do
+  rid="$(gh api "repos/$repo/releases/tags/$tag" --jq .id)"
+  gh api --paginate "repos/$repo/releases/$rid/assets?per_page=100" --jq ".[] | select(.name | startswith(\"snap_${season}w${week}_\")) | \"\(.id) \(.name)\"" |
     while read -r id name; do
       ts="${name#"snap_${season}w${week}_"}"
       ts="${ts%.tar.gz.age}"

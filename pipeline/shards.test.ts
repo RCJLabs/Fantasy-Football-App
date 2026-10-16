@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { scoreLedger } from './ledger-score';
 import { decideShard, isCurrent, rowCount, validateShard } from './shards';
 
 const usage = (n: number, weeks = [2, 3, 4, 5], season = '2026') => ({
@@ -54,5 +55,19 @@ describe('data shards', () => {
   it('treats only same-season shards (same-week baselines) as current', () => {
     expect(isCurrent('matchups.json', { season: '2026' }, '2026', 9)).toBe(true);
     expect(isCurrent('baseline.json', { season: '2026', week: 8 }, '2026', 9)).toBe(false);
+  });
+});
+
+describe('ledger shard', () => {
+  const week = (w: number) => scoreLedger('2026', w, new Map(), { played: new Set(), byGsis: new Map() });
+  const ledger = (weeks: unknown[]) => ({ schemaVersion: 1, generatedAt: '2026-10-22T04:17:00Z', season: '2026', weeks });
+
+  it('publishes scored weeks and keeps the deployed copy when the release is unreachable', () => {
+    expect(validateShard('ledger.json', ledger([week(6), week(7)]))).toEqual([]);
+    expect(rowCount('ledger.json', ledger([week(6), week(7)]))).toBe(2);
+    expect(validateShard('ledger.json', ledger([]))).toEqual(['0 rows (expected 1+)']);
+    expect(validateShard('ledger.json', ledger([week(6), { ...week(7), season: '2025' }]))).toEqual(["1 weeks that don't validate"]);
+    expect(decideShard('ledger.json', null, ledger([week(6)]), '2026', 8)).toMatchObject({ use: 'kept', reason: 'not built' });
+    expect(decideShard('ledger.json', null, undefined, '2026', 8)).toEqual({ use: 'none', reason: 'not built' });
   });
 });

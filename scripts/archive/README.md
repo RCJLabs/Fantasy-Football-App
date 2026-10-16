@@ -84,6 +84,11 @@ For each player-game the scorer takes the **last prediction committed before kic
 Only games with stats count. Weekly rosters exist before kickoff too, so counting them early would score pre-game statuses. The output is
 aggregates only.
 
+**Automatically:** the workflow's `ledger` job runs `scripts/ledger/auto.sh` on every archive run.
+- It scores each week once, two days after the last game, with the `ARCHIVE_AGE_KEY` secret.
+- It publishes the aggregates to the `ledger` release, which the site copies as `data/ledger.json`.
+- Details, and the risk of keeping the key in Actions: [docs/ledger.md](../../docs/ledger.md).
+
 
 ## Past seasons for backtests
 
