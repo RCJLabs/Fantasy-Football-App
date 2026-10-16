@@ -2,7 +2,7 @@ import { useMemo, useState } from 'preact/hooks';
 import { analyzeWaivers, type PlayerRow } from '../analysis/analyze';
 import { marketPrice } from '../analysis/faab';
 import { GRADE_WEIGHTS, leagueGrades, type Grade, type LeagueGrades, type Part } from '../analysis/grades';
-import { evaluateTrade, freeAgentPool, scheduleOutlook, streamers, waiverBoard, type ByeWeek, type LeagueOutlook, type TradeSideResult } from '../analysis/outlook';
+import { evaluateTrade, freeAgentPool, streamers, waiverBoard, type ByeWeek, type LeagueOutlook, type TradeSideResult } from '../analysis/outlook';
 import { carriedForward, longTermRanking } from '../analysis/longterm';
 import { pickAssets, pickLabel, pickTotals, type PickAsset } from '../analysis/picks';
 import { findTrades, type TradeIdea } from '../analysis/tradeFinder';
@@ -11,8 +11,9 @@ import { loadTrending } from '../data/repo';
 import { InjuryBadge, ErrorBox, Spinner, usageNote } from './components';
 import { loadSeason, type LeagueBundle, type SeasonBundle } from './data';
 import { logError } from './errorLog';
-import { kickoffLabel, pct, pts, signed } from './format';
+import { kickoffLabel, ordinal, pct, pts, roundName, signed } from './format';
 import { useAsync } from './hooks';
+import { SeasonSoFarCard, WeeksAheadCard } from './WeeksCards';
 
 const money = (n: number) => `$${Math.round(n)}`;
 const weekSpan = (weeks: readonly number[]) => (weeks.length ? (weeks.length > 1 ? `weeks ${weeks[0]}–${weeks.at(-1)}` : `week ${weeks[0]}`) : 'no weeks');
@@ -223,7 +224,6 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
       b.roster.wins - a.roster.wins ||
       b.roster.pointsFor - a.roster.pointsFor,
   );
-  const schedule = scheduleOutlook(o, myId).filter((x) => x.week <= (rules.playoffWeekStart ? rules.playoffWeekStart - 1 : 18));
   return (
     <div class="stack">
       <GradesCard bundle={bundle} o={o} />
@@ -290,31 +290,8 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
         <MissingWeeks season={s.data} />
       </div>
       {o.bracket ? <BracketCard o={o} myId={myId} /> : null}
-      {schedule.length ? (
-        <div class="card">
-          <h2>Your schedule</h2>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Week</th>
-                <th>Opponent</th>
-                <th class="num">Proj</th>
-                <th class="num">Win</th>
-              </tr>
-            </thead>
-            <tbody>
-              {schedule.map((x) => (
-                <tr>
-                  <td>{x.week}</td>
-                  <td>{x.opponent === null ? '–' : (o.teams.get(x.opponent)?.name ?? '?')}</td>
-                  <td class="num">{pts(x.mean)}</td>
-                  <td class="num">{x.winProb === null ? '–' : pct(x.winProb)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
+      <WeeksAheadCard bundle={bundle} o={o} />
+      <SeasonSoFarCard bundle={bundle} />
       {bundle.league.rules.type !== 'redraft' ? <LongTermCard bundle={bundle} season={s.data} /> : null}
     </div>
   );
@@ -404,10 +381,6 @@ function GradesCard({ bundle, o }: { bundle: LeagueBundle; o: LeagueOutlook }) {
     </div>
   );
 }
-
-const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
-
-const roundName = (round: number, rounds: number) => (round === rounds ? 'final' : round === rounds - 1 ? 'semifinals' : `round ${round}`);
 
 /** In the playoffs: Sleeper's bracket as it stands, this round's games, and title odds from playing out the rest. */
 function BracketCard({ o, myId }: { o: LeagueOutlook; myId: number }) {

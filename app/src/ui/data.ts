@@ -1,5 +1,6 @@
 import { analyzeLineup, type LineupAnalysis, type LineupOptions, type WeekContext } from '../analysis/analyze';
 import { buildOutlook, type LeagueOutlook } from '../analysis/outlook';
+import { reviewSeason, type SeasonReview } from '../analysis/review';
 import { playoffWeekInfo, projectionPositions, regularSeasonEnd, regularSeasonOver, RosModel, seasonEnd, teamIds } from '../analysis/ros';
 import type { League, Roster } from '../domain/types';
 import {
@@ -19,6 +20,7 @@ import {
 } from '../data/repo';
 import { findUserRoster } from '../sleeper/parse';
 import type { RawTradedPick, RawTransaction } from '../sleeper/raw';
+import { adviceCutoff, loadAdvice, saveAdvice } from './advice';
 import { objectivePref, type Phase } from './prefs';
 import type { Session } from './session';
 
@@ -85,9 +87,19 @@ export async function loadLeagueBundle(league: League, week: number, session: Se
     const extra = await roundExtra(bundle, myRoster).catch(() => undefined);
     if (extra) bundle.extra = extra;
     const lineup = lineupFor(bundle);
-    if (lineup) bundle.lineup = lineup;
+    if (lineup) {
+      bundle.lineup = lineup;
+      rememberAdvice(bundle, lineup);
+    }
   }
   return bundle;
+}
+
+/** Keeps the week's recommended starters on this device (until the main Sunday kickoff) for the season review. */
+export function rememberAdvice(bundle: LeagueBundle, a: LineupAnalysis): void {
+  if (bundle.league.rules.bestBall || a.week !== bundle.week) return;
+  const starters = a.recommended.flatMap((r) => (r ? [r.id] : []));
+  saveAdvice(bundle.league.id, a.week, starters, Date.now(), adviceCutoff(bundle.ctx.gamesByTeam.values()));
 }
 
 /**
@@ -165,6 +177,44 @@ async function buildSeason(bundle: LeagueBundle): Promise<SeasonBundle> {
     ...(played ? { played } : {}),
   });
   return { outlook, missingWeeks: ros.missing, claims, ...(tradedPicks !== undefined ? { tradedPicks } : {}) };
+}
+
+/** Regular-season weeks already scored. */
+export function playedWeeks(league: League, week: number): number[] {
+  return range(1, Math.min(league.rules.lastScoredWeek ?? week - 1, week - 1, regularSeasonEnd(league)));
+}
+
+// The review loads every played week's matchups and projections: once per league bundle.
+const reviewMemo = new WeakMap<LeagueBundle, Promise<SeasonReview | undefined>>();
+export function loadReview(bundle: LeagueBundle): Promise<SeasonReview | undefined> {
+  let p = reviewMemo.get(bundle);
+  if (!p) {
+    p = buildReview(bundle);
+    reviewMemo.set(bundle, p);
+    p.catch(() => reviewMemo.delete(bundle));
+  }
+  return p;
+}
+
+async function buildReview(bundle: LeagueBundle): Promise<SeasonReview | undefined> {
+  const { league, week, data, ctx, myRoster } = bundle;
+  const weeks = playedWeeks(league, week);
+  if (!myRoster || !weeks.length) return undefined;
+  // Projections only feed the players' comparison: the rest stands without them.
+  const [played, projections] = await Promise.all([
+    loadSchedule(league.id, weeks),
+    loadRosWeeks(league.season, weeks, projectionPositions(league)).catch(() => undefined),
+  ]);
+  if (!played.size) throw new Error('Could not load past weeks from Sleeper.');
+  return reviewSeason({
+    league,
+    rosters: data.rosters,
+    rosterId: myRoster.rosterId,
+    played,
+    players: ctx.players,
+    ...(projections?.byWeek.size ? { projections: projections.byWeek } : {}),
+    advice: loadAdvice(league.id, weeks),
+  });
 }
 
 export async function findLeague(session: Session, leagueId: string, force: boolean): Promise<{ overview: Overview; league: League }> {

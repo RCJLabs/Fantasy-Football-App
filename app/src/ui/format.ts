@@ -6,6 +6,8 @@ export const pct = (p: number | undefined): string => {
   return `${Math.round(p * 100)}%`;
 };
 export const signed = (n: number): string => `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(1)}`;
+export const ordinal = (n: number): string => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th')}`;
+export const roundName = (round: number, rounds: number): string => (round === rounds ? 'final' : round === rounds - 1 ? 'semifinals' : `round ${round}`);
 
 const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });

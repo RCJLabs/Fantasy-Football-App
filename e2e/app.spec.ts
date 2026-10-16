@@ -6,7 +6,7 @@ const leagueBody = (id: string, rest: string): unknown =>
   rest === 'rosters' ? fx.rosters
   : rest === 'users' ? fx.users
   : rest === 'matchups/6' ? fx.matchups
-  : rest.startsWith('matchups/') ? fx.futureMatchups(Number(rest.split('/').pop()))
+  : rest.startsWith('matchups/') ? (Number(rest.split('/').pop()) < 6 ? fx.pastMatchups : fx.futureMatchups)(Number(rest.split('/').pop()))
   : rest.startsWith('transactions/') ? fx.transactions.filter((t) => t.leg === Number(rest.split('/').pop()))
   : rest === 'traded_picks' ? (id === '1003' ? fx.tradedPicks : [])
   : undefined;
@@ -66,6 +66,10 @@ test('unknown username shows an error', async ({ page }) => {
 });
 
 test('username import → league dashboard → lineup, matchup and waivers', async ({ page }, testInfo) => {
+  // The app's lineup pick for week 3, as an earlier visit would have saved it: the lineup that turned out best.
+  await page.addInitScript(() =>
+    localStorage.setItem('ff:advice:1001:3', JSON.stringify({ at: 0, starters: ['q1', 'r1', 'r2', 'w1', 'w2', 't1', 'w3', 'k1', 'd1'] })),
+  );
   await page.goto('./');
   await page.getByLabel('Sleeper username').fill('testuser');
   await page.getByRole('button', { name: 'Find my leagues' }).click();
@@ -153,7 +157,31 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(standings.locator('thead')).toContainText('Playoffs');
   await expect(standings.locator('thead')).toContainText('Title');
   await expect(standings.locator('tr.mine')).toContainText('Test Titans');
-  await expect(page.getByRole('heading', { name: 'Your schedule' })).toBeVisible();
+  // Weeks ahead: the Out RB is back in week 7; week 8's bye opens a hole a free agent fills; the final is labelled.
+  const ahead = page.locator('.card', { has: page.getByRole('heading', { name: 'Weeks ahead' }) });
+  await expect(ahead.locator('p').first()).toHaveText('Holes in your lineup: week 8. In the playoff week your best lineup ranks 1st of 4.');
+  await expect(ahead.locator('tbody tr')).toHaveCount(12); // weeks 7–15, three with notes
+  await expect(ahead.locator('tr.plan-note').first()).toHaveText('Back: Riley Runner');
+  await expect(ahead.locator('tr.hole')).toContainText('Rival Raiders');
+  await expect(ahead.locator('tr.hole + tr.plan-note')).toHaveText(/^Bye: Jordan Back · Best pickup: Free Agent Runner \(RB\) \+\d+\.\d$/);
+  await expect(ahead.locator('tbody tr').nth(-2)).toContainText('Playoffs, final');
+  await expect(ahead.locator('tbody tr').last()).toHaveText('Your lineup ranks 1st of 4');
+  // Season so far, from weeks 1–5's final scores: luck, lineups against the best in hindsight, and the saved pick for week 3.
+  const sofar = page.locator('.card', { has: page.getByRole('heading', { name: 'Season so far' }) });
+  await expect(sofar.locator('p').first()).toHaveText(
+    "Record 4-1 (3-2 against the league median). Your weekly scores beat 67% of the others' (all-play 10-5), worth 3.3 wins on an average schedule: the schedule has given you about 0.7 more. Points against: 510.0, the fewest in the league.",
+  );
+  await expect(sofar.locator('p').nth(1)).toHaveText('Your lineups scored 595.0 of a possible 611.0 (97%), leaving 16.0 on the bench. The league averages 99%; you rank 4th of 4.');
+  await expect(sofar.locator('p').nth(2)).toHaveText('The app saved its lineup pick on this device in 1 of these weeks: its lineups scored 132.0, yours 119.0 (−13.0).');
+  const weeks = sofar.locator('table.review tbody tr');
+  await expect(weeks).toHaveCount(5);
+  await expect(weeks.nth(2).locator('td')).toHaveText(['3', 'W 119.0–105.0', '132.0', '3rd /4', '132.0']);
+  await expect(weeks.nth(1).locator('td').nth(1)).toHaveClass(/bad/);
+  // Players against their projections: the WR running hot first, the depth RB last.
+  const vs = sofar.locator('table.review-players tbody tr');
+  await expect(vs.first()).toContainText('Taylor Wideout');
+  await expect(vs.first().locator('td').last()).toHaveText('+7.4');
+  await expect(vs.last()).toContainText('Casey Depth');
   // Keeper league: long-term outlook from (mocked) FantasyCalc dynasty values, with my two likely keepers.
   await expect(page.getByRole('heading', { name: 'Long-term outlook' })).toBeVisible();
   await expect(page.locator('ol.core li')).toHaveCount(2);
@@ -265,10 +293,13 @@ test('phone layout: nothing pushes the page sideways, and a 10-team standings ta
   ];
   const rosters = names.map((_, i) => fx.rosters[i] ?? { roster_id: i + 1, owner_id: `u${i + 1}`, players: [], starters: [], settings: { wins: i % 5, losses: 5 - (i % 5) } });
   const users = names.map((n, i) => ({ user_id: `u${i + 1}`, display_name: `user${i + 1}`, metadata: { team_name: n } }));
+  // Weeks 1–5 are scored (my team's from the shared fixture), so the season review has ten teams to compare.
   const pairings = (week: number) =>
     Array.from({ length: 10 }, (_, i) => {
+      const matchup_id = Math.floor(((i + week) % 10) / 2) + 1;
+      if (week < 6) return i === 0 ? { ...fx.pastMatchups(week)[0]!, matchup_id } : { roster_id: i + 1, matchup_id, starters: [], players: [], points: 80 + ((i * 7 + week * 3) % 50) };
       const m = week === 6 ? fx.matchups.find((x) => x.roster_id === i + 1) : undefined;
-      return m ?? { roster_id: i + 1, matchup_id: Math.floor(((i + week) % 10) / 2) + 1, starters: [], players: [], points: 0 };
+      return m ?? { roster_id: i + 1, matchup_id, starters: [], players: [], points: 0 };
     });
   const tenTeams = { ...fx.league, total_rosters: 10, settings: { ...fx.league.settings, num_teams: 10, playoff_teams: 6 } };
   await page.route('https://api.sleeper.app/v1/**', (route) => {
@@ -299,8 +330,14 @@ test('phone layout: nothing pushes the page sideways, and a 10-team standings ta
   // The team grades table too: all ten teams, every column in view.
   const grades = page.locator('.card', { has: page.getByRole('heading', { name: 'Team grades' }) }).locator('table');
   await expect(grades.locator('tbody tr')).toHaveCount(10);
+  // Weeks ahead and the season so far (weekly results, players against projections).
+  const plan = page.locator('table.plan');
+  const review = page.locator('table.review');
+  const players = page.locator('table.review-players');
+  await expect(review.locator('tbody tr')).toHaveCount(5);
+  await expect(players.locator('tbody tr').first()).toBeVisible();
   const fits = async () => {
-    for (const [label, table] of [['standings', standings], ['grades', grades]] as const) {
+    for (const [label, table] of [['standings', standings], ['grades', grades], ['weeks ahead', plan], ['season so far', review], ['players', players]] as const) {
       const fit = await table.evaluate((t) => ({ table: t.scrollWidth, wrap: t.parentElement!.clientWidth }));
       expect(fit.table, `${label} ${fit.table}px wide in ${fit.wrap}px`).toBeLessThanOrEqual(fit.wrap);
     }

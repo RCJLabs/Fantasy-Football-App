@@ -578,6 +578,17 @@ h3 {
   background: var(--surface-2);
   font-weight: 600;
 }
+/* Weeks ahead: a week's notes sit under its row, as part of it. */
+.table.plan tr.plan-note td {
+  border-top: none;
+  padding-top: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.table.plan tr.hole td:first-child {
+  color: var(--warn);
+  font-weight: 700;
+}
 .table.stream + .table.stream {
   margin-top: 0.9rem;
 }

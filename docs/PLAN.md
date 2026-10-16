@@ -190,6 +190,18 @@
     added up separately.
   - **On the owner's leagues:** keeper league A (1st of 10), redraft C (4th of 12); the dynasty league is pre-draft, so it gets no grades.
 
+- **Season so far and weeks ahead — built (2026-10-16):** item 1 of the owner's assistance list (see the roadmap, Phase 2); details in
+  [season-review.md](season-review.md).
+  - **Weeks ahead** (replaces "Your schedule"): each week to the end of the season, playoffs included. It shows the matchup, regular
+    starters on bye or not projected, open slots, who's back, and in weeks with a hole, the free agent who adds most that week.
+  - **Season so far:** the record, all-play and schedule luck, points against, and each week's best lineup in hindsight. Your
+    lineups' share of it is compared with the league's.
+  - **Players:** your players against their projections, flagged beyond weekly swings.
+  - **The app's pick:** the app now saves its lineup pick on the device until the main Sunday kickoff, so later weeks show it next to
+    yours.
+  - **On the owner's leagues:** luck +0.6 and −0.4 wins. Lineups at 89% and 88% of the best possible, against league averages of 89%.
+    Bye holes show in weeks 7–11 and 8–13.
+
 - **Phone layout — fixed (2026-10-16):** the standings table pushed the page sideways on a 412px phone. Grid columns now can't grow past
   the screen, tables are tighter on phones, and points for sits under W-L. An e2e test checks 412px and 360px.
 
@@ -635,6 +647,42 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
 7. If time remains: DvP residual and CB-depletion flag, **display-only**, labelled. **Done 2026-10-16**; their backtest found no lift, so
    they stay display-only ([matchups-gate.md](matchups-gate.md)).
 8. Pipeline grows: Python package, usage/env shards, JSON-Schema contracts, nflverse→Sleeper stat-mapping test (tolerance 0.1 pt; DEF/K/IDP and distance tiers excluded from the gate). **Done 2026-10-16** in TypeScript: usage shard, shard validators, last-good shards, stat mapping ([stat-mapping.md](stat-mapping.md)).
+
+**The owner's assistance list (2026-10-16), in order.** Item 1, the season review and weeks-ahead planner, is built
+([season-review.md](season-review.md)). Whatever isn't live by the freeze moves to Phase 3.
+2. **Handcuffs and next man up.**
+   - For each of your starters: who takes over if he misses time, whether that player is free, and his insurance value. This uses the
+     depth charts in `players.json` and the injury-risk curves.
+   - League-wide, it flags who benefits on waivers when a starter goes on IR.
+   - How much of the workload the backup inherits isn't modelled yet. Version 1 uses his usage in past games the starter missed
+     (nflverse) and stays context-only until a backtest supports it.
+3. **IR stash finder.** Free agents who are IR-eligible, ranked by playoff-week value, whose expected return (injury durations by type)
+   lands before your playoffs. Shown only with an open IR slot. Small: the models exist.
+4. **Waiver claim plan.**
+   - Ordered claims, each paired with its drop: the player whose loss costs least over the coming weeks, keeping bye and injury cover.
+   - Backup claims in case a first choice fails, and the FAAB budget split across several claims.
+   - Builds on the waiver board's values and the calibrated bids.
+5. **Buy low / sell high.**
+   - Actual points against what usage predicts (the in-house baseline), flagging players running hot or cold on touchdowns. These feed
+     trade ideas.
+   - That usage predicts future points better than recent points is `[reported]`, not ours. It stays display-only until our own
+     backtest shows lift, as with matchups ([matchups-gate.md](matchups-gate.md)).
+6. **"What would it take" for one player.** You name a player on another team; it finds your cheapest packages where both lineups gain
+   and market values roughly match. It's the trade finder turned around.
+7. **Across all your leagues (Home).** Players you start in several leagues, NFL games where your starters bunch up, and the same waiver
+   target in two leagues (bid where he matters more). No new data.
+8. **Game-day inactive alerts.**
+   - Before each Sunday window, if a starter is ruled out, the alert names the swap.
+   - **Needs a server:** an installed web app can't wake itself at a set time. It needs the Cloudflare scheduler (decision pending) plus
+     Web Push, and the push subscription goes into the data inventory first (rule 8; §8 decision 6).
+   - **Until then:** a "before lock" checklist in the app.
+9. **Dynasty startup draft assistant.** A live board from Sleeper's draft picks that ranks the best available by league scoring,
+   FantasyCalc dynasty values and roster needs. This is Phase 3's draft assistant; it comes forward only if the startup draft is before
+   the freeze (date pending). Sleeper's draft data is untested here.
+10. **Ask the analyst.**
+    - Plain-language questions answered only from the app's computed numbers, with every number checked against them. This is Phase 3's
+      LLM layer; it comes forward if you choose bring-your-own-key, which needs no server.
+    - **Risk:** confidently wrong prose, which the number check reduces but doesn't remove.
 
 **Checkpoint:** **Dec 6 feature freeze.** After that, only fixes until Week 17.
 

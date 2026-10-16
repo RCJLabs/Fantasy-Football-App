@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { LineupAnalysis, LineupChange, Objective } from '../analysis/analyze';
 import { ErrorBox, PlayerLine, Problems, slotLabel, Spinner } from './components';
-import { findLeague, lineupFor, loadLeagueBundle, type LeagueBundle } from './data';
+import { findLeague, lineupFor, loadLeagueBundle, rememberAdvice, type LeagueBundle } from './data';
 import { ago, pct, pts, signed } from './format';
 import { useAsync, useTick } from './hooks';
 import { setObjectivePref } from './prefs';
@@ -107,6 +107,10 @@ function ChangeLine({ c }: { c: LineupChange }) {
 function LineupArea({ b, tab, now }: { b: LeagueBundle; tab: 'lineup' | 'matchup'; now: number }) {
   const [choice, setChoice] = useState<Objective | undefined>(undefined);
   const a = useMemo(() => (choice ? lineupFor(b, choice) : b.lineup) ?? b.lineup!, [b, choice]);
+  // A switch of lineup mode changes the pick the season review will score.
+  useEffect(() => {
+    if (choice) rememberAdvice(b, a);
+  }, [a]);
   const choose = (o: Objective) => {
     setObjectivePref(b.league.id, b.phase, o);
     setChoice(o);
