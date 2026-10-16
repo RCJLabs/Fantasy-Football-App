@@ -44,6 +44,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          HISTORY_SEASONS: ${{ inputs.seasons }}
-          HISTORY_LAST_WEEK: ${{ inputs.last_week }}
+          HISTORY_SEASONS: ${{ inputs.seasons || '2026' }}
+          HISTORY_LAST_WEEK: ${{ inputs.last_week || '5' }}
         run: bash scripts/history/pull.sh
