@@ -54,6 +54,8 @@ test('About: the scored prediction ledger, once three weeks are in', async ({ pa
   await expect(card.locator('tr').filter({ hasText: 'Questionable, limited practice' })).toContainText(/30\s*71%\s*70%/);
   await expect(card).toContainText('Points if active: 450 players projected for 5+ PPR who played. Average miss 4.4 points, bias −0.2; 67%');
   await card.screenshot({ path: testInfo.outputPath('ledger.png') });
+  // Nothing on the page scrolls sideways (a phone in the mobile project).
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 });
 
 test('unknown username shows an error', async ({ page }) => {
@@ -221,6 +223,75 @@ test("playoffs: odds from Sleeper's bracket, for the final under way", async ({ 
   // Waivers: still alive, so the rest of the bracket counts in full (here there's no week after this one).
   await page.getByRole('tab', { name: 'Waivers' }).click();
   await expect(page.getByText(/In the playoffs, each round you could still play counts in full/)).toBeVisible();
+});
+
+test('phone layout: nothing pushes the page sideways, and a 10-team standings table fits', async ({ page }, testInfo) => {
+  // Ten teams with long names, as real leagues have; rosters 3–10 are empty.
+  const names = [
+    'Test Titans',
+    'Rival Raiders',
+    'The Gridiron Gladiators',
+    'Supercalifragilisticteam',
+    'Brockton Mountain Goats',
+    'Sunday Funday Squad',
+    'Waiver Wire Warriors',
+    'Bakers Dozen Plus One',
+    'Fourth And Long Shots',
+    'Hail Mary Hopefuls',
+  ];
+  const rosters = names.map((_, i) => fx.rosters[i] ?? { roster_id: i + 1, owner_id: `u${i + 1}`, players: [], starters: [], settings: { wins: i % 5, losses: 5 - (i % 5) } });
+  const users = names.map((n, i) => ({ user_id: `u${i + 1}`, display_name: `user${i + 1}`, metadata: { team_name: n } }));
+  const pairings = (week: number) =>
+    Array.from({ length: 10 }, (_, i) => {
+      const m = week === 6 ? fx.matchups.find((x) => x.roster_id === i + 1) : undefined;
+      return m ?? { roster_id: i + 1, matchup_id: Math.floor(((i + week) % 10) / 2) + 1, starters: [], players: [], points: 0 };
+    });
+  const tenTeams = { ...fx.league, total_rosters: 10, settings: { ...fx.league.settings, num_teams: 10, playoff_teams: 6 } };
+  await page.route('https://api.sleeper.app/v1/**', (route) => {
+    const path = new URL(route.request().url()).pathname.replace('/v1/', '/');
+    const week = /^\/league\/1001\/matchups\/(\d+)$/.exec(path);
+    const body =
+      path === '/user/u1/leagues/nfl/2026' ? [tenTeams]
+      : path === '/league/1001/rosters' ? rosters
+      : path === '/league/1001/users' ? users
+      : week ? pairings(Number(week[1]))
+      : undefined;
+    return body === undefined ? route.fallback() : route.fulfill({ json: body });
+  });
+  const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  await page.goto('./');
+  await page.getByLabel('Sleeper username').fill('testuser');
+  await page.getByRole('button', { name: 'Find my leagues' }).click();
+  await page.locator('.league-card').filter({ hasText: 'Saturday Night Gridiron' }).getByRole('link').first().click();
+  for (const tab of ['Lineup', 'Matchup', 'Waivers', 'Trade', 'Season']) {
+    await page.getByRole('tab', { name: tab }).click();
+    await expect(page.locator('.card').first()).toBeVisible();
+    await page.waitForLoadState('networkidle');
+    expect(await overflow(), `${tab} tab scrolls sideways`).toBeLessThanOrEqual(0);
+  }
+  // Season: every column of the standings, Title included, fits without scrolling.
+  const standings = page.locator('.card', { has: page.getByRole('heading', { name: 'Standings outlook' }) }).locator('table');
+  await expect(standings.locator('thead')).toContainText('Title');
+  const fits = async () => {
+    const fit = await standings.evaluate((t) => ({ table: t.scrollWidth, wrap: t.parentElement!.clientWidth }));
+    expect(fit.table, `standings ${fit.table}px wide in ${fit.wrap}px`).toBeLessThanOrEqual(fit.wrap);
+  };
+  await fits();
+  await page.screenshot({ path: testInfo.outputPath('phone-season.png'), fullPage: true });
+  // A smaller phone (360px): still no sideways page, and the standings still fit.
+  if (testInfo.project.name === 'mobile') {
+    await page.setViewportSize({ width: 360, height: 780 });
+    expect(await overflow(), 'Season tab scrolls sideways at 360px').toBeLessThanOrEqual(0);
+    await fits();
+    for (const tab of ['Waivers', 'Trade', 'Lineup']) {
+      await page.getByRole('tab', { name: tab }).click();
+      await page.waitForLoadState('networkidle');
+      expect(await overflow(), `${tab} tab scrolls sideways at 360px`).toBeLessThanOrEqual(0);
+    }
+    await page.getByRole('tab', { name: 'Season' }).click();
+    await expect(page.getByRole('heading', { name: 'Standings outlook' })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('phone-season-360.png'), fullPage: true });
+  }
 });
 
 test('dynasty league: draft picks in trades and the long-term outlook', async ({ page }, testInfo) => {

@@ -232,8 +232,10 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
             <thead>
               <tr>
                 <th>Team</th>
-                <th class="num">W-L</th>
-                <th class="num">PF</th>
+                <th class="num">
+                  W-L<span class="phone-only">PF</span>
+                </th>
+                <th class="num wide-only">PF</th>
                 {o.odds ? <th class="num">Proj</th> : null}
                 {o.odds && playoffs ? <th class="num">Playoffs</th> : null}
                 {o.odds && byes ? <th class="num">Bye</th> : null}
@@ -251,8 +253,9 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
                     <td class="num">
                       {r.wins}-{r.losses}
                       {r.ties ? `-${r.ties}` : ''}
+                      <span class="phone-only">{Math.round(r.pointsFor)}</span>
                     </td>
-                    <td class="num">{Math.round(r.pointsFor)}</td>
+                    <td class="num wide-only">{Math.round(r.pointsFor)}</td>
                     {odds ? (
                       <td class="num">
                         {odds.expWins.toFixed(1)}-{odds.expLosses.toFixed(1)}
