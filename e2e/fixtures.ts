@@ -1,6 +1,6 @@
 // Mock Sleeper responses and pipeline data files for the end-to-end test. Shapes follow the live
 // responses recorded in docs/spikes.md; names and numbers are invented.
-import type { CompactPlayer, PlayersFile, ScheduleFile, UsageFile } from '../app/src/data/contracts';
+import type { CompactPlayer, MatchupsFile, PlayersFile, ScheduleFile, UsageFile } from '../app/src/data/contracts';
 import type { RawLeague, RawMatchup, RawProjection, RawRoster, RawTradedPick, RawTransaction } from '../app/src/sleeper/raw';
 
 const H = 3_600_000;
@@ -103,10 +103,21 @@ export const playersFile: PlayersFile = {
     t: team,
     ...(injury ? { inj: injury } : {}),
     ...(id === 'w2' ? { prac: 'Limited' as const, rpt: 'Questionable', body: 'Hamstring' } : {}),
-  })),
+  })).concat([{ id: 'cb1', n: 'Corner Back', pos: 'CB', t: 'CCC', inj: 'Out' }]),
 };
 
 export const manifest = { schemaVersion: 1, generatedAt: iso(-3), files: {} };
+
+/** Matchup context (numbers invented): CCC has been soft on WRs and its top cornerback is out. */
+export const matchupContext: MatchupsFile = {
+  schemaVersion: 1,
+  generatedAt: iso(-3),
+  season: '2026',
+  weeks: [1, 2, 3, 4, 5],
+  priorGames: 4,
+  defense: { CCC: { WR: { pg: 2.3, n: 5 } } },
+  secondary: { CCC: [{ id: 'cb1', snap: 92 }] },
+};
 
 /** Recent usage (nflverse-shaped, numbers invented): the free-agent RB's role is growing. */
 export const usage: UsageFile = {

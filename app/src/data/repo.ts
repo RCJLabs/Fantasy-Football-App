@@ -4,7 +4,16 @@ import { sleeperApi, SleeperError } from '../sleeper/api';
 import { indexProjections, parseLeague, parseMatchup, parsePlayersDump, parseRoster, parseUser, type ProjectionIndex } from '../sleeper/parse';
 import type { RawProjection, RawState, RawTradedPick, RawTransaction, RawUser } from '../sleeper/raw';
 import { cached } from './cache';
-import { DATA_SCHEMA_VERSION, type AccuracyFile, type CompactPlayer, type Manifest, type PlayersFile, type ScheduleFile, type UsageFile } from './contracts';
+import {
+  DATA_SCHEMA_VERSION,
+  type AccuracyFile,
+  type CompactPlayer,
+  type Manifest,
+  type MatchupsFile,
+  type PlayersFile,
+  type ScheduleFile,
+  type UsageFile,
+} from './contracts';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -148,13 +157,20 @@ export async function loadWeek(season: string, week: number, force = false): Pro
   } catch {
     /* fall through to approximation */
   }
-  // Recent usage is context only: the app works the same without it.
+  // Recent usage and matchup context are display only: the app works the same without them.
   let usage: UsageIndex | undefined;
   try {
     const file = (await cached('data:usage', 3 * HOUR, () => fetchDataFile<UsageFile>('usage.json'), { force })).value;
     if (file.season === season) usage = { weeks: file.weeks, players: new Map(Object.entries(file.players)) };
   } catch {
     /* no usage shown */
+  }
+  let matchups: MatchupsFile | undefined;
+  try {
+    const file = (await cached('data:matchups', 3 * HOUR, () => fetchDataFile<MatchupsFile>('matchups.json'), { force })).value;
+    if (file.season === season) matchups = file;
+  } catch {
+    /* no matchup context shown */
   }
 
   if (!games.some((g) => g.week === week)) {
@@ -172,6 +188,7 @@ export async function loadWeek(season: string, week: number, force = false): Pro
     gamesByTeam: gamesByTeam(games, week),
     kickoffsApproximate,
     ...(usage ? { usage } : {}),
+    ...(matchups ? { matchups } : {}),
     notes,
     asOf,
   };
