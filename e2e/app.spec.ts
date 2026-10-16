@@ -237,6 +237,27 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(page.getByLabel('Trade with')).toHaveValue('2');
   await expect(page.locator('fieldset', { hasText: 'You get' }).getByRole('checkbox', { name: /Opp Rusher/ })).toBeChecked();
   await expect(page.locator('fieldset', { hasText: 'You give' }).getByRole('checkbox', { checked: true })).toHaveCount(0);
+  // What would it take: the buy-low running back, priced in packages of my players.
+  await streaks.nth(1).getByRole('button', { name: 'What would it take?' }).click();
+  const takes = page.locator('.card.takes');
+  await expect(takes.getByLabel('Player you want')).toHaveValue('o2');
+  await expect(takes).toContainText('Opp Rusher would start for you in every week ahead.');
+  const best = takes.locator('ol.idea-list li').first();
+  await expect(best).toContainText('Give Jordan Back + Casey Depth');
+  await expect(best).toContainText(/You \+[\d.]+ pts \(80%: [−+][\d.]+ to [−+][\d.]+\) · them \+[\d.]+ pts/);
+  // Neither has a FantasyCalc value in the mocked market.
+  await expect(best).toContainText('Market value: you give 0 (2 players have no value), you get 3.4k (they may see it as lopsided)');
+  await best.getByRole('button', { name: 'Open in the builder' }).click();
+  await expect(page.getByLabel('Trade with')).toHaveValue('2');
+  const giving = page.locator('fieldset', { hasText: 'You give' }).getByRole('checkbox', { checked: true });
+  await expect(giving).toHaveCount(2);
+  await expect(page.locator('fieldset', { hasText: 'You get' }).getByRole('checkbox', { name: /Opp Rusher/ })).toBeChecked();
+  // Their quarterback would sit behind mine: nothing of mine helps both lineups, so the card shows what it would cost.
+  await takes.getByLabel('Player you want').selectOption('o1');
+  await expect(takes).toContainText("Opp Passer wouldn't start for you in any week ahead.");
+  await expect(takes).toContainText('No package helps both lineups. These help theirs at the least cost to yours:');
+  await expect(takes.locator('ol.idea-list li').first()).toContainText(/Give Casey Quarterback\s*You −[\d.]+ pts/);
+  await takes.screenshot({ path: testInfo.outputPath('what-it-takes.png') });
 });
 
 test("claim plan: a full roster gets drops, a backup for the same drop, and bids from what's left", async ({ page }, testInfo) => {
