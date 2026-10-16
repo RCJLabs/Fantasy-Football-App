@@ -81,6 +81,12 @@ export function regularSeasonEnd(league: League): number {
   return start ? Math.min(LAST_WEEK, start - 1) : LAST_WEEK;
 }
 
+/** Every regular-season week is scored, or the playoffs have begun: standings are final. */
+export function regularSeasonOver(league: League, week: number): boolean {
+  const end = regularSeasonEnd(league);
+  return week > end || (league.rules.lastScoredWeek ?? 0) >= end;
+}
+
 /** Last week that decides anything: the championship, or the end of the regular season without playoffs. */
 export function seasonEnd(league: League): number {
   const { playoffWeekStart: start, playoffTeams = 0, playoffRoundType = 0 } = league.rules;

@@ -1,7 +1,7 @@
 # Title odds and playoff-week weights
 
 Built 2026-10-16. Code: `app/src/analysis/season.ts` (bracket), `outlook.ts` (wiring, trades), `ros.ts` (`weekWeights`,
-`playoffRoundWeeks`).
+`playoffRoundWeeks`); in the playoffs, `bracket.ts` with Sleeper's own bracket (below).
 
 ## What the app shows
 
@@ -25,8 +25,34 @@ Each simulated season goes on into the winners' bracket, from the same simulated
 - **Re-seeding:** when the league's `playoff_seed_type` is 1, the best seed left plays the worst each round.
   - The setting exists in league data: it was 0 in all three leagues seen.
   - That 1 means re-seed is `[unverified]`.
-- **When:** only while the whole bracket is ahead, which means through the regular season. Once it ends, the Season tab shows no odds.
-  Sleeper's `winners_bracket` endpoint has the real bracket and could carry title odds through the playoffs (not built).
+- **When:** while the whole bracket is ahead, which means through the regular season. After that, the real bracket takes over (next
+  section).
+
+## In the playoffs: Sleeper's bracket (built 2026-10-16)
+
+Once every regular-season week is scored, the odds come from Sleeper's `winners_bracket` instead of simulated standings.
+
+**Sleeper's format** `[verified]` on the owner's leagues (week 6, pre-filled with the current seeds):
+- Each game has a round, its two teams (roster ids) or, for later rounds, the game whose winner or loser fills the slot, and its winner
+  and loser once decided.
+- Placement games carry `p`: 1 for the final, 3 and 5 for third and fifth place. The title path is the games without `p`, plus the final.
+- The two 6-team brackets seen have 3 rounds with the top two seeds starting in round 2, as the league settings say.
+- `[unverified]`: when exactly Sleeper records a winner after a week ends, and whether it fills later slots' teams or only their sources.
+  The code handles both.
+
+**How the rest is played:**
+- **Decided games** stand as Sleeper recorded them, whatever the projections said.
+- **Open games:** each team's round score adds:
+  - its final points for weeks already played (a two-week round's first week, or a round Sleeper hasn't recorded yet);
+  - this week's set lineup, with points already scored;
+  - its best projected lineup for weeks still to come, drifting as in the regular season (the first week simulated is fresh).
+- **Ties** go to the better seed (wins, then points for) `[unverified]`, as above.
+- **Shown:** a Playoffs card in the Season tab with this round's games, each team's chance to win its game, title odds, and who's out.
+  Trades show title odds before and after; playoff odds no longer apply.
+
+**Weights in the playoffs:** a team still alive counts each remaining round in full, except a first-round bye week; a team that's out
+counts nothing, so its waiver board shows no rest-of-season gain. This is the same rule as before with the playoff odds at 100% or 0%.
+Before, every team kept the share of teams that make the playoffs as a weight, out or not.
 
 ## Playoff-week weights `[design]`
 
@@ -86,4 +112,6 @@ needs every round won:
   found the old odds too sure of themselves ([ros-uncertainty.md](ros-uncertainty.md)). The examples above predate it.
 - **Rosters are frozen.** No trades, pickups or injuries beyond the future-week availability curves ([hazard.md](hazard.md)).
 - **Weeks are independent.** The two weeks of a round are drawn independently.
-- **No playoff odds after the regular season,** as above.
+- **In the playoffs, the bracket must load.** If Sleeper's bracket doesn't answer, the Season tab shows the standings only, and every
+  team's playoff weeks count by the share of teams that make the playoffs, as before this change.
+- **Consolation games** (losers' bracket, placement games) aren't valued: the app plays for the title.

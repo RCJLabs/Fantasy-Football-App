@@ -1,4 +1,4 @@
-import type { RawLeague, RawMatchup, RawPlayer, RawProjection, RawRoster, RawState, RawTradedPick, RawTransaction, RawTrending, RawUser } from './raw';
+import type { RawBracketMatch, RawLeague, RawMatchup, RawPlayer, RawProjection, RawRoster, RawState, RawTradedPick, RawTransaction, RawTrending, RawUser } from './raw';
 
 const API = 'https://api.sleeper.app/v1';
 const WEB = 'https://api.sleeper.com';
@@ -51,6 +51,7 @@ export const sleeperApi = {
   matchups: (leagueId: string, week: number) => getJson<RawMatchup[]>(`${API}/league/${leagueId}/matchups/${week}`),
   transactions: (leagueId: string, week: number) => getJson<RawTransaction[]>(`${API}/league/${leagueId}/transactions/${week}`),
   tradedPicks: (leagueId: string) => getJson<RawTradedPick[]>(`${API}/league/${leagueId}/traded_picks`),
+  winnersBracket: (leagueId: string) => getJson<RawBracketMatch[] | null>(`${API}/league/${leagueId}/winners_bracket`),
   trending: (type: 'add' | 'drop', hours = 24, limit = 100) =>
     getJson<RawTrending[]>(`${API}/players/nfl/trending/${type}?lookback_hours=${hours}&limit=${limit}`),
   /** Undocumented endpoint used by Sleeper's own app (RotoWire projections). */

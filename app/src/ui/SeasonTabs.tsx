@@ -90,7 +90,7 @@ export function WaiversTab({ bundle, now }: { bundle: LeagueBundle; now: number 
   const { season, board } = w.data;
   const o = season.outlook;
   const me = o.teams.get(bundle.myRoster!.rosterId)!;
-  const playoffWeight = bundle.league.rules.playoffWeekStart ? me.weights.at(-1) : undefined;
+  const playoffWeight = bundle.league.rules.playoffWeekStart && !o.bracket ? me.weights.at(-1) : undefined;
   const firstRound = o.playoffRounds?.[0]?.[0];
   const byeWeight = playoffWeight !== undefined && firstRound !== undefined ? me.weights[firstRound] : undefined;
   const budget = bundle.league.rules.waiverBudget ?? 0;
@@ -100,11 +100,23 @@ export function WaiversTab({ bundle, now }: { bundle: LeagueBundle; now: number 
       <div class="card">
         <h2>Free agents</h2>
         <p class="muted small">
-          Ranked by what each player adds to your best lineups: this week (<strong>Wk</strong>) plus {weekSpan(o.weeks)} (<strong>ROS</strong>, after
-          dropping the player shown)
+          Ranked by what each player adds to your best lineups: this week (<strong>Wk</strong>)
+          {o.weeks.length ? (
+            <>
+              {' '}
+              plus {weekSpan(o.weeks)} (<strong>ROS</strong>, after dropping the player shown)
+            </>
+          ) : (
+            '; no weeks are left after this one'
+          )}
           {playoffWeight !== undefined ? `. Playoff weeks count at your ${pct(playoffWeight)} playoff odds` : ''}
           {byeWeight !== undefined && playoffWeight !== undefined && byeWeight < playoffWeight - 0.005
             ? ` (round 1 at ${pct(byeWeight)}: you may have a bye)`
+            : ''}
+          {o.bracket
+            ? o.bracket.state.alive.has(me.rosterId)
+              ? '. In the playoffs, each round you could still play counts in full'
+              : ". You're out of the title race, so later weeks count for nothing"
             : ''}
           .
         </p>
@@ -214,7 +226,7 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
     <div class="stack">
       <div class="card">
         <h2>Standings outlook</h2>
-        {!o.odds ? <p class="muted small">The regular season is over.</p> : null}
+        {!o.odds ? <p class="muted small">The regular season is over{o.bracket ? '; the playoffs are below' : ''}.</p> : null}
         <div class="table-wrap">
           <table class="table">
             <thead>
@@ -256,18 +268,22 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
             </tbody>
           </table>
         </div>
-        <p class="muted small">
-          {o.sims.toLocaleString()} simulations of {weekSpan(o.regularWeeks)}
-          {rules.medianGame ? ' (head-to-head plus the league-median game)' : ''}: every team plays its best projected lineup each week, and can
-          drift from its projection as the season goes on, as much as teams did in 2022–25 (injuries, role changes, pickups); ties go to points for.
-          {playoffs ? ` Top ${rules.playoffTeams} make the playoffs.` : ' This league has no playoffs.'}
-          {titles
-            ? ` Title odds play the bracket out the same way${byes ? ', top seeds on byes' : ''}${rules.playoffSeedType === 1 ? ', re-seeded each round' : ''}.`
-            : ''}{' '}
-          Trades and pickups aren't predicted.
-        </p>
+        {o.odds ? (
+          <p class="muted small">
+            {o.sims.toLocaleString()} simulations of {weekSpan(o.regularWeeks)}
+            {rules.medianGame ? ' (head-to-head plus the league-median game)' : ''}: every team plays its best projected lineup each week, and can
+            drift from its projection as the season goes on, as much as teams did in 2022–25 (injuries, role changes, pickups); ties go to points
+            for.
+            {playoffs ? ` Top ${rules.playoffTeams} make the playoffs.` : ' This league has no playoffs.'}
+            {titles
+              ? ` Title odds play the bracket out the same way${byes ? ', top seeds on byes' : ''}${rules.playoffSeedType === 1 ? ', re-seeded each round' : ''}.`
+              : ''}{' '}
+            Trades and pickups aren't predicted.
+          </p>
+        ) : null}
         <MissingWeeks season={s.data} />
       </div>
+      {o.bracket ? <BracketCard o={o} myId={myId} /> : null}
       {schedule.length ? (
         <div class="card">
           <h2>Your schedule</h2>
@@ -298,6 +314,63 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
   );
 }
 
+const roundName = (round: number, rounds: number) => (round === rounds ? 'final' : round === rounds - 1 ? 'semifinals' : `round ${round}`);
+
+/** In the playoffs: Sleeper's bracket as it stands, this round's games, and title odds from playing out the rest. */
+function BracketCard({ o, myId }: { o: LeagueOutlook; myId: number }) {
+  const { state, odds, seeds } = o.bracket!;
+  const name = (id: number | null) => (id === null ? 'TBD' : (o.teams.get(id)?.name ?? '?'));
+  const current = state.games.filter((g) => g.round === state.currentRound);
+  const alive = [...state.alive].sort((a, b) => (odds.get(b)?.pTitle ?? 0) - (odds.get(a)?.pTitle ?? 0) || (seeds.get(a) ?? 99) - (seeds.get(b) ?? 99));
+  const out = [...state.outIn].sort((a, b) => b[1] - a[1] || (seeds.get(a[0]) ?? 99) - (seeds.get(b[0]) ?? 99));
+  if (state.champion !== undefined) {
+    return (
+      <div class="card">
+        <h2>Champion: {name(state.champion)}</h2>
+        <p class="muted small">From Sleeper's bracket.</p>
+      </div>
+    );
+  }
+  return (
+    <div class="card">
+      <h2>Playoffs: {roundName(state.currentRound, state.rounds)}</h2>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Team</th>
+            <th>This round</th>
+            <th class="num">Win it</th>
+            <th class="num">Title</th>
+          </tr>
+        </thead>
+        <tbody>
+          {alive.map((id) => {
+            const x = odds.get(id);
+            const game = current.find((g) => g.teams.includes(id));
+            const opp = game?.teams.find((t) => t !== id) ?? null;
+            return (
+              <tr class={id === myId ? 'mine' : ''}>
+                <td>
+                  {name(id)} <span class="muted small">#{seeds.get(id)}</span>
+                </td>
+                <td>{!game ? 'bye' : game.winner !== null ? (game.winner === id ? 'won' : 'lost') : `vs ${name(opp)}`}</td>
+                <td class="num">{game ? pct(x?.pWin[state.currentRound - 1]) : '–'}</td>
+                <td class="num">{pct(x?.pTitle)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {out.length ? <p class="muted small">Out: {out.map(([id, r]) => `${name(id)} (${roundName(r, state.rounds)})`).join(', ')}.</p> : null}
+      <p class="muted small">
+        From Sleeper's bracket: {o.sims.toLocaleString()} simulations of the games left. Each team scores its final points for weeks already
+        played, its set lineup this week (points so far included), then its best projected lineups, which can drift as in the regular season. A
+        tied game goes to the better seed (#: regular-season finish by record, then points for).
+      </p>
+    </div>
+  );
+}
+
 /** Keeper and dynasty leagues: who's built for beyond this season, and which of your players (and picks) carry forward. */
 function LongTermCard({ bundle, season }: { bundle: LeagueBundle; season: SeasonBundle }) {
   const outlook = season.outlook;
@@ -309,7 +382,8 @@ function LongTermCard({ bundle, season }: { bundle: LeagueBundle; season: Season
   const rosters = [...outlook.teams.values()].map((t) => t.roster);
   const picks = season.tradedPicks ? pickAssets(bundle.league, rosters, season.tradedPicks, lt.data.picks, outlook.odds) : null;
   const ranking = longTermRanking(rosters, values, keep, picks ? pickTotals(picks) : undefined);
-  // This season: average best-lineup points over the remaining regular season.
+  // This season: average best-lineup points over the remaining regular season (no ranking once it's over).
+  const showNow = outlook.regularWeeks.length > 0;
   const nowScore = (rosterId: number) => {
     const t = outlook.teams.get(rosterId);
     const weeks = t?.future.slice(0, Math.max(1, outlook.regularWeeks.length)) ?? [];
@@ -333,8 +407,8 @@ function LongTermCard({ bundle, season }: { bundle: LeagueBundle; season: Season
       <p class="muted small">
         {keep === undefined ? `Whole rosters${picks ? ' and draft picks' : ''}` : `Each team's best ${keep} keeper${keep > 1 ? 's' : ''}`} valued with
         FantasyCalc dynasty values, a proxy for worth beyond this season
-        {bundle.league.rules.type === 'keeper' ? ' (keeper costs aren’t in Sleeper’s data, so they aren’t counted)' : ''}. “Now” ranks projected lineup
-        strength for the rest of the regular season.
+        {bundle.league.rules.type === 'keeper' ? ' (keeper costs aren’t in Sleeper’s data, so they aren’t counted)' : ''}.
+        {showNow ? ' “Now” ranks projected lineup strength for the rest of the regular season.' : ''}
       </p>
       {season.tradedPicks === null ? <p class="note">Draft picks didn't load from Sleeper, so they aren't counted.</p> : null}
       <div class="table-wrap">
@@ -345,8 +419,8 @@ function LongTermCard({ bundle, season }: { bundle: LeagueBundle; season: Season
               <th class="num">Value</th>
               {picks ? <th class="num">Picks</th> : null}
               <th class="num">Later</th>
-              <th class="num">Now</th>
-              <th>Outlook</th>
+              {showNow ? <th class="num">Now</th> : null}
+              {showNow ? <th>Outlook</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -356,8 +430,8 @@ function LongTermCard({ bundle, season }: { bundle: LeagueBundle; season: Season
                 <td class="num">{shortValue(t.total)}</td>
                 {picks ? <td class="num">{shortValue(t.picks)}</td> : null}
                 <td class="num">{t.rank}</td>
-                <td class="num">{nowRank.get(t.rosterId)}</td>
-                <td class="muted small">{outlookOf(t.rosterId)}</td>
+                {showNow ? <td class="num">{nowRank.get(t.rosterId)}</td> : null}
+                {showNow ? <td class="muted small">{outlookOf(t.rosterId)}</td> : null}
               </tr>
             ))}
           </tbody>
@@ -528,10 +602,13 @@ function TradeBuilder({ bundle, season }: { bundle: LeagueBundle; season: Season
             <>
               <WeeklyBars weeks={o.weeks} deltas={result.me.weekly} />
               <p class="muted small">
-                Rest-of-season points from each team's best lineup by week (playoff weeks weighted by that team's playoff odds, a first-round bye
-                week by its chance of playing it), including the drops a full roster forces and free agents for spots the trade opens. Ranges allow
-                for players' weekly swings and season-long misses of their projections (sized on 2022–25). Title odds play out the bracket; changes
-                of a point or less can be simulation noise.
+                Rest-of-season points from each team's best lineup by week (
+                {o.bracket
+                  ? 'in the playoffs, each round a team could still play counts in full, and a team that is out counts nothing'
+                  : "playoff weeks weighted by that team's playoff odds, a first-round bye week by its chance of playing it"}
+                ), including the drops a full roster forces and free agents for spots the trade opens. Ranges allow for players' weekly swings and
+                season-long misses of their projections (sized on 2022–25). Title odds play out {o.bracket ? "Sleeper's bracket from here" : 'the bracket'};
+                changes of a point or less can be simulation noise.
               </p>
             </>
           ) : null}
