@@ -86,6 +86,15 @@
   - Nothing RotoWire-derived is published. A hook failure never blocks the snapshot.
   - On today's real snapshot: 415 players in 14 week-6 games, in 0.6 s.
 
+- **Prediction ledger, scoring step — built (2026-10-16):**
+  - `scripts/ledger/fetch.sh` decrypts only the predictions from a week's snapshots.
+  - `scripts/ledger/score.ts` takes the last prediction committed before each kickoff and checks it against nflverse outcomes:
+    - chance to play: Brier, log loss, calibration by tag, against game-day actives;
+    - points if active: MAE, bias, ±1/±2 SD coverage, against PPR results.
+  - Only played games count. It runs where the archive key is: a session now, or Actions if the key is added as a secret (your call).
+  - It's live-tested on the archive's real assets. The first committed set (00:03 UTC Friday, 418 players, 14 games) predates Thursday
+    night's kickoff.
+
 - **Usage trends, display only — built (2026-10-15):**
   - Usage covers the last four weeks of snap share, targets and carries, plus each player's share of team targets and carries.
     - Sources: nflverse snap counts (compiled by PFR) and weekly player stats.
@@ -107,8 +116,8 @@
   **Not yet:**
   - matchup or usage adjustments to projections — only if a backtest shows they beat RotoWire alone (RotoWire already prices matchups);
   - scheme matchups (coverage shells, man/zone): FTN charting has them (CC-BY-SA), not yet joined;
-  - scoring the committed predictions (the reveal): chance to play (Brier, calibration by tag) against game-day actives, and points (MAE,
-    ±1 SD coverage) against PPR results. It needs the archive key wherever it runs; first possible after week 6 is final;
+  - the first scored week. The scorer (`scripts/ledger/score.ts`, below) is built. Week 6 can be scored once its games are in nflverse.
+    Thursday's game alone is enough for a first check;
   - keeper-league picks: Sleeper lets them be traded, but FantasyCalc's rookie-pick prices don't fit a keeper draft;
   - draft order from playoff results or a league-set order (picks follow reverse regular-season standings);
   - keeper costs: draft-round prices aren't in Sleeper's API;
