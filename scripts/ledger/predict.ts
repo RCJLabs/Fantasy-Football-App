@@ -5,12 +5,14 @@
 //
 // Usage: tsx scripts/ledger/predict.ts <snapshot dir>
 // Reads state.json, proj_wNN.json (this week), site_players.json, site_schedule.json and, when archived,
-// site_baseline.json.
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+// site_baseline.json and the player props this run fetched (props_event_*.json, scripts/props/pull.ts).
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BaselineFile, PlayersFile, ScheduleFile } from '../../app/src/data/contracts';
+import type { StatLine } from '../../app/src/domain/types';
 import type { RawState } from '../../app/src/sleeper/raw';
 import { buildPredictions, commitment, type ArchivedProjection } from '../../pipeline/ledger';
+import { type OddsEvent, propsStatLines } from '../../pipeline/props';
 
 const dir = process.argv[2];
 if (!dir) throw new Error('usage: predict.ts <snapshot dir>');
@@ -30,14 +32,32 @@ for (const name of ['site_players.json', 'site_schedule.json']) if (!existsSync(
 const hasBaseline = existsSync(path('site_baseline.json'));
 if (!existsSync(path(proj)) && !hasBaseline) done(`${proj} missing`);
 
+const projections = existsSync(path(proj)) ? read<ArchivedProjection[]>(proj) : [];
+const players = read<PlayersFile>('site_players.json');
+
+// Player props this run fetched, as stat means for the players they name.
+let props: Map<string, StatLine> | undefined;
+const propFiles = readdirSync(dir).filter((f) => /^props_event_.+\.json$/.test(f));
+if (propFiles.length) {
+  const base = new Map(projections.map((r) => [r.player_id, r.stats ?? undefined]));
+  const result = propsStatLines(
+    propFiles.map((f) => read<OddsEvent>(f)),
+    players.players.map((p) => ({ id: p.id, name: p.n, pos: p.pos, ...(p.fp ? { fpos: p.fp } : {}), ...(p.t ? { team: p.t } : {}) })),
+    (id) => base.get(id),
+  );
+  props = new Map([...result.lines].map(([id, line]) => [id, line.stats]));
+  console.log(`Props: ${result.lines.size} players priced from ${propFiles.length} game(s); ${result.unmatched} names unmatched.`);
+}
+
 const file = buildPredictions({
   season: state.season,
   week: state.week,
   now: Date.now(),
-  projections: existsSync(path(proj)) ? read<ArchivedProjection[]>(proj) : [],
-  players: read<PlayersFile>('site_players.json'),
+  projections,
+  players,
   schedule: read<ScheduleFile>('site_schedule.json'),
   ...(hasBaseline ? { baseline: read<BaselineFile>('site_baseline.json') } : {}),
+  ...(props ? { props } : {}),
   ...(process.env.GITHUB_SHA ? { code: process.env.GITHUB_SHA } : {}),
 });
 if (!file.players.length) done(`no games left in week ${state.week}`);

@@ -18,6 +18,11 @@ on:
         type: choice
         options: [auto, full]
         default: auto
+      props:
+        description: 'auto = games kicking off within 6 hours; test = the next game, not marked as fetched; off'
+        type: choice
+        options: [auto, test, off]
+        default: auto
 
 permissions:
   contents: write # create the monthly release and upload assets
@@ -59,4 +64,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
           ARCHIVE_MODE: ${{ inputs.mode || 'auto' }}
           SNAPSHOT_HOOK: ${{ steps.deps.outcome == 'success' && 'npx --no-install tsx scripts/ledger/predict.ts' || '' }}
+          # Player props (docs/props.md): the key reaches only the props hook.
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          PROPS_MODE: ${{ inputs.props || 'auto' }}
+          PROPS_HOOK: ${{ steps.deps.outcome == 'success' && 'npx --no-install tsx scripts/props/pull.ts' || '' }}
         run: bash scripts/archive/snapshot.sh

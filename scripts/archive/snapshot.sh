@@ -111,11 +111,24 @@ fetch site_players.json "$SITE/data/players.json"
 fetch site_schedule.json "$SITE/data/schedule.json"
 fetch site_baseline.json "$SITE/data/baseline.json"
 
+# Player props (The Odds API; docs/props.md): each game once, in the first run within 6 hours of its kickoff.
+# The raw odds stay in this encrypted snapshot. props_meta.json (games fetched, credits; no odds) is published,
+# and the hook skips the games earlier runs published. Only this hook gets the API key.
+if [ -n "${PROPS_HOOK:-}" ] && [ -n "${ODDS_API_KEY:-}" ] && [ "${PROPS_MODE:-auto}" != off ]; then
+  seen="$work/props-seen"
+  mkdir -p "$seen"
+  for m in "$(date -u +%m)" "$(date -u -d "$(date -u +%Y-%m-15) -1 month" +%m)"; do
+    gh release download "archive-${season}-$m" -p 'props_*.json' -D "$seen" >/dev/null 2>&1 || true
+  done
+  read -r -a hook <<<"$PROPS_HOOK"
+  env -u GH_TOKEN "${hook[@]}" "$out" "$seen" || echo "Props hook failed; continuing without props." >&2
+fi
+
 # Optional hook (the prediction ledger): runs on the snapshot before it's encrypted, without the
-# GitHub token, and never blocks the upload.
+# GitHub token or the odds key, and never blocks the upload.
 if [ -n "${SNAPSHOT_HOOK:-}" ]; then
   read -r -a hook <<<"$SNAPSHOT_HOOK"
-  env -u GH_TOKEN "${hook[@]}" "$out" || echo "Snapshot hook failed; uploading without it." >&2
+  env -u GH_TOKEN -u ODDS_API_KEY "${hook[@]}" "$out" || echo "Snapshot hook failed; uploading without it." >&2
 fi
 
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
@@ -128,6 +141,10 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     if [ -f "$out/commitment.json" ]; then
       echo
       jq -r '"Predictions committed: \(.players) players in \(.games | length) games (week \(.week)), sha256 `\(.sha256)`"' "$out/commitment.json"
+    fi
+    if [ -f "$out/props_meta.json" ]; then
+      echo
+      jq -r '"Props: \(.events | length) game(s)\(if .test then " (test)" else "" end), \([.events[].credits // 0] | add) credits; \(.remaining // "?") left this month"' "$out/props_meta.json"
     fi
   } >>"$GITHUB_STEP_SUMMARY"
 fi
@@ -143,7 +160,7 @@ tar -C "$work" -czf - snap | age -r "$recipient" -o "$work/$asset"
 tag="archive-${season}-$(date -u +%m)"
 if ! gh release view "$tag" >/dev/null 2>&1; then
   gh release create "$tag" --prerelease --title "Encrypted input archive $tag" \
-    --notes "age-encrypted snapshots of fantasy inputs for private backtesting. Unreadable without the private key; not for redistribution. Each commit_*.json is the public SHA-256 of the predictions.json inside the snapshot with the same timestamp." \
+    --notes "age-encrypted snapshots of fantasy inputs for private backtesting. Unreadable without the private key; not for redistribution. Each commit_*.json is the public SHA-256 of the predictions.json inside the snapshot with the same timestamp. Each props_*.json lists the games whose player props that snapshot holds (no odds)." \
     || gh release view "$tag" >/dev/null # another run may have created it concurrently
 fi
 # The commitment (SHA-256 of the predictions inside the bundle) is public: its upload time proves when they were made.
@@ -151,6 +168,11 @@ assets=("$work/$asset")
 if [ -f "$out/commitment.json" ]; then
   cp "$out/commitment.json" "$work/commit_${season}w$(printf %02d "$week")_${ts}.json"
   assets+=("$work/commit_${season}w$(printf %02d "$week")_${ts}.json")
+fi
+# Which games' props this snapshot holds (ids, kickoffs, credits; no odds): later runs skip them.
+if [ -f "$out/props_meta.json" ]; then
+  cp "$out/props_meta.json" "$work/props_${season}w$(printf %02d "$week")_${ts}.json"
+  assets+=("$work/props_${season}w$(printf %02d "$week")_${ts}.json")
 fi
 gh release upload "$tag" "${assets[@]}"
 echo "Uploaded ${assets[*]##*/} to $tag ($oks ok, $fails failed)"

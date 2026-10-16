@@ -163,6 +163,14 @@
   - **Shipped** inside `baseline.json` (team codes): a labelled second opinion for defenses, and the DEF fallback for a week without Sleeper
     projections. Kickers stay Sleeper-only.
 
+- **Player props (The Odds API) — pull built (2026-10-16), in shadow:** roadmap Phase 2 item 6; details in [props.md](props.md).
+  - **Pull:** inside the archive runs, each game once in the first run within 6 hours of kickoff. Six markets, about 6 credits a game, within
+    the free plan. Raw odds stay in the encrypted snapshot; only game ids and credits are published.
+  - **Conversion:** no-vig chances. Lines become means through outcome shapes measured on 2022–25 projections against results. Yardage is
+    right-skewed, so a WR's 45.5-yard line at even money means about 51 yards. Touchdowns are Poisson.
+  - **Shadow:** each prediction made with props carries `pr`, scored against the app's number from the same snapshot, plus a 50/50 blend.
+    The blend gate (§6) decides after several weeks.
+
 - **Future-week availability (injury hazard) — built (2026-10-16):** the Phase 3 hazard backtest, brought forward; details in
   [hazard.md](hazard.md).
   - **Before:** rest-of-season values used flat guesses in every future week (QB 95%, RB 91%, WR and TE 93%).
@@ -313,7 +321,7 @@ What we build instead is a **calculated consensus**: an average of independent *
 | **nfldata `games.csv`** | Kickoff times (locks), lines → implied totals, QB IDs, rest/roof | Pipeline | **No licence file; line provenance unknown** `[verified]`. Publish derived implied totals only | Commits every ~10–30 min; lines only for near weeks `[verified]` |
 | **Player IDs**: Sleeper cross-IDs + nflverse weekly rosters (`sleeper_id`, gsis, pfr, espn) | Public `players.json` | Pipeline | CC-BY / Sleeper terms | — |
 | **DynastyProcess `db_playerids`** | `fantasypros_id`/`mfl_id` joins, **pipeline-only** | Pipeline | Repo is GPL-3.0 `[verified]`, so **nothing derived from it is published** `[design]` | Weekly; partial coverage `[verified]` |
-| **The Odds API** v4 (player props) | Second independent stat-level source (props → conditional medians → means) | Pipeline, key in secrets | Terms (updated 2026-08-31) allow storing the data, showing it in an app and "calculating and displaying values you derive"; no redistribution "as a standalone data product", downloadable files included, so publish derived means only (no lines, prices or books, nothing raw in logs or artifacts); attribution not required `[reported: third-party captures of the terms page, 2026]` | Free 500 credits/mo incl. props; an event-odds call costs markets × regions, so 16 games × 6 markets ≈ 96 a week (≤ 480 in a five-Sunday month: fits, with nothing to spare); $30 for 20K. Historical props from 2023-05-03, paid plans only, 10× the cost: ≈ 49K credits for 2023–25, one $59 month `[reported: copies of the official pages, 2026; the live site wasn't reachable]`. Phase 2, needs your key |
+| **The Odds API** v4 (player props) | Second independent stat-level source (props → conditional medians → means) | Pipeline, key in secrets | Terms (updated 2026-08-31) allow storing the data, showing it in an app and "calculating and displaying values you derive"; no redistribution "as a standalone data product", downloadable files included, so publish derived means only (no lines, prices or books, nothing raw in logs or artifacts); attribution not required `[reported: third-party captures of the terms page, 2026]` | Free 500 credits/mo incl. props; an event-odds call costs markets × regions, so 16 games × 6 markets ≈ 96 a week (≤ 480 in a five-Sunday month: fits, with nothing to spare); $30 for 20K. Historical props from 2023-05-03, paid plans only, 10× the cost: ≈ 49K credits for 2023–25, one $59 month `[reported: copies of the official pages, 2026; the live site wasn't reachable]`. **Pull built 2026-10-16**, in shadow ([props.md](props.md)): once per game before kickoff, ~6 credits a game |
 | **FantasyCalc** | Trade "market value", dynasty | Pipeline ≤ hourly | Non-commercial with attribution and link `[reported]` | Phase 2 |
 | **NWS** api.weather.gov | Wind/precip for pass/rush split and K | Pipeline | Public domain `[unverified]` | Phase 3 |
 | **FantasyPros ECR via DynastyProcess** (`fp_latest_weekly.csv`) | **Private benchmark only** | Private pipeline | FantasyPros' scraped data; never shown publicly unless licensed | PPR-only for RB/WR/TE `[verified]` |
@@ -458,7 +466,7 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
 3. **FAAB max bid** (value-based, calibrated on the league's winning bids).
 4. **Baseline blend gate:** backtest v0 on 2023–25 plus shadow weeks; blend only if it passes. **Done 2026-10-16:** no blend, v0 goes to shadow ([baseline.md](baseline.md)).
 5. **Accuracy ledger v0** (private) + commit-reveal hashes start.
-6. **Odds API props** as a second stat-level source, once its ToS is checked.
+6. **Odds API props** as a second stat-level source, once its ToS is checked. **Pull built 2026-10-16** ([props.md](props.md)): props are fetched once per game, converted to stat means and scored in shadow in the ledger until they pass the gate.
 7. If time remains: DvP residual and CB-depletion flag, **display-only**, labelled.
 8. Pipeline grows: Python package, usage/env shards, JSON-Schema contracts, nflverse→Sleeper stat-mapping test (tolerance 0.1 pt; DEF/K/IDP and distance tiers excluded from the gate). **Done 2026-10-16** in TypeScript: usage shard, shard validators, last-good shards, stat mapping ([stat-mapping.md](stat-mapping.md)).
 

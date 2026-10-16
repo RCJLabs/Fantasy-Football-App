@@ -97,4 +97,19 @@ describe('ledger scoring', () => {
     const s = scoreLedger('2026', 6, preds, { played: new Set(['G1']), byGsis });
     expect(s.baseline).toEqual({ n: 2, appMae: (7.5 + 1) / 2, baselineMae: (5.5 + 3) / 2, ratio: 1 });
   });
+
+  it('scores the props shadow from the snapshot that carried props, against the app in that same snapshot', () => {
+    const files = [
+      file('2026-10-18T12:17:00.000Z', [player('a', { mu: 10, pr: 14 }), player('b', { mu: 8, pr: 6 })]),
+      file('2026-10-18T16:47:00.000Z', [player('a', { mu: 11 }), player('b', { mu: 8 })]), // later, no props
+    ];
+    const byGsis = new Map([
+      ['g-a', { active: true, ppr: 15 }],
+      ['g-b', { active: true, ppr: 4 }],
+    ]);
+    const s = scoreLedger('2026', 6, lastBeforeKickoff(files), { played: new Set(['G1']), byGsis }, 5, lastBeforeKickoff(files, (p) => p.pr !== undefined));
+    // a: app 10 off 5, props off 1, blend 12 off 3. b: app off 4, props off 2, blend 7 off 3.
+    expect(s.props).toEqual({ n: 2, appMae: 4.5, propsMae: 1.5, blendMae: 3, ratio: 0.333 });
+    expect(s.points.mae).toBe(4); // the app's own score still uses its last prediction (a: 11)
+  });
 });

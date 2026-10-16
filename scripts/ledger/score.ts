@@ -24,8 +24,10 @@ const files = readdirSync(dir)
 if (!files.length) throw new Error(`no week ${week} predictions in ${dir}`);
 const season = files[0]!.season;
 const predictions = lastBeforeKickoff(files);
+// Props are fetched once per game, so their snapshot is usually not the last one before kickoff.
+const withProps = lastBeforeKickoff(files, (p) => p.pr !== undefined);
 const outcomes = nflverseOutcomes(csvRecords(readFileSync(rostersCsv, 'utf8')), csvRecords(readFileSync(statsCsv, 'utf8')), week);
-const score = scoreLedger(season, week, predictions, outcomes);
+const score = scoreLedger(season, week, predictions, outcomes, 5, withProps);
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 console.log(`## Prediction ledger, ${season} week ${week}\n`);
@@ -46,5 +48,11 @@ console.log(
   b.n
     ? `\n**Shadow baseline** (QB/RB/WR/TE either projected ≥ ${p.minProjected}, n = ${b.n}): app MAE ${b.appMae}, baseline MAE ${b.baselineMae} (${b.ratio}× the app's)`
     : '\n**Shadow baseline:** no baseline predictions in played games yet.',
+);
+const pr = score.props;
+console.log(
+  pr.n
+    ? `\n**Props shadow** (QB/RB/WR/TE either projected ≥ ${p.minProjected}, same snapshot, n = ${pr.n}): app MAE ${pr.appMae}, props MAE ${pr.propsMae} (${pr.ratio}× the app's), 50/50 blend MAE ${pr.blendMae}`
+    : '\n**Props shadow:** no props predictions in played games yet.',
 );
 if (jsonOut) writeFileSync(jsonOut, `${JSON.stringify(score, null, 2)}\n`);
