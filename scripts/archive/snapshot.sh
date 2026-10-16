@@ -104,11 +104,12 @@ if [ "$MODE" = full ] || [ "$hour" = 08 ] || [ "$hour" = 20 ]; then
   fetch "injuries_${season}.csv" "$NFLVERSE/injuries/injuries_${season}.csv"
 fi
 
-# The app's own data files as deployed (player DB with practice reports, schedule): with this
-# week's projections, exactly what the app showed at this moment.
+# The app's own data files as deployed (player DB with practice reports, schedule, the in-house
+# baseline): with this week's projections, exactly what the app showed at this moment.
 SITE="${ARCHIVE_SITE:-https://rcjlabs.github.io/Fantasy-Football-App}"
 fetch site_players.json "$SITE/data/players.json"
 fetch site_schedule.json "$SITE/data/schedule.json"
+fetch site_baseline.json "$SITE/data/baseline.json"
 
 # Optional hook (the prediction ledger): runs on the snapshot before it's encrypted, without the
 # GitHub token, and never blocks the upload.

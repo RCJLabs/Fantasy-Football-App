@@ -73,5 +73,27 @@ describe('ledger scoring', () => {
       ]),
     );
     expect(s.points).toEqual({ minProjected: 5, n: 2, mae: (7.5 + 2) / 2, bias: (7.5 + 2) / 2, within1: 0.5, within2: 1 });
+    expect(s.baseline).toEqual({ n: 0, appMae: 0, baselineMae: 0, ratio: 0 });
+  });
+
+  it("scores the shadow baseline against the app's numbers on the same players", () => {
+    const preds = lastBeforeKickoff([
+      file('2026-10-18T16:47:00.000Z', [
+        player('a', { mu: 10, bl: 12 }), // scored 17.5: app off 7.5, baseline 5.5
+        player('b', { mu: 4, bl: 6 }), // only the baseline calls him relevant; scored 3
+        player('c', { mu: 3, bl: 2 }), // neither does: left out
+        player('d', { mu: 9 }), // no baseline: left out
+        player('e', { mu: 9, bl: 9, inj: 'Out', p: 0 }), // inactive: left out
+      ]),
+    ]);
+    const byGsis = new Map([
+      ['g-a', { active: true, ppr: 17.5 }],
+      ['g-b', { active: true, ppr: 3 }],
+      ['g-c', { active: true, ppr: 1 }],
+      ['g-d', { active: true, ppr: 9 }],
+      ['g-e', { active: false, ppr: 0 }],
+    ]);
+    const s = scoreLedger('2026', 6, preds, { played: new Set(['G1']), byGsis });
+    expect(s.baseline).toEqual({ n: 2, appMae: (7.5 + 1) / 2, baselineMae: (5.5 + 3) / 2, ratio: 1 });
   });
 });

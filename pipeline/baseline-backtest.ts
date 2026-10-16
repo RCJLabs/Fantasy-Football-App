@@ -1,22 +1,9 @@
 // Walk-forward backtest of the in-house baseline against RotoWire (Sleeper's projections): the blend
 // gate in docs/PLAN.md §2 and §6. Pure; scripts/backtest/baseline.ts does the I/O. Results and the
 // decision live in docs/baseline.md.
-import type { ScoringSettings, StatLine } from '../app/src/domain/types';
+import type { ScoringSettings } from '../app/src/domain/types';
 import { scoreStats } from '../app/src/engine/scoring';
-import { averageLine, baselineStats, type BaselineGame, type BaselineParams, type Trailing, trailingMean } from './baseline';
-
-export const SKILL: readonly string[] = ['QB', 'RB', 'WR', 'TE'];
-
-/** A slimmed api.sleeper.com projection or stats row (scripts/history/pull.sh). */
-export interface SleeperRow {
-  player_id: string;
-  position?: string | null;
-  team?: string | null;
-  stats?: Record<string, number> | null;
-}
-
-/** Took the field: a game played or an offensive snap. */
-export const played = (s: Readonly<StatLine> | null | undefined): boolean => (s?.gp ?? 0) > 0 || (s?.off_snp ?? 0) > 0;
+import { type BaselineGame, type BaselineParams, type BaselineSources, baselineWeek, played, recordWeek, SKILL, type SleeperRow } from './baseline';
 
 export interface WeekData {
   season: number;
@@ -25,16 +12,11 @@ export interface WeekData {
   stats: readonly SleeperRow[];
 }
 
-export interface BacktestInput {
+export interface BacktestInput extends BaselineSources {
   /** Every season-week in order, from the warm-up season on. */
   weeks: readonly WeekData[];
   /** Seasons whose weeks are scored. */
   seasons: readonly number[];
-  gsisBySleeper: ReadonlyMap<string, string>;
-  /** ffopportunity expected stats keyed `${gsis}|${season}|${week}`. */
-  expected: ReadonlyMap<string, StatLine>;
-  /** Team implied totals keyed `${season}|${week}|${team}` (Sleeper team codes). */
-  implied: ReadonlyMap<string, number>;
   scoring: ScoringSettings;
   params: BaselineParams;
 }
@@ -59,37 +41,22 @@ export function walkForward(input: BacktestInput): BacktestRow[] {
   const out: BacktestRow[] = [];
   for (const wk of input.weeks) {
     if (scored.has(wk.season)) {
-      const trailing = new Map<string, { pos: string; t: Trailing }>();
-      for (const p of wk.proj) {
-        const pos = p.position ?? '';
-        if (!SKILL.includes(pos)) continue;
-        const t = trailingMean(history.get(p.player_id) ?? [], wk.season, params);
-        if (t) trailing.set(p.player_id, { pos, t });
-      }
-      const priors = new Map(SKILL.map((pos) => [pos, averageLine([...trailing.values()].filter((x) => x.pos === pos).map((x) => x.t.stats))]));
+      // Everyone RotoWire projects is in the position averages; his team is the one he played for.
       const actualById = new Map(wk.stats.map((r) => [r.player_id, r]));
+      const population = wk.proj.map((p) => ({ id: p.player_id, pos: p.position ?? '', team: actualById.get(p.player_id)?.team ?? p.team ?? null }));
+      const lines = baselineWeek(population, history, wk.season, (team) => input.implied.get(`${wk.season}|${wk.week}|${team}`), params);
       for (const p of wk.proj) {
         const pos = p.position ?? '';
         const s = actualById.get(p.player_id);
         if (!SKILL.includes(pos) || !s || !played(s.stats)) continue;
         const row: BacktestRow = { season: wk.season, week: wk.week, id: p.player_id, pos, rotowire: scoreStats(p.stats ?? {}, scoring), actual: scoreStats(s.stats ?? {}, scoring) };
-        const tr = trailing.get(p.player_id);
-        if (tr) {
-          const implied = input.implied.get(`${wk.season}|${wk.week}|${s.team ?? p.team ?? ''}`);
-          row.baseline = scoreStats(baselineStats(tr.t, priors.get(pos) ?? {}, implied, params), scoring);
-        }
+        const line = lines.get(p.player_id);
+        if (line) row.baseline = scoreStats(line, scoring);
         out.push(row);
       }
     }
     // Only now does this week join the history: no game informs its own projection.
-    for (const s of wk.stats) {
-      const gsis = input.gsisBySleeper.get(s.player_id);
-      if (!gsis || !SKILL.includes(s.position ?? '') || !played(s.stats)) continue;
-      const implied = input.implied.get(`${wk.season}|${wk.week}|${s.team ?? ''}`);
-      const game: BaselineGame = { season: wk.season, week: wk.week, stats: input.expected.get(`${gsis}|${wk.season}|${wk.week}`) ?? {}, ...(implied !== undefined ? { implied } : {}) };
-      const games = history.get(s.player_id) ?? history.set(s.player_id, []).get(s.player_id)!;
-      games.push(game);
-    }
+    recordWeek(history, wk.season, wk.week, wk.stats, input);
   }
   return out;
 }

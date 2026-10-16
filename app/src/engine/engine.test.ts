@@ -65,6 +65,13 @@ describe('scoring', () => {
     expect(pts).toBeLessThan(3.5);
   });
 
+  it('derives position reception bonuses (TE premium) from receptions when a source lacks them', () => {
+    expect(expectedStats({ rec: 5 }, 'TE').bonus_rec_te).toBe(5);
+    expect(expectedStats({ rec: 5, bonus_rec_te: 4 }, 'TE').bonus_rec_te).toBe(4); // the source's own value wins
+    expect(expectedStats({ rec: 5 }, 'WR').bonus_rec_te).toBeUndefined();
+    expect(expectedStats({ rec: 1 }, 'QB').bonus_rec_qb).toBeUndefined();
+  });
+
   it('derives position-specific first-down bonuses', () => {
     expect(expectedStats({ rush_fd: 3, rec_fd: 1 }, 'RB').bonus_fd_rb).toBe(4);
     expect(expectedStats({ pass_fd: 12, rush_fd: 1 }, 'QB').bonus_fd_qb).toBe(13);

@@ -12,7 +12,7 @@ Each run saves the inputs we can't recreate later:
 - **Sleeper trending adds and drops.**
 - **Sleeper players dump:** once a day.
 - **nflverse injuries:** twice a day. nflverse keeps only the latest row per player per week, so earlier rows are lost unless we snapshot them.
-- **The app's deployed data files** (`site_players.json`, `site_schedule.json`): with the projections, exactly what the app showed at that moment.
+- **The app's deployed data files** (`site_players.json`, `site_schedule.json`, `site_baseline.json`): with the projections, exactly what the app showed at that moment.
 - **The app's predictions** (`predictions.json`, see below).
 
 Each run's files are bundled as a `tar.gz`, encrypted with [age](https://age-encryption.org) to the public key in `recipient.txt`, and uploaded to a monthly prerelease (`archive-YYYY-MM`).
@@ -33,7 +33,8 @@ Each snapshot holds a `manifest.jsonl` listing every fetch: URL, HTTP status, si
 On each run, `scripts/ledger/predict.ts` writes `predictions.json` into the snapshot before it's encrypted. It covers every QB, RB, WR, TE, K and DEF whose game hasn't started, using the same code and inputs as the app:
 - chance to play;
 - full-PPR points if active;
-- the weekly spread.
+- the weekly spread;
+- the in-house baseline's full-PPR points if active (`bl`), when the deployed `baseline.json` covers the week.
 
 The run also uploads `commit_<season>w<week>_<timestamp>.json` **unencrypted**. It holds the SHA-256 of that `predictions.json` and the games it covers. GitHub records the asset's upload time, so it proves the predictions existed before kickoff. Nothing derived from RotoWire is published. If the hook fails, the snapshot is uploaded without it.
 
@@ -66,6 +67,8 @@ For each player-game the scorer takes the **last prediction committed before kic
   status, for final reports) against nflverse game-day actives.
 - **Points if active:** scored on QB/RB/WR/TE projected 5+. It reports MAE, bias, and the share of results within ±1 and ±2 of the app's spread,
   against nflverse full-PPR points.
+- **Shadow baseline:** each prediction also carries `bl`, the in-house baseline's points if active
+  ([docs/baseline.md](../../docs/baseline.md)). The scorer compares its MAE with the app's on active QB/RB/WR/TE that either put at 5+.
 
 Only games with stats count. Weekly rosters exist before kickoff too, so counting them early would score pre-game statuses. The output is
 aggregates only.

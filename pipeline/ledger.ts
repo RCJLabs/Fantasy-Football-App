@@ -4,8 +4,8 @@
 // so they can be scored later and nobody (us included) can quietly revise them.
 import { createHash } from 'node:crypto';
 import { gamesByTeam, playerRow, type WeekContext } from '../app/src/analysis/analyze';
-import type { PlayersFile, ScheduleFile } from '../app/src/data/contracts';
-import { mergeProjectionPlayers, playersFromFile } from '../app/src/data/repo';
+import type { BaselineFile, PlayersFile, ScheduleFile } from '../app/src/data/contracts';
+import { baselineProjectionRows, hasOffenseProjections, mergeProjectionPlayers, playersFromFile } from '../app/src/data/repo';
 import type { PracticeStatus } from '../app/src/domain/types';
 import { indexProjections, parseLeague } from '../app/src/sleeper/parse';
 import type { RawLeague, RawProjection } from '../app/src/sleeper/raw';
@@ -75,6 +75,10 @@ export interface PlayerPrediction {
   mu: number;
   /** The app's weekly spread around `mu`. */
   sd: number;
+  /** In-house baseline, full-PPR points if active: the shadow second opinion, scored next to `mu`. */
+  bl?: number;
+  /** `mu` came from the baseline because Sleeper's projections were missing, as the app would show. */
+  fallback?: true;
 }
 
 export interface PredictionFile {
@@ -97,6 +101,8 @@ export interface PredictionInput {
   projections: readonly ArchivedProjection[];
   players: PlayersFile;
   schedule: ScheduleFile;
+  /** The deployed baseline.json, when it was archived. */
+  baseline?: BaselineFile;
   code?: string;
 }
 
@@ -105,10 +111,21 @@ const round = (x: number, digits: number) => Number(x.toFixed(digits));
 /** The app's prediction for every player with a projection or a game-week injury tag whose game hasn't started. */
 export function buildPredictions(input: PredictionInput): PredictionFile {
   const { season, week, now } = input;
-  const index = indexProjections(input.projections.map(toRawProjection), week);
+  const rows = input.projections.map(toRawProjection);
+  let index = indexProjections(rows, week);
   const players = mergeProjectionPlayers(playersFromFile(input.players, week), index.players);
   const games = input.schedule.season === season ? input.schedule.games.filter((g) => g.week === week) : [];
   const ctx: WeekContext = { season, week, now, players, projections: index, gamesByTeam: gamesByTeam(games, week) };
+  const b = input.baseline;
+  if (b && b.season === season && b.week === week) {
+    ctx.baseline = { throughWeek: b.throughWeek, players: new Map(Object.entries(b.players)) };
+    // Same fallback as the app (data/repo.ts loadWeek) for a week without Sleeper projections.
+    if (!hasOffenseProjections(index)) {
+      index = indexProjections([...rows, ...baselineProjectionRows(ctx.baseline, players)], week);
+      ctx.projections = index;
+      ctx.projectionSource = 'baseline';
+    }
+  }
   const league = parseLeague({ ...LEDGER_LEAGUE, season });
   const open = games.filter((g) => Date.parse(g.kickoff) > now).sort((a, b) => a.kickoff.localeCompare(b.kickoff) || a.id.localeCompare(b.id));
   const openIds = new Set(open.map((g) => g.id));
@@ -125,6 +142,8 @@ export function buildPredictions(input: PredictionInput): PredictionFile {
     if (row.injury) pred.inj = row.injury;
     if (row.practice) pred.prac = row.practice;
     if (row.practiceFinal) pred.final = true;
+    if (row.baseline) pred.bl = round(row.baseline.pts, 2);
+    if (row.fallback) pred.fallback = true;
     out.push(pred);
   }
   out.sort((a, b) => a.game.localeCompare(b.game) || a.id.localeCompare(b.id));

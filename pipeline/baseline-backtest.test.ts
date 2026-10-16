@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { StatLine } from '../app/src/domain/types';
 import { BASELINE_V0 } from './baseline';
-import { type BacktestRow, blend, bootstrapByPlayer, comparable, earlyExitCheck, fitBlendWeight, gateTable, mae, type SleeperRow, walkForward, type WeekData } from './baseline-backtest';
+import type { SleeperRow } from './baseline';
+import { type BacktestRow, blend, bootstrapByPlayer, comparable, earlyExitCheck, fitBlendWeight, gateTable, mae, walkForward, type WeekData } from './baseline-backtest';
 import { SLEEPER_PPR } from './lib';
 
 const params = { ...BASELINE_V0, shrinkGames: 0, priorSeasonWeight: 1, halfLife: Infinity };

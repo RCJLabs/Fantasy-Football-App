@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { averageLine, BASELINE_V0, type BaselineGame, baselineStats, ffoppStats, impliedFactor, trailingMean } from './baseline';
+import type { StatLine } from '../app/src/domain/types';
+import { averageLine, BASELINE_V0, type BaselineGame, baselineStats, buildBaselineFile, ffoppStats, impliedFactor, type SleeperRow, trailingMean } from './baseline';
 
 const p = { ...BASELINE_V0, halfLife: 1, maxGames: 3, priorSeasonWeight: 0.5, shrinkGames: 1, elasticity: 1 };
 const game = (season: number, week: number, rec: number, implied?: number): BaselineGame => ({ season, week, stats: rec ? { rec } : {}, ...(implied !== undefined ? { implied } : {}) });
@@ -43,5 +44,50 @@ describe('baseline v0', () => {
   it('averages lines with missing keys as zeros', () => {
     expect(averageLine([{ rec: 4 }, { rec: 2, rec_td: 1 }])).toEqual({ rec: 3, rec_td: 0.5 });
     expect(averageLine([])).toEqual({});
+  });
+});
+
+describe('baseline.json', () => {
+  const src = {
+    gsisBySleeper: new Map([['wr', 'G-WR'], ['rb', 'G-RB'], ['fa', 'G-FA']]),
+    expected: new Map<string, StatLine>([
+      ['G-WR|2025|18', { rec: 4, rec_yd: 40 }],
+      ['G-WR|2026|1', { rec: 6, rec_yd: 70 }],
+      ['G-RB|2026|1', { rush_att: 10, rush_yd: 40 }],
+      ['G-FA|2026|1', { rec: 1 }],
+      // 2026 week 2 isn't in ffopportunity yet.
+    ]),
+    implied: new Map([['2025|18|KC', 20], ['2026|1|KC', 25], ['2026|1|LV', 20], ['2026|3|KC', 25]]),
+  };
+  const row = (id: string, position: string, team: string): SleeperRow => ({ player_id: id, position, team, stats: { gp: 1 } });
+  const weeks = [
+    { season: 2025, week: 18, stats: [row('wr', 'WR', 'KC')] },
+    { season: 2026, week: 1, stats: [row('wr', 'WR', 'KC'), row('rb', 'RB', 'LV'), row('fa', 'WR', 'LV')] },
+    { season: 2026, week: 2, stats: [row('wr', 'WR', 'KC')] }, // not processed by ffopportunity: left out, not counted as a zero
+    { season: 2026, week: 3, stats: [row('wr', 'WR', 'KC')] }, // this week: never in its own average
+  ];
+  // fa was released: no team now, but he is in the position average, as in the backtest.
+  const players = [{ id: 'wr', pos: 'WR', team: 'KC' }, { id: 'rb', pos: 'RB', team: 'LV' }, { id: 'fa', pos: 'WR', team: null }];
+  const params = { ...BASELINE_V0, halfLife: Infinity, priorSeasonWeight: 1 };
+  const r2 = (x: number) => Math.round(x * 100) / 100;
+
+  it('averages only earlier weeks that ffopportunity covers, and publishes teams that play', () => {
+    const file = buildBaselineFile({ season: 2026, week: 3, now: 'T', weeks, players, playing: new Set(['KC']), ...src, params: { ...params, shrinkGames: 0 } })!;
+    expect(file).toMatchObject({ schemaVersion: 1, season: '2026', week: 3, throughWeek: 1 });
+    expect(Object.keys(file.players)).toEqual(['wr']); // LV is on bye; fa has no team
+    // 2025 w18 (implied 20) and 2026 w1 (implied 25): means 5 rec and 55 yards, × 25 / 22.5.
+    expect(file.players.wr).toEqual({ rec: r2(5 * (25 / 22.5)), rec_yd: r2(55 * (25 / 22.5)) });
+  });
+
+  it('shrinks toward the average of everyone at the position', () => {
+    const file = buildBaselineFile({ season: 2026, week: 3, now: 'T', weeks, players, playing: new Set(['KC']), ...src, params: { ...params, shrinkGames: 1 } })!;
+    // WR average of wr (5 rec, 55 yd) and fa (1 rec): 3 rec and 27.5 yd, as one pseudo-game next to wr's two.
+    const f = 25 / 22.5;
+    expect(file.players.wr).toEqual({ rec: r2(((5 * 2 + 3) / 3) * f), rec_yd: r2(((55 * 2 + 27.5) / 3) * f) });
+  });
+
+  it('is null when no team plays or nobody has a game to average', () => {
+    expect(buildBaselineFile({ season: 2026, week: 3, now: 'T', weeks, players, playing: new Set(), ...src })).toBeNull();
+    expect(buildBaselineFile({ season: 2026, week: 3, now: 'T', weeks: [], players, playing: new Set(['KC']), ...src })).toBeNull();
   });
 });

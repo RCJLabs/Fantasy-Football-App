@@ -121,8 +121,12 @@
     QB is 1.21×, which fails.
   - **But blending barely helps:** with weights fit on earlier seasons, MAE changes +0.1% (2024), −1.1% (2025) and −0.6% (2026, interval
     includes 0). The gate now also requires that direct test (§6).
-  - **Next:** v0 runs in shadow as a labelled second opinion and the fallback. It's committed in the ledger beside the app's numbers and
-    scored.
+  - **Then built (2026-10-16): v0 in shadow.** This is roadmap N4.
+    - The pipeline publishes `baseline.json` daily (CC-BY-SA 4.0), using the backtest's code path.
+    - Player details show it as a labelled second opinion.
+    - It's the fallback for a week without Sleeper QB/RB/WR/TE projections.
+    - The ledger commits it (`bl`) beside the app's numbers and scores both from week 7.
+    - Known gap: it needs Sleeper's stats endpoint, so it doesn't survive a full `api.sleeper.com` outage.
   - **Found on the way:** Sleeper's stored 2022–25 projection rows count QB interceptions as +2 in their own `pts_ppr` (2026 rows are fine).
     The app rescores stat lines, so it was never affected; the accuracy shard now rescores too.
 
@@ -392,7 +396,7 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
 - N1. Analytic win probability vs. the actual opponent (median game included).
 - N2. Waiver board v0: this week's and next week's lineup gain + trending adds + opportunity-shock flag (Sleeper data only).
 - N3. DST v0 + 2-week DST streaming view (needs implied totals from `schedule.json`).
-- N4. In-house baseline v0 running in **shadow**: archived and scored, not blended.
+- N4. In-house baseline v0 running in **shadow**: archived and scored, not blended. **Built 2026-10-16** ([baseline.md](baseline.md#shadow-live)).
 
 **Checkpoints:**
 - **Oct 29:** if the end-to-end lineup isn't live, drop N1–N4 from Phase 1.

@@ -102,6 +102,9 @@ export const DERIVED_KEYS = new Set<string>([
   'bonus_fd_rb',
   'bonus_fd_wr',
   'bonus_fd_te',
+  'bonus_rec_rb',
+  'bonus_rec_wr',
+  'bonus_rec_te',
   'fgmiss',
   'fgm_50_59',
   'fgm_60p',
@@ -152,6 +155,11 @@ export function expectedStats(stats: StatLine, pos: string): StatLine {
     const tds = out[stat];
     if (tds !== undefined && tds > 0) out[key] = tds * share;
   }
+
+  // Position reception bonuses (TE premium and the like) for sources that carry only receptions; Sleeper's
+  // rows set them (bonus_rec_te = a TE's receptions).
+  const recKey = `bonus_rec_${pos.toLowerCase()}`;
+  if (['RB', 'WR', 'TE'].includes(pos) && !has(recKey) && (out.rec ?? 0) > 0) out[recKey] = out.rec!;
 
   // Position-specific first-down bonuses. [unverified] definition; checked by the golden test.
   const fdKey = `bonus_fd_${pos.toLowerCase()}`;

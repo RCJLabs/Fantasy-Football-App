@@ -1,4 +1,4 @@
-import type { Game, League, LeagueUser, Matchup, Player, PracticeStatus, Roster } from '../domain/types';
+import type { Game, League, LeagueUser, Matchup, Player, PracticeStatus, Roster, StatLine } from '../domain/types';
 import { bestAssignment } from '../engine/assignment';
 import { conditionalMean, playProbability } from '../engine/availability';
 import { crossCovariance, pairCorrelation, withinCovariance, type CorrItem } from '../engine/correlation';
@@ -27,6 +27,16 @@ export interface WeekContext {
   usage?: UsageIndex;
   /** Defense-vs-position edges and regular cornerbacks (pipeline matchups.json), when available. */
   matchups?: MatchupsFile;
+  /** In-house baseline stat lines for this week (pipeline baseline.json), a second opinion, when available. */
+  baseline?: BaselineIndex;
+  /** 'baseline' when Sleeper's projections were missing and QB/RB/WR/TE projections come from the baseline. */
+  projectionSource?: 'baseline';
+}
+
+export interface BaselineIndex {
+  /** Last week of this season in the averages. */
+  throughWeek: number;
+  players: ReadonlyMap<string, StatLine>;
 }
 
 export interface UsageIndex {
@@ -66,6 +76,13 @@ export interface PlayerRow {
   usage?: PlayerUsage & { weeks: number[] };
   /** Matchup context (display only): the opponent against this position, and its regular cornerbacks who are out. */
   matchup?: { defense?: DefenseEdge; cbsOut?: Array<{ name: string; snap: number; status: string }> };
+  /**
+   * In-house baseline, league points if active, from games through `through` (this season): a labelled
+   * second opinion, never blended into `mu`.
+   */
+  baseline?: { pts: number; through: number };
+  /** `mu` comes from the in-house baseline because Sleeper's projections were missing this week. */
+  fallback?: true;
 }
 
 export type ProblemLevel = 'error' | 'warn' | 'info';
@@ -210,6 +227,9 @@ export function playerRow(id: string, league: League, ctx: WeekContext, actualPo
     breakdown: hasProjection ? scoreBreakdown(expected, league.scoring).slice(0, 6) : [],
   };
   if (base?.injuryBody) row.injuryBody = base.injuryBody;
+  const line = ctx.baseline?.players.get(id);
+  if (ctx.projectionSource === 'baseline' && line && hasProjection) row.fallback = true;
+  if (line && game && !row.fallback) row.baseline = { pts: scoreStats(expectedStats(line, pos), league.scoring), through: ctx.baseline!.throughWeek };
   const usage = ctx.usage?.players.get(id);
   if (usage) row.usage = { ...usage, weeks: ctx.usage!.weeks };
   if (practice) row.practice = practice;

@@ -41,4 +41,10 @@ console.log(
     ? `\n**Points if active** (QB/RB/WR/TE projected ≥ ${p.minProjected}, n = ${p.n}): MAE ${p.mae}, bias ${p.bias >= 0 ? '+' : ''}${p.bias}, within ±1 SD ${pct(p.within1)}, ±2 SD ${pct(p.within2)}`
     : '\n**Points if active:** no played games yet.',
 );
+const b = score.baseline;
+console.log(
+  b.n
+    ? `\n**Shadow baseline** (QB/RB/WR/TE either projected ≥ ${p.minProjected}, n = ${b.n}): app MAE ${b.appMae}, baseline MAE ${b.baselineMae} (${b.ratio}× the app's)`
+    : '\n**Shadow baseline:** no baseline predictions in played games yet.',
+);
 if (jsonOut) writeFileSync(jsonOut, `${JSON.stringify(score, null, 2)}\n`);
