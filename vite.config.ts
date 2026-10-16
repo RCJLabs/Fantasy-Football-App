@@ -3,8 +3,9 @@ import type { Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig } from 'vitest/config';
 
-// GitHub Pages serves the app under /<repo>/; the deploy workflow sets BASE_PATH.
-const base = process.env.BASE_PATH ?? '/';
+// Relative paths, so one build works wherever it's served: at ff.rcjlabs.com/ and at the old rcjlabs.github.io/Fantasy-Football-App/
+// (which redirects once the custom domain is set). Routes are hash-based, so the page is always the base's index.html.
+const base = process.env.BASE_PATH ?? './';
 
 // Pages can't send headers, so the CSP ships as a meta tag (production only: dev needs inline HMR).
 const CSP = [
