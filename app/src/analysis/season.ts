@@ -11,6 +11,11 @@ export interface SeasonTeam {
   weeks: readonly Dist[];
   /** Score distribution in each playoff round (a two-week round adds its weeks), aligned with the bracket's rounds. */
   playoff?: readonly Dist[];
+  /**
+   * Weekly SD of the team's persistent drift: projection error that carries over from week to week (roles and form
+   * change), so it accumulates like a random walk from now on instead of averaging out (docs/ros-uncertainty.md).
+   */
+  drift?: number;
 }
 
 export interface SeasonInput {
@@ -25,6 +30,10 @@ export interface SeasonInput {
   playoffRounds?: number;
   /** Re-seed every round (the best remaining seed plays the worst) instead of Sleeper's fixed bracket. */
   reseed?: boolean;
+  /** Weeks in each playoff round (1 or 2), for the drift; default 1. */
+  playoffRoundWeeks?: readonly number[];
+  /** Leading weeks of `weeks` projected this week (the current week while it's unscored): no drift yet. */
+  freshWeeks?: number;
   sims?: number;
   seed?: number;
 }
@@ -96,6 +105,9 @@ function normalSampler(rand: () => number): () => number {
  * With `playoffRounds`, each simulated season goes on through the winners' bracket: top seeds take the
  * byes, each round's game is decided by that round's score (two-week rounds add up), and a tie goes to
  * the better seed.
+ *
+ * A team's `drift` adds projection error that persists: a level that random-walks from this week on and
+ * shifts every later week's mean, so a team that's really better (or worse) than projected stays so.
  */
 export function simulateSeason(input: SeasonInput): Map<number, TeamOdds> {
   const { teams, weeks, pairings, medianGame, playoffTeams } = input;
@@ -108,9 +120,14 @@ export function simulateSeason(input: SeasonInput): Map<number, TeamOdds> {
   const rounds = playoffTeams >= 2 ? Math.max(0, input.playoffRounds ?? 0) : 0;
   const bracket = rounds ? bracketOrder(2 ** rounds) : [];
   const playoffSds = teams.map((t) => (t.playoff ?? []).map((d) => Math.sqrt(Math.max(0, d.variance))));
+  const drift = teams.map((t) => Math.max(0, t.drift ?? 0));
+  const fresh = input.freshWeeks ?? 0;
+  /** Each team's accumulated drift in this simulated season, and the part of it carried into each playoff round. */
+  const level = new Float64Array(n);
+  const roundShift = new Float64Array(n * Math.max(1, rounds));
   const playoffScore = (i: number, r: number) => {
     const d = teams[i]!.playoff?.[r];
-    return d ? d.mean + playoffSds[i]![r]! * gauss() : 0;
+    return d ? d.mean + roundShift[i * rounds + r]! + playoffSds[i]![r]! * gauss() : 0;
   };
 
   const opponents = weeks.map((w) => {
@@ -153,10 +170,12 @@ export function simulateSeason(input: SeasonInput): Map<number, TeamOdds> {
       losses[i] = t.losses + t.ties / 2;
       pf[i] = t.pointsFor;
     });
+    level.fill(0);
     for (let k = 0; k < weeks.length; k++) {
       for (let i = 0; i < n; i++) {
+        if (drift[i] && k >= fresh) add(level, i, drift[i]! * gauss());
         const d = teams[i]!.weeks[k];
-        const score = d ? d.mean + sds[i]![k]! * gauss() : 0;
+        const score = d ? d.mean + level[i]! + sds[i]![k]! * gauss() : 0;
         scores[i] = score;
         add(pf, i, score);
       }
@@ -185,6 +204,18 @@ export function simulateSeason(input: SeasonInput): Map<number, TeamOdds> {
       seedOf[i] = rank + 1;
     });
     if (rounds) {
+      // The drift goes on through the playoff weeks; a two-week round adds both weeks' levels.
+      for (let i = 0; i < n; i++) {
+        if (!drift[i]) continue;
+        for (let r = 0; r < rounds; r++) {
+          let shift = 0;
+          for (let w = 0; w < (input.playoffRoundWeeks?.[r] ?? 1); w++) {
+            add(level, i, drift[i]! * gauss());
+            shift += level[i]!;
+          }
+          roundShift[i * rounds + r] = shift;
+        }
+      }
       // Bracket slots hold team indices; -1 is a bye (a seed beyond the playoff field).
       let slots = bracket.map((seed) => (seed <= Math.min(playoffTeams, n) ? order[seed - 1]! : -1));
       for (let r = 0; r < rounds; r++) {

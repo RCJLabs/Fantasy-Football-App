@@ -18,8 +18,10 @@ import {
   QUESTIONABLE_PLAY,
   regularSeasonEnd,
   RETURN_PLAY,
+  ROS_DRIFT,
   RosModel,
   seasonEnd,
+  teamDrift,
   weekWeights,
 } from './ros';
 import { bracketOrder, simulateSeason, type SeasonTeam } from './season';
@@ -125,6 +127,16 @@ describe('RosModel', () => {
     expect(earlier.ev('qb')[1]).toBeCloseTo(HEALTHY_PLAY[2]! * 18, 9);
   });
 
+  it("sizes a team's drift from its QB/RB/WR/TE starters' expected points", () => {
+    const team = ['qb', 'rb1', 'rb2', 'wr1', 'def'];
+    const squares = [
+      (18 * 18 + 10 * 10 + 10 * 10 + 6 * 6) * p1 * p1, // week 7: QB, RB, WR, FLEX rb2; the DEF doesn't drift
+      (18 * 18 + 6 * 6 + 10 * 10) * p2 * p2, // week 8: rb1 on bye
+    ];
+    expect(teamDrift(model, team)).toBeCloseTo(ROS_DRIFT * Math.sqrt((squares[0]! + squares[1]!) / 2), 9);
+    expect(teamDrift(model, team, 1)).toBeCloseTo(ROS_DRIFT * Math.sqrt(squares[0]!), 9);
+  });
+
   it('values a bench player as insurance for starters who might miss', () => {
     const withBench = model.bestWeek(['qb', 'rb1', 'wr1', 'def', 'rb2'], 0);
     const flexless = new RosModel({ league: parseLeague({ ...rawLeague, roster_positions: ['QB', 'RB', 'WR', 'DEF', 'BN'] }), weeks: [7], byWeek, players });
@@ -193,6 +205,45 @@ describe('simulateSeason', () => {
     const total = [...odds.values()].reduce((a, o) => a + o.pPlayoffs, 0);
     expect(total).toBeCloseTo(2, 9);
     for (const o of odds.values()) expect(o.expWins + o.expLosses).toBeCloseTo(5 + 4, 9); // 2 weeks × (H2H + median)
+  });
+});
+
+describe('persistent drift', () => {
+  const weeks = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+  const pairings = new Map(
+    weeks.map((w, i) => [w, new Map<number, number | null>(i % 2 ? [[1, 1], [2, 1], [3, 2], [4, 2]] : [[1, 1], [3, 1], [2, 2], [4, 2]])]),
+  );
+  const team = (rosterId: number, mean: number, drift?: number): SeasonTeam => ({
+    rosterId,
+    wins: 2,
+    losses: 2,
+    ties: 0,
+    pointsFor: 400,
+    weeks: weeks.map(() => ({ mean, variance: 400 })),
+    ...(drift !== undefined ? { drift } : {}),
+  });
+  const run = (teams: SeasonTeam[], w = weeks) => simulateSeason({ teams, weeks: w, pairings, medianGame: false, playoffTeams: 2, sims: 3000, freshWeeks: 1 });
+
+  it('changes nothing at zero', () => {
+    const plain = run([team(1, 115), team(2, 100), team(3, 100), team(4, 90)]);
+    const zero = run([team(1, 115, 0), team(2, 100, 0), team(3, 100, 0), team(4, 90, 0)]);
+    expect([...zero.values()]).toEqual([...plain.values()]);
+  });
+
+  it("makes the season's odds less sure: a stronger team can fade, a weaker one can surge", () => {
+    const plain = run([team(1, 115), team(2, 100), team(3, 100), team(4, 90)]);
+    const drifting = run([team(1, 115, 8), team(2, 100, 8), team(3, 100, 8), team(4, 90, 8)]);
+    expect(drifting.get(1)!.pPlayoffs).toBeLessThan(plain.get(1)!.pPlayoffs - 0.03);
+    expect(drifting.get(1)!.pPlayoffs).toBeGreaterThan(0.5);
+    expect(drifting.get(4)!.pPlayoffs).toBeGreaterThan(plain.get(4)!.pPlayoffs + 0.03);
+    expect([...drifting.values()].reduce((a, o) => a + o.pPlayoffs, 0)).toBeCloseTo(2, 9);
+  });
+
+  it("doesn't drift this week's fresh projections", () => {
+    const one = [5];
+    const plain = run([team(1, 115), team(2, 100), team(3, 100), team(4, 90)], one);
+    const drifting = run([team(1, 115, 8), team(2, 100, 8), team(3, 100, 8), team(4, 90, 8)], one);
+    expect([...drifting.values()]).toEqual([...plain.values()]);
   });
 });
 

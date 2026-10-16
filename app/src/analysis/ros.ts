@@ -26,6 +26,16 @@ export const QUESTIONABLE_PLAY = 0.822;
  * four to eight weeks later, projected or not.
  */
 export const RETURN_PLAY = 0.8;
+
+/**
+ * Persistent projection error: a QB/RB/WR/TE starter's level drifts from his projection by this share of it each
+ * week ahead, like a random walk (injuries, role changes, pickups). The season simulation without it was too sure:
+ * in a backtest on synthetic leagues built from 2022–2025 it put teams it gave 1% at 6% in reality and 88% at 78%.
+ * The drift that predicted best was 0.3 with frozen rosters and 0.4 with weekly waiver pickups (0.3 within 0.3%);
+ * log loss 0.520 → 0.484 (docs/ros-uncertainty.md). [measured]
+ */
+export const ROS_DRIFT = 0.3;
+const DRIFT_POSITIONS = new Set(['QB', 'RB', 'WR', 'TE']);
 const SIDELINED = new Set<InjuryStatus>(['IR', 'PUP', 'NA', 'Sus', 'DNR', 'COV', 'Out', 'Doubtful']);
 
 /** P(active) `weeksAhead` weeks from now (1 = next week) for a player at `pos` with today's injury status. */
@@ -132,6 +142,22 @@ export function playoffRoundWeeks(league: League, weeks: readonly number[]): num
     out[info.round - 1]!.push(i);
   }
   return out.every((r) => r.length) ? out : undefined;
+}
+
+/**
+ * Weekly SD of a team's persistent drift (season.ts `drift`): ROS_DRIFT of each QB/RB/WR/TE starter's expected
+ * points, added in quadrature, averaged over the next few weeks so a bye doesn't shrink it.
+ */
+export function teamDrift(model: RosModel, ids: readonly string[], weeks = 4): number {
+  const n = Math.min(weeks, model.weeks.length);
+  if (!n) return 0;
+  let squares = 0;
+  for (let i = 0; i < n; i++) {
+    for (const id of model.lineupWeek(ids, i).starters) {
+      if (DRIFT_POSITIONS.has(model.player(id)?.pos ?? '')) squares += (ROS_DRIFT * model.ev(id)[i]!) ** 2;
+    }
+  }
+  return Math.sqrt(squares / n);
 }
 
 /** Players a roster can field: everyone except taxi-squad players (IR players count once they return). */

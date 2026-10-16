@@ -4,7 +4,7 @@ import type { ProjectionIndex } from '../sleeper/parse';
 import type { RawTransaction } from '../sleeper/raw';
 import { playerRow, rosteredIds, startable, teamName, teamSide, thisWeekGain, type PlayerRow, type WeekContext } from './analyze';
 import { faabMarket, suggestBid, tierOf, type BidAdvice, type FaabMarket } from './faab';
-import { activeIds, addGains, cheapestDrops, playoffRoundWeeks, regularSeasonEnd, RosModel, rosterLimit, seasonEnd, teamIds, weekWeights } from './ros';
+import { activeIds, addGains, cheapestDrops, playoffRoundWeeks, regularSeasonEnd, RosModel, rosterLimit, seasonEnd, teamDrift, teamIds, weekWeights } from './ros';
 import { simulateSeason, type SeasonTeam, type TeamOdds } from './season';
 
 export interface OutlookInput {
@@ -33,6 +33,8 @@ export interface TeamOutlook {
   weights: number[];
   /** Opponent's roster id in each future week (null = no game or unknown). */
   opponents: Array<number | null>;
+  /** Weekly SD of the team's persistent drift in the season simulation (ros.ts teamDrift). */
+  drift: number;
 }
 
 export interface LeagueOutlook {
@@ -74,7 +76,8 @@ export function buildOutlook(input: OutlookInput): LeagueOutlook {
     const future = weeks.map((_, i) => model.bestWeek(ids, i));
     const regular = [...(includeCurrent ? [teamSide(league, roster, input.users, input.matchups, ctx).dist] : []), ...future.slice(0, futureRegular.length)];
     const opponents = weeks.map((w) => opponentOf(pairings.get(w), roster.rosterId));
-    teams.set(roster.rosterId, { rosterId: roster.rosterId, name: teamName(roster, input.users), roster, future, regular, weights: [], opponents });
+    const drift = teamDrift(model, ids);
+    teams.set(roster.rosterId, { rosterId: roster.rosterId, name: teamName(roster, input.users), roster, future, regular, weights: [], opponents, drift });
   }
 
   const sims = input.sims ?? 4000;
@@ -103,17 +106,18 @@ function opponentOf(pairs: ReadonlyMap<number, number | null> | undefined, roste
 
 /**
  * Simulate the rest of the regular season, and the playoff bracket while all of it is ahead; `override` swaps
- * in other future-week distributions for some teams.
+ * in other future-week distributions (and drifts) for some teams.
  */
-function simulate(o: LeagueOutlook, override: ReadonlyMap<number, Dist[]>): Map<number, TeamOdds> {
+function simulate(o: LeagueOutlook, override: ReadonlyMap<number, { future: Dist[]; drift: number }>): Map<number, TeamOdds> {
   const futureCount = o.regularWeeks.filter((w) => o.weeks.includes(w)).length;
   const current = o.regularWeeks.length - futureCount; // 1 while this week's result is still open
   const rounds = o.playoffRounds;
   const teams: SeasonTeam[] = [...o.teams.values()].map((t) => {
-    const future = override.get(t.rosterId);
+    const swap = override.get(t.rosterId);
+    const future = swap?.future;
     const weeks = future ? [...t.regular.slice(0, current), ...future.slice(0, futureCount)] : t.regular;
     const r = t.roster;
-    const team: SeasonTeam = { rosterId: t.rosterId, wins: r.wins, losses: r.losses, ties: r.ties, pointsFor: r.pointsFor, weeks };
+    const team: SeasonTeam = { rosterId: t.rosterId, wins: r.wins, losses: r.losses, ties: r.ties, pointsFor: r.pointsFor, weeks, drift: swap?.drift ?? t.drift };
     if (rounds) team.playoff = roundDists(future ?? t.future, rounds);
     return team;
   });
@@ -123,7 +127,9 @@ function simulate(o: LeagueOutlook, override: ReadonlyMap<number, Dist[]>): Map<
     pairings: o.pairings,
     medianGame: o.league.rules.medianGame,
     playoffTeams: o.league.rules.playoffWeekStart ? (o.league.rules.playoffTeams ?? 0) : 0,
-    ...(rounds ? { playoffRounds: rounds.length, reseed: o.league.rules.playoffSeedType === 1 } : {}),
+    ...(rounds ? { playoffRounds: rounds.length, reseed: o.league.rules.playoffSeedType === 1, playoffRoundWeeks: rounds.map((r) => r.length) } : {}),
+    // This week's projections (and, once it's scored, next week's) are fresh; the drift starts after them.
+    freshWeeks: 1,
     sims: o.sims,
   });
 }
@@ -335,13 +341,19 @@ export function evaluateTrade(o: LeagueOutlook, ctx: WeekContext, myId: number, 
       drops,
       adds,
     };
-    return { res, futureAfter };
+    return { res, futureAfter, drift: teamDrift(o.model, after) };
   };
   const taken = new Set<string>();
   const a = side(me, give, get, taken);
   const b = side(them, get, give, taken);
   if (o.odds) {
-    const after = simulate(o, new Map([[myId, a.futureAfter], [theirId, b.futureAfter]]));
+    const after = simulate(
+      o,
+      new Map([
+        [myId, { future: a.futureAfter, drift: a.drift }],
+        [theirId, { future: b.futureAfter, drift: b.drift }],
+      ]),
+    );
     const fill = (r: TradeSideResult) => {
       const pre = o.odds!.get(r.rosterId)!;
       const post = after.get(r.rosterId)!;
