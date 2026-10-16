@@ -88,6 +88,10 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   // The in-house baseline, labelled as a second opinion (half PPR: 4 × 0.5 + 5 + 0.3 × 6).
   await expect(flanker).toContainText('Second opinion, not used: 8.8 pts if he plays');
   await expect(flanker).toContainText('games through week 5');
+  const defense = page.locator('.pl').filter({ hasText: 'Fff Defense' }).first();
+  await defense.getByRole('button').click();
+  await expect(defense).toContainText("Second opinion, not used:");
+  await expect(defense).toContainText('about as accurate as RotoWire for defenses');
   await expect(page.locator('.pl').filter({ hasText: 'Taylor Wideout' }).first()).toContainText('Live');
   await page.screenshot({ path: testInfo.outputPath('lineup.png'), fullPage: true });
 

@@ -64,8 +64,9 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           <li>
             <strong>Second opinion</strong>: player details also show our own baseline, built from each player's recent expected usage
             (ffopportunity) and this week's implied team total. Over 2024–2026 it was about 1–5% less accurate than RotoWire for RBs, WRs and TEs and
-            about 20% for QBs, and averaging the two gained little and not every season, so it isn't used in projections. If Sleeper's projections
-            are missing for a week, QBs, RBs, WRs and TEs fall back to it, labelled.
+            about 20% for QBs. Team defenses come from the opponent's implied total and league-average sacks and takeaways, about as accurate as
+            RotoWire's. Averaging either with RotoWire gained little and not every season, so neither is used in projections. If Sleeper's
+            projections are missing for a week, every position but kicker falls back to it, labelled.
           </li>
         </ul>
         <p class="muted small">Coming next: matchup adjustments, added only after backtests show they help.</p>

@@ -194,6 +194,7 @@ export interface PointsRow {
   player_id: string;
   stats?: Record<string, number> | null;
   team?: string | null;
+  opponent?: string | null;
   player?: { position?: string | null } | null;
 }
 

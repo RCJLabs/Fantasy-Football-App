@@ -126,7 +126,8 @@ export const baseline: BaselineFile = {
   season: '2026',
   week: 6,
   throughWeek: 5,
-  players: { w2: { rec: 4, rec_yd: 50, rec_td: 0.3 } },
+  // Real DEF ids are team codes; the fixture's defense is d1.
+  players: { w2: { rec: 4, rec_yd: 50, rec_td: 0.3 }, d1: { sack: 2.5, int: 0.8, fum_rec: 0.6, pts_allow: 21 } },
 };
 
 /** Recent usage (nflverse-shaped, numbers invented): the free-agent RB's role is growing. */

@@ -13,6 +13,7 @@ export interface SleeperRow {
   player_id: string;
   position?: string | null;
   team?: string | null;
+  opponent?: string | null;
   stats?: Record<string, number> | null;
 }
 
@@ -222,6 +223,8 @@ export interface BaselineShardInput extends BaselineSources {
   players: ReadonlyArray<{ id: string; pos: string; team?: string | null }>;
   /** Teams with a game this week. */
   playing: ReadonlySet<string>;
+  /** Team defense lines for this week (pipeline/dst.ts), by Sleeper DEF id (the team code). */
+  defenses?: Readonly<Record<string, StatLine>>;
   params?: BaselineParams;
 }
 
@@ -240,6 +243,10 @@ export function buildBaselineFile(input: BaselineShardInput): BaselineFile | nul
   for (const w of weeks) recordWeek(history, w.season, w.week, w.stats, input);
   const lines = baselineWeek(input.players, history, input.season, (team) => input.implied.get(`${input.season}|${input.week}|${team}`), params);
   const teamOf = new Map(input.players.map((p) => [p.id, p.team]));
+  for (const [team, line] of Object.entries(input.defenses ?? {})) {
+    lines.set(team, line);
+    teamOf.set(team, team);
+  }
   const players: Record<string, StatLine> = {};
   for (const [id, line] of [...lines].sort(([a], [b]) => a.localeCompare(b))) {
     const team = teamOf.get(id);
