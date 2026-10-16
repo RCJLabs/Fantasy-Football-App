@@ -1,4 +1,4 @@
-import type { League, Player, Roster } from '../domain/types';
+import type { InjuryStatus, League, Player, Roster } from '../domain/types';
 import { bestAssignment } from '../engine/assignment';
 import { canFill, startingSlots } from '../engine/lineup';
 import { expectedStats, scoreStats } from '../engine/scoring';
@@ -9,15 +9,34 @@ import type { ProjectionIndex } from '../sleeper/parse';
 export const LAST_WEEK = 18;
 
 /**
- * P(active) in a future week. Sleeper's future-week projections already drop players for the weeks
- * they're expected to miss (IR players reappear in their return week), so these only cover what the
- * projections can't know: new injuries (RBs most), and return dates slipping. [design] calibrate with
- * the archive.
+ * P(active) k weeks ahead (index k − 1) for a player with no injury designation now: QB/RB/WR/TE pooled (separate
+ * position curves did worse on held-out seasons), and kickers. Fitted on 2019–2025 game-day rosters
+ * (scripts/calibrate/hazard.ts, docs/hazard.md): new injuries, reserve lists, benchings and releases add up with
+ * distance. Sleeper's future-week projections don't discount for any of it (a healthy player's projection is flat
+ * across the season), so this is applied on top. The last value holds beyond; IDP players get the QB/RB/WR/TE
+ * curve [design].
  */
-export const FUTURE_PLAY: Record<string, number> = { QB: 0.95, RB: 0.91, WR: 0.93, TE: 0.93, K: 0.98, DEF: 1 };
-const FUTURE_PLAY_OTHER = 0.93;
+export const HEALTHY_PLAY: readonly number[] = [0.94, 0.91, 0.889, 0.876, 0.866, 0.855, 0.852, 0.845, 0.838, 0.832, 0.823, 0.815, 0.8, 0.787, 0.763];
+export const KICKER_PLAY: readonly number[] = [0.954, 0.931, 0.914, 0.9, 0.894, 0.886, 0.88, 0.87, 0.863, 0.859, 0.857, 0.856, 0.852, 0.851];
+/** Questionable now: about 82% in every later week (2019–2025), never above a healthy player's chance. */
+export const QUESTIONABLE_PLAY = 0.822;
+/**
+ * Out, IR, PUP and the like, in weeks Sleeper projects him (his expected return and after). Not calibrated: past
+ * projections don't record expected returns [design]. For scale, players Out now were active 74–78% of the time
+ * four to eight weeks later, projected or not.
+ */
 export const RETURN_PLAY = 0.8;
-const SIDELINED = new Set(['IR', 'PUP', 'NA', 'Sus', 'DNR', 'COV', 'Out', 'Doubtful']);
+const SIDELINED = new Set<InjuryStatus>(['IR', 'PUP', 'NA', 'Sus', 'DNR', 'COV', 'Out', 'Doubtful']);
+
+/** P(active) `weeksAhead` weeks from now (1 = next week) for a player at `pos` with today's injury status. */
+export function futurePlay(pos: string, injury: InjuryStatus | null | undefined, weeksAhead: number): number {
+  if (pos === 'DEF') return 1;
+  const curve = pos === 'K' ? KICKER_PLAY : HEALTHY_PLAY;
+  const healthy = curve[Math.min(curve.length, Math.max(1, Math.round(weeksAhead))) - 1]!;
+  if (injury && SIDELINED.has(injury)) return Math.min(RETURN_PLAY, healthy);
+  if (injury === 'Questionable') return Math.min(QUESTIONABLE_PLAY, healthy);
+  return healthy;
+}
 
 const OFFENSE = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
 const IDP = ['DL', 'LB', 'DB'];
@@ -110,6 +129,8 @@ export interface RosInput {
   league: League;
   /** Weeks to value, ascending (next week through the end of the season). */
   weeks: readonly number[];
+  /** The week now: availability falls with the weeks ahead of it. Default: the week before the first valued one. */
+  currentWeek?: number;
   byWeek: ReadonlyMap<number, ProjectionIndex>;
   players: ReadonlyMap<string, Player>;
 }
@@ -118,13 +139,15 @@ export interface RosInput {
 export class RosModel {
   readonly slots: string[];
   readonly weeks: readonly number[];
+  private readonly currentWeek: number;
   private readonly evs = new Map<string, Float64Array>();
   private readonly vars = new Map<string, Float64Array>();
-  private readonly plays = new Map<string, number>();
+  private readonly plays = new Map<string, Float64Array>();
 
   constructor(private readonly input: RosInput) {
     this.slots = startingSlots(input.league.rosterPositions);
     this.weeks = input.weeks;
+    this.currentWeek = input.currentWeek ?? (input.weeks[0] ?? 1) - 1;
   }
 
   player(id: string): Player | undefined {
@@ -175,10 +198,10 @@ export class RosModel {
     return this.vars.get(id)!;
   }
 
-  /** P(active) in weeks he's projected to play. */
-  play(id: string): number {
+  /** P(active) in week index `i`, if he's projected to play then. */
+  play(id: string, i: number): number {
     if (!this.plays.has(id)) this.compute(id);
-    return this.plays.get(id)!;
+    return this.plays.get(id)![i] ?? 0;
   }
 
   /** Unweighted rest-of-season expected points of a player on his own. */
@@ -190,11 +213,12 @@ export class RosModel {
     const n = this.weeks.length;
     const e = new Float64Array(n);
     const v = new Float64Array(n);
+    const plays = new Float64Array(n);
     const pl = this.input.players.get(id);
     const pos = pl?.pos ?? 'UNK';
-    const p = pl?.injury && SIDELINED.has(pl.injury) ? RETURN_PLAY : (FUTURE_PLAY[pos] ?? FUTURE_PLAY_OTHER);
-    this.plays.set(id, p);
     this.weeks.forEach((w, i) => {
+      const p = futurePlay(pos, pl?.injury, w - this.currentWeek);
+      plays[i] = p;
       const stats = this.input.byWeek.get(w)?.byPlayer.get(id)?.stats;
       if (!stats) return;
       const mu = Math.max(0, scoreStats(expectedStats(stats, pos), this.input.league.scoring));
@@ -202,6 +226,7 @@ export class RosModel {
       e[i] = p * mu;
       v[i] = playerDist(mu, p, pointSd(pos, mu)).variance;
     });
+    this.plays.set(id, plays);
     this.evs.set(id, e);
     this.vars.set(id, v);
   }
@@ -234,7 +259,7 @@ export class RosModel {
       const id = ids[k]!;
       starters.push(id);
       variance += this.variance(id)[i]!;
-      const miss = 1 - this.play(id);
+      const miss = 1 - this.play(id, i);
       if (miss <= 0) return;
       let backup = 0;
       ids.forEach((b, j) => {

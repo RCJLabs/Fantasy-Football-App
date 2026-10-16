@@ -3,6 +3,7 @@
 How often is a player active for his game, given his final injury designation and final practice status? The app multiplies each projection by
 this probability, so it drives start/sit, win chances and waiver values. Computed 2026-10-15 with
 [`scripts/calibrate/pplay.ts`](../scripts/calibrate/pplay.ts). Data: nflverse (CC-BY 4.0). Only aggregates are published here.
+Later weeks use a separate curve by weeks ahead: [hazard.md](hazard.md).
 
 ## What the app uses
 

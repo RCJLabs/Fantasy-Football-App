@@ -6,7 +6,21 @@ import type { RawLeague, RawTransaction } from '../sleeper/raw';
 import { gamesByTeam, type WeekContext } from './analyze';
 import { faabMarket, marketPrice, suggestBid, tierOf } from './faab';
 import { buildOutlook, byeGrid, evaluateTrade, freeAgentPool, regularStarters, scheduleOutlook, streamers, waiverBoard } from './outlook';
-import { addGains, playoffByes, playoffRounds, projectionPositions, regularSeasonEnd, RosModel, seasonEnd, weekWeights } from './ros';
+import {
+  addGains,
+  futurePlay,
+  HEALTHY_PLAY,
+  KICKER_PLAY,
+  playoffByes,
+  playoffRounds,
+  projectionPositions,
+  QUESTIONABLE_PLAY,
+  regularSeasonEnd,
+  RETURN_PLAY,
+  RosModel,
+  seasonEnd,
+  weekWeights,
+} from './ros';
 import { simulateSeason } from './season';
 
 const rawLeague: RawLeague = {
@@ -48,6 +62,25 @@ describe('season calendar', () => {
   });
 });
 
+describe('future availability', () => {
+  it('falls with the weeks ahead and holds its last value beyond the fit', () => {
+    expect(futurePlay('WR', null, 1)).toBe(HEALTHY_PLAY[0]);
+    expect(futurePlay('RB', null, 8)).toBe(HEALTHY_PLAY[7]);
+    expect(futurePlay('QB', null, 40)).toBe(HEALTHY_PLAY.at(-1));
+    expect(futurePlay('LB', null, 2)).toBe(HEALTHY_PLAY[1]); // IDP: the QB/RB/WR/TE curve
+    expect(futurePlay('K', null, 3)).toBe(KICKER_PLAY[2]);
+    expect(futurePlay('DEF', 'IR', 10)).toBe(1);
+    for (const curve of [HEALTHY_PLAY, KICKER_PLAY]) curve.forEach((p, i) => expect(p).toBeLessThanOrEqual(curve[i - 1] ?? 1));
+  });
+
+  it('never rates a Questionable or sidelined player above a healthy one', () => {
+    expect(futurePlay('WR', 'Questionable', 1)).toBe(QUESTIONABLE_PLAY);
+    expect(futurePlay('WR', 'Questionable', 15)).toBe(HEALTHY_PLAY[14]);
+    expect(futurePlay('RB', 'IR', 2)).toBe(RETURN_PLAY);
+    expect(futurePlay('RB', 'Out', 15)).toBe(HEALTHY_PLAY[14]);
+  });
+});
+
 describe('RosModel', () => {
   const players = new Map(['qb', 'rb1', 'rb2', 'wr1', 'def'].map((id) => [id, player(id, id.startsWith('rb') ? 'RB' : id === 'qb' ? 'QB' : id === 'def' ? 'DEF' : 'WR')]));
   const byWeek = new Map([
@@ -56,16 +89,23 @@ describe('RosModel', () => {
   ]);
   const model = new RosModel({ league, weeks: [7, 8], byWeek, players });
 
-  it('scores future weeks with availability and lets depth cover byes', () => {
-    expect(model.ev('rb1')[0]).toBeCloseTo(0.91 * 10, 9);
+  // Seen from week 6: week 7 is one week ahead, week 8 two.
+  const [p1, p2] = [HEALTHY_PLAY[0]!, HEALTHY_PLAY[1]!];
+
+  it('scores future weeks with availability falling by weeks ahead, and lets depth cover byes', () => {
+    expect(model.ev('rb1')[0]).toBeCloseTo(p1 * 10, 9);
     expect(model.ev('rb1')[1]).toBe(0);
     expect(model.ev('def')[0]).toBeCloseTo(3, 9); // DEFs don't get hurt
     const team = ['qb', 'rb1', 'rb2', 'wr1', 'def'];
     const w7 = model.bestWeek(team, 0);
-    // QB 18×.95 + RB 10×.91 + WR 10×.93 + FLEX rb2 6×.91 + DEF 3; no bench left to insure anyone.
-    expect(w7.mean).toBeCloseTo(18 * 0.95 + 9.1 + 9.3 + 6 * 0.91 + 3, 9);
+    // QB 18 + RB 10 + WR 10 + FLEX rb2 6, each × P(active) a week out, + DEF 3; no bench left to insure anyone.
+    expect(w7.mean).toBeCloseTo((18 + 10 + 10 + 6) * p1 + 3, 9);
     // Week 8: rb2 starts at RB; FLEX empty.
-    expect(model.bestWeek(team, 1).mean).toBeCloseTo(18 * 0.95 + 6 * 0.91 + 9.3 + 3, 9);
+    expect(model.bestWeek(team, 1).mean).toBeCloseTo((18 + 6 + 10) * p2 + 3, 9);
+    // From week 5 the same weeks are two and three weeks ahead.
+    const earlier = new RosModel({ league, weeks: [7, 8], currentWeek: 5, byWeek, players });
+    expect(earlier.ev('rb1')[0]).toBeCloseTo(p2 * 10, 9);
+    expect(earlier.ev('qb')[1]).toBeCloseTo(HEALTHY_PLAY[2]! * 18, 9);
   });
 
   it('values a bench player as insurance for starters who might miss', () => {
@@ -73,7 +113,7 @@ describe('RosModel', () => {
     const flexless = new RosModel({ league: parseLeague({ ...rawLeague, roster_positions: ['QB', 'RB', 'WR', 'DEF', 'BN'] }), weeks: [7], byWeek, players });
     const insured = flexless.bestWeek(['qb', 'rb1', 'wr1', 'def', 'rb2'], 0).mean;
     const bare = flexless.bestWeek(['qb', 'rb1', 'wr1', 'def'], 0).mean;
-    expect(insured - bare).toBeCloseTo((1 - 0.91) * 0.91 * 6, 9); // rb1 out → rb2 plays
+    expect(insured - bare).toBeCloseTo((1 - p1) * p1 * 6, 9); // rb1 out → rb2 plays
     expect(withBench.mean).toBeGreaterThan(bare);
   });
 
