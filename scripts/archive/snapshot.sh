@@ -7,7 +7,7 @@
 # Env: ARCHIVE_MODE=auto|full (full = all remaining weeks + players dump + injuries),
 #      GH_TOKEN and GH_REPO (for `gh release` and `gh api`), GITHUB_STEP_SUMMARY (optional),
 #      SNAPSHOT_HOOK (optional command run on the snapshot dir before encryption; the prediction ledger),
-#      ARCHIVE_SITE (the deployed app, default https://rcjlabs.github.io/Fantasy-Football-App).
+#      ARCHIVE_SITE (the deployed app, default https://ff.rcjlabs.com).
 set -euo pipefail
 
 SLEEPER=https://api.sleeper.app/v1
@@ -145,7 +145,7 @@ fi
 
 # The app's own data files as deployed (player DB with practice reports, schedule, the in-house
 # baseline): with this week's projections, exactly what the app showed at this moment.
-SITE="${ARCHIVE_SITE:-https://rcjlabs.github.io/Fantasy-Football-App}"
+SITE="${ARCHIVE_SITE:-https://ff.rcjlabs.com}"
 fetch site_players.json "$SITE/data/players.json"
 fetch site_schedule.json "$SITE/data/schedule.json"
 fetch site_baseline.json "$SITE/data/baseline.json"

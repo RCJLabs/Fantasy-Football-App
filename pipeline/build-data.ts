@@ -38,7 +38,7 @@ const OUT = args.get('out') || 'dist/data';
 const CACHE = args.get('cache') || '.cache';
 const UA = 'Fantasy-Football-App pipeline (+https://github.com/RCJLabs/Fantasy-Football-App)';
 /** The deployed app, whose data files are the "last good" copies. */
-const SITE = process.env.DATA_SITE || 'https://rcjlabs.github.io/Fantasy-Football-App';
+const SITE = process.env.DATA_SITE || 'https://ff.rcjlabs.com';
 
 async function fetchText(url: string): Promise<string> {
   for (let attempt = 0; ; attempt++) {
