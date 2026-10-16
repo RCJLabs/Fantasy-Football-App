@@ -42,7 +42,7 @@ if (propFiles.length) {
   const base = new Map(projections.map((r) => [r.player_id, r.stats ?? undefined]));
   const result = propsStatLines(
     propFiles.map((f) => read<OddsEvent>(f)),
-    players.players.map((p) => ({ id: p.id, name: p.n, pos: p.pos, ...(p.t ? { team: p.t } : {}) })),
+    players.players.map((p) => ({ id: p.id, name: p.n, pos: p.pos, ...(p.fp ? { fpos: p.fp } : {}), ...(p.t ? { team: p.t } : {}) })),
     (id) => base.get(id),
   );
   props = new Map([...result.lines].map(([id, line]) => [id, line.stats]));

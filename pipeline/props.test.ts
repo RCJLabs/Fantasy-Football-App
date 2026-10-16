@@ -163,6 +163,42 @@ describe('players', () => {
   });
 });
 
+describe('real-feed quirks', () => {
+  it('skips team-defense props and reads a two-way player at his skill position', () => {
+    const event: OddsEvent = {
+      id: 'e2',
+      commence_time: '2026-10-18T13:30:00Z',
+      home_team: 'Jacksonville Jaguars',
+      away_team: 'Houston Texans',
+      bookmakers: [
+        {
+          key: 'a',
+          markets: [
+            {
+              key: 'player_anytime_td',
+              outcomes: [
+                { name: 'Yes', description: 'Jacksonville Jaguars D/ST', price: 900 },
+                { name: 'Yes', description: 'Houston Texans Defense', price: 1000 },
+              ],
+            },
+            {
+              key: 'player_reception_yds',
+              outcomes: [
+                { name: 'Over', description: 'Travis Hunter', price: -110, point: 40.5 },
+                { name: 'Under', description: 'Travis Hunter', price: -110, point: 40.5 },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const players: PropPlayer[] = [{ id: 'h', name: 'Travis Hunter', pos: 'DB', fpos: ['DB', 'WR'], team: 'JAX' }];
+    const { lines, matched, unmatched } = propsStatLines([event], players);
+    expect([matched, unmatched]).toEqual([1, 0]);
+    expect(lines.get('h')!.stats.rec_yd).toBeCloseTo(meanFromLine('rec_yd:WR', 40.5, 0.5)!, 9);
+  });
+});
+
 describe('pull schedule', () => {
   const ev = (id: string, kickoff: string): OddsEvent => ({ id, commence_time: kickoff, home_team: 'H', away_team: 'A' });
   const now = Date.parse('2026-10-18T13:00:00Z');

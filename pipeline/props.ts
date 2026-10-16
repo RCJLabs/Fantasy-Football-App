@@ -109,6 +109,7 @@ export function noVig(side: number, other: number): number {
 }
 
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+const SKILL = new Set(['QB', 'RB', 'WR', 'TE']);
 const median = (xs: readonly number[]): number => {
   const s = [...xs].sort((a, b) => a - b);
   const m = s.length >> 1;
@@ -220,8 +221,13 @@ export interface PropPlayer {
   id: string;
   name: string;
   pos: string;
+  /** Fantasy positions when they differ from `pos` (a two-way DB/WR). */
+  fpos?: readonly string[];
   team?: string;
 }
+
+/** The QB/RB/WR/TE position a player's props are read as: his own, or the first skill position he's eligible at. */
+const skillPos = (p: PropPlayer): string | undefined => [p.pos, ...(p.fpos ?? [])].find((x) => SKILL.has(x));
 
 const last = (n: string) => n.split(' ').at(-1)!;
 
@@ -254,8 +260,6 @@ export interface PropsResult {
   unmatched: number;
 }
 
-const SKILL = new Set(['QB', 'RB', 'WR', 'TE']);
-
 /** Which measured shape prices `stat` for a player at `pos` (WR/TE rushing props use the RB shape). */
 function shapeKey(stat: string, pos: string): string {
   if (stat === 'pass_yd') return 'pass_yd:QB';
@@ -274,7 +278,13 @@ export function propsStatLines(
   base?: (id: string) => StatLine | undefined,
 ): PropsResult {
   const byTeam = new Map<string, PropPlayer[]>();
-  for (const p of players) if (p.team && SKILL.has(p.pos)) (byTeam.get(p.team) ?? byTeam.set(p.team, []).get(p.team)!).push(p);
+  const posOf = new Map<string, string>();
+  for (const p of players) {
+    const pos = skillPos(p);
+    if (!p.team || !pos) continue;
+    (byTeam.get(p.team) ?? byTeam.set(p.team, []).get(p.team)!).push(p);
+    posOf.set(p.id, pos);
+  }
   // per player id → stat → per-book means
   const perBook = new Map<string, Map<string, number[]>>();
   const seen = new Set<string>();
@@ -283,12 +293,14 @@ export function propsStatLines(
     const m = perBook.get(id) ?? perBook.set(id, new Map()).get(id)!;
     (m.get(stat) ?? m.set(stat, []).get(stat)!).push(v);
   };
-  const posOf = new Map(players.map((p) => [p.id, p.pos]));
+  // Team defense touchdown props ("Houston Texans D/ST", "… Defense") aren't players.
+  const teamProp = (name: string) => Object.keys(TEAM_CODES).some((t) => name.startsWith(t));
 
   for (const ev of events) {
     const teams = [TEAM_CODES[ev.home_team], TEAM_CODES[ev.away_team]].filter((t): t is string => !!t);
     const resolved = new Map<string, PropPlayer | undefined>();
     const who = (name: string) => {
+      if (teamProp(name)) return undefined;
       if (!resolved.has(name)) resolved.set(name, matchPlayer(name, teams, byTeam));
       const p = resolved.get(name);
       if (p) seen.add(p.id);
@@ -315,7 +327,7 @@ export function propsStatLines(
           const under = outs.find((o) => o.name === 'Under' && o.point === over?.point);
           if (!stat || !over || !under || over.point === undefined) continue;
           const pOver = noVig(over.price, under.price);
-          const mean = stat === 'pass_td' ? poissonMeanFromLine(over.point, pOver) : meanFromLine(shapeKey(stat, player.pos), over.point, pOver);
+          const mean = stat === 'pass_td' ? poissonMeanFromLine(over.point, pOver) : meanFromLine(shapeKey(stat, posOf.get(player.id)!), over.point, pOver);
           if (mean !== undefined && Number.isFinite(mean)) add(player.id, stat, mean);
         }
       }
