@@ -16,7 +16,7 @@ Sleeper/RotoWire inputs stay in an encrypted release.
 
   A source can sit within 5% of RotoWire's MAE and still add almost nothing when its misses move with RotoWire's. Both lean on recent usage.
 - **What v0 becomes instead:** a labelled second opinion, and the fallback if Sleeper's projections go dark. It runs in shadow: computed
-  weekly, committed in the prediction ledger beside the app's numbers, and scored. That's the next step.
+  daily, committed in the prediction ledger beside the app's numbers, and scored. Built 2026-10-16; see [Shadow](#shadow-live) below.
 - **Gate amended for any future source** (v1, props): it must also lower MAE when blended with weights fit on earlier seasons, tested out of
   sample, with the pooled 95% interval below zero.
 - **What would reopen it:** baseline v1 (the Phase 3 team model), aimed at QBs and role changes, or live shadow weeks showing a consistent gain.
@@ -72,6 +72,31 @@ sign there is little to gain.
 
 **Robustness.** Ratios barely move with the relevance threshold: at 8 points, QB 1.18, RB 1.03, WR 1.03, TE 1.00. At 12 points, QB 1.12,
 RB 1.03, WR 1.04, TE 1.00. The blend results follow the same pattern: about zero in 2024, under about 1% in 2025–26.
+
+## Shadow (live)
+
+- **Pipeline:** each data build (daily, `pipeline/build-data.ts`) writes `data/baseline.json` for the current week. It runs the backtest's code
+  path (`recordWeek` and `baselineWeek` in `pipeline/baseline.ts`).
+  - Inputs: Sleeper stats for this season's completed weeks and all of last season's (who played, and for which team), ffopportunity's current
+    and previous season, nfldata lines, and this week's Sleeper projection rows. Only the projection rows' membership is used: they set the
+    population for the position averages, as in the backtest. No RotoWire values go in.
+  - A week counts only once ffopportunity has processed it. Otherwise his game would count as zero opportunities. The file says which week
+    the averages run through, and the app shows it.
+  - **Check:** built for 2026 week 5 from the archived inputs, it reproduces the backtest's numbers to within 0.07 points (rounding to 0.01 per
+    stat).
+  - **Licence:** published CC-BY-SA 4.0, as derived from ffopportunity (PLAN §4 rule 6), credited on the About page and in the manifest.
+- **App:** player details show it below RotoWire's number. Example: "Second opinion, not used: 8.8 pts if he plays, from our baseline …",
+  rescored to the league's scoring like any projection, with its backtest accuracy beside it.
+  - TE premium and similar position reception bonuses are now derived from receptions when a source lacks them. RotoWire's rows already carry
+    them.
+- **Fallback:** if Sleeper returns no QB/RB/WR/TE projections for the week, or the request fails, the app uses the baseline for those
+  positions. Any K/DEF rows Sleeper did return stay, and the page says so.
+  - The prediction ledger follows the same rule, so it records what the app would have shown.
+  - Gap: the baseline itself needs Sleeper's stats endpoint (who played). If that goes too, no new baseline is built; the last deployed one
+    keeps serving its week.
+- **Ledger:** each committed prediction carries `bl`, the baseline's full-PPR points if active, next to the app's `mu`.
+  `scripts/ledger/score.ts` reports both MAEs on active QB/RB/WR/TE that either source put at 5+ points (the backtest's population).
+  - The first scored week is 7: week 6's committed predictions predate this.
 
 ## Data checks
 

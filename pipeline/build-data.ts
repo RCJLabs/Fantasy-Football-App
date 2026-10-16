@@ -4,12 +4,15 @@
 //   data/accuracy.json  projection accuracy by position over completed weeks (aggregates only)
 //   data/usage.json     recent snap share, targets and carries (nflverse), shown as context only
 //   data/matchups.json  defense vs position beyond players' usual, and regular cornerbacks (nflverse), context only
+//   data/baseline.json  in-house baseline v0, a second opinion the app shows but doesn't blend (ffopportunity, CC-BY-SA)
 //   data/manifest.json  timestamps, sources and licences
 // Usage: tsx pipeline/build-data.ts [--out dist/data] [--cache .cache]
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { DATA_SCHEMA_VERSION, type AccuracyFile, type Manifest, type PlayersFile, type ScheduleFile } from '../app/src/data/contracts';
+import { DATA_SCHEMA_VERSION, type AccuracyFile, type BaselineFile, type CompactPlayer, type Manifest, type PlayersFile, type ScheduleFile } from '../app/src/data/contracts';
+import type { StatLine } from '../app/src/domain/types';
 import type { RawPlayer, RawState } from '../app/src/sleeper/raw';
+import { buildBaselineFile, ffoppStats, SKILL, type SleeperRow } from './baseline';
 import { compactPlayers, csvRecords, gamesFromCsv, latestInjuryReport, projectionAccuracy, sleeperToGsis, type PointsRow } from './lib';
 import { buildMatchups } from './matchups';
 import { buildUsage, invert } from './usage';
@@ -34,6 +37,12 @@ async function fetchText(url: string): Promise<string> {
   }
 }
 
+const optional = (url: string) =>
+  fetchText(url).catch((e) => {
+    console.warn(`optional source unavailable: ${e}`);
+    return '';
+  });
+
 /** Sleeper asks for at most one /players/nfl call per day: cache it by UTC date. */
 async function sleeperPlayers(): Promise<Record<string, RawPlayer>> {
   const today = new Date().toISOString().slice(0, 10);
@@ -49,21 +58,92 @@ async function sleeperPlayers(): Promise<Record<string, RawPlayer>> {
 }
 
 const LEDGER_MIN_PROJECTED = 5;
+const ALL_POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
+
+/** One week of api.sleeper.com projections or stats (regular season). */
+async function sleeperWeek(kind: 'projections' | 'stats', season: string | number, week: number, positions: readonly string[] = ALL_POSITIONS): Promise<PointsRow[]> {
+  const qs = positions.map((p) => `position[]=${p}`).join('&');
+  return JSON.parse(await fetchText(`https://api.sleeper.com/${kind}/nfl/${season}/${week}?season_type=regular&${qs}`)) as PointsRow[];
+}
+
+/** This season's completed weeks of Sleeper stats, shared by the accuracy ledger and the baseline. */
+async function seasonStats(season: string, week: number): Promise<Array<{ week: number; rows: PointsRow[] }> | null> {
+  try {
+    const out = [];
+    for (let w = 1; w < week; w++) out.push({ week: w, rows: await sleeperWeek('stats', season, w) });
+    return out;
+  } catch (e) {
+    console.warn(`Sleeper stats unavailable (accuracy and baseline skipped): ${e}`);
+    return null;
+  }
+}
 
 /** Past weeks' projections (frozen around kickoff, see docs/spikes.md (e)) against actual stats. */
-async function accuracyLedger(season: string, week: number, now: string): Promise<AccuracyFile | null> {
-  const weeks = Array.from({ length: Math.max(0, week - 1) }, (_, i) => i + 1);
-  if (!weeks.length) return null;
-  const qs = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'].map((p) => `position[]=${p}`).join('&');
-  const get = async (kind: 'projections' | 'stats', w: number) =>
-    JSON.parse(await fetchText(`https://api.sleeper.com/${kind}/nfl/${season}/${w}?season_type=regular&${qs}`)) as PointsRow[];
+async function accuracyLedger(season: string, stats: ReadonlyArray<{ week: number; rows: PointsRow[] }>, now: string): Promise<AccuracyFile | null> {
+  if (!stats.length) return null;
   try {
     const data = [];
-    for (const w of weeks) data.push({ proj: await get('projections', w), stats: await get('stats', w) });
+    for (const s of stats) data.push({ proj: await sleeperWeek('projections', season, s.week), stats: s.rows });
     const rows = projectionAccuracy(data, LEDGER_MIN_PROJECTED);
+    const weeks = stats.map((s) => s.week);
     return rows.length ? { schemaVersion: DATA_SCHEMA_VERSION, generatedAt: now, season, weeks, minProjected: LEDGER_MIN_PROJECTED, rows } : null;
   } catch (e) {
     console.warn(`accuracy ledger skipped: ${e}`);
+    return null;
+  }
+}
+
+const toSleeperRow = (r: PointsRow): SleeperRow => ({ player_id: r.player_id, position: r.player?.position ?? null, team: r.team ?? null, stats: r.stats ?? null });
+
+/**
+ * In-house baseline v0 for this week (docs/baseline.md): ffopportunity expected stats over each player's
+ * recent games (this season's and last season's), times this week's implied-total factor. The app shows
+ * it as a second opinion; it isn't blended. No RotoWire values go into it.
+ */
+async function baselineShard(
+  season: string,
+  week: number,
+  now: string,
+  thisSeason: ReadonlyArray<{ week: number; rows: PointsRow[] }>,
+  gamesRecords: Array<Record<string, string>>,
+  gsisBySleeper: ReadonlyMap<string, string>,
+  players: readonly CompactPlayer[],
+): Promise<BaselineFile | null> {
+  const prev = Number(season) - 1;
+  const ffo = 'https://github.com/ffverse/ffopportunity/releases/download/latest-data';
+  try {
+    const [cur, last] = await Promise.all([optional(`${ffo}/ep_weekly_${season}.csv`), optional(`${ffo}/ep_weekly_${prev}.csv`)]);
+    if (!cur && !last) return null;
+    const expected = new Map<string, StatLine>();
+    for (const text of [cur, last]) {
+      for (const r of text ? csvRecords(text) : []) if (Number(r.week) <= 18) expected.set(`${r.player_id}|${Number(r.season)}|${Number(r.week)}`, ffoppStats(r));
+    }
+    const weeks = thisSeason.map((s) => ({ season: Number(season), week: s.week, stats: s.rows.map(toSleeperRow) }));
+    for (let w = 1; w <= 18; w++) weeks.push({ season: prev, week: w, stats: (await sleeperWeek('stats', prev, w, SKILL)).map(toSleeperRow) });
+    const implied = new Map<string, number>();
+    for (const s of [prev, Number(season)]) {
+      for (const g of gamesFromCsv(gamesRecords, String(s))) {
+        if (g.homeImplied !== undefined) implied.set(`${s}|${g.week}|${g.home}`, g.homeImplied);
+        if (g.awayImplied !== undefined) implied.set(`${s}|${g.week}|${g.away}`, g.awayImplied);
+      }
+    }
+    const playing = new Set(gamesFromCsv(gamesRecords, season).filter((g) => g.week === week).flatMap((g) => [g.home, g.away]));
+    // The position averages cover everyone Sleeper projects this week, as in the backtest (membership only).
+    // The baseline is the fallback for missing projections, so without them it uses the players file instead.
+    const teams = new Map(players.map((p) => [p.id, p.t]));
+    let population: Array<{ id: string; pos: string; team: string | null }> = [];
+    try {
+      population = (await sleeperWeek('projections', season, week, SKILL)).map((r) => ({ id: r.player_id, pos: r.player?.position ?? '', team: r.team ?? teams.get(r.player_id) ?? null }));
+    } catch (e) {
+      console.warn(`baseline: Sleeper projections unavailable (${e})`);
+    }
+    if (!population.length) {
+      console.warn('baseline: no projection rows; position averages use the players file');
+      population = players.filter((p) => SKILL.includes(p.pos)).map((p) => ({ id: p.id, pos: p.pos, team: p.t ?? null }));
+    }
+    return buildBaselineFile({ season: Number(season), week, now, weeks, players: population, playing, gsisBySleeper, expected, implied });
+  } catch (e) {
+    console.warn(`baseline skipped: ${e}`);
     return null;
   }
 }
@@ -74,11 +154,6 @@ async function main() {
   const season = state.season;
   const week = Math.max(1, state.week);
 
-  const optional = (url: string) =>
-    fetchText(url).catch((e) => {
-      console.warn(`optional source unavailable: ${e}`);
-      return '';
-    });
   const nflverse = 'https://github.com/nflverse/nflverse-data/releases/download';
   const [dump, injuriesCsv, rostersCsv, gamesCsv, snapsCsv, statsCsv] = await Promise.all([
     sleeperPlayers(),
@@ -100,11 +175,12 @@ async function main() {
     ...(report ? { injuryReportWeek: report.week } : {}),
     players: compactPlayers(dump, report, gsisBySleeper),
   };
+  const gamesRecords = csvRecords(gamesCsv);
   const scheduleFile: ScheduleFile = {
     schemaVersion: DATA_SCHEMA_VERSION,
     generatedAt: now,
     season,
-    games: gamesFromCsv(csvRecords(gamesCsv), season),
+    games: gamesFromCsv(gamesRecords, season),
   };
   const manifest: Manifest = {
     schemaVersion: DATA_SCHEMA_VERSION,
@@ -150,12 +226,23 @@ async function main() {
     };
   }
 
-  const accuracy = await accuracyLedger(season, week, now);
+  const stats = await seasonStats(season, week);
+  const accuracy = stats ? await accuracyLedger(season, stats, now) : null;
   if (accuracy) {
     manifest.files['accuracy.json'] = {
       updatedAt: now,
       source: 'Sleeper projections (RotoWire) for completed weeks vs Sleeper stats, PPR',
       license: 'Aggregate error statistics only; no projections or stats are republished',
+    };
+  }
+  const baseline = stats ? await baselineShard(season, week, now, stats, gamesRecords, gsisBySleeper, playersFile.players) : null;
+  if (baseline) {
+    manifest.files['baseline.json'] = {
+      updatedAt: now,
+      source:
+        'In-house baseline v0: ffopportunity expected stats over recent games played (games played from Sleeper stats), scaled by implied team totals from nflverse/nfldata lines',
+      license: 'CC-BY-SA 4.0, adapted from ffopportunity (CC-BY-SA 4.0); no Sleeper or RotoWire data is republished',
+      credits: 'Expected points via ffopportunity (ffverse); lines via nflverse',
     };
   }
 
@@ -165,6 +252,7 @@ async function main() {
   if (accuracy) await writeFile(join(OUT, 'accuracy.json'), JSON.stringify(accuracy));
   if (usage) await writeFile(join(OUT, 'usage.json'), JSON.stringify(usage));
   if (matchups) await writeFile(join(OUT, 'matchups.json'), JSON.stringify(matchups));
+  if (baseline) await writeFile(join(OUT, 'baseline.json'), JSON.stringify(baseline));
   await writeFile(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2));
   const withPractice = playersFile.players.filter((p) => p.prac).length;
   const all = accuracy?.rows.find((r) => r.pos === 'ALL');
@@ -172,7 +260,8 @@ async function main() {
     `season ${season} week ${week}: ${playersFile.players.length} players (${withPractice} with practice status, report week ${report?.week ?? '-'}), ${scheduleFile.games.length} games` +
       `${all ? `, accuracy weeks ${accuracy!.weeks.join(',')} n=${all.n} MAE ${all.mae} within±1sd ${Math.round(all.within1 * 100)}%` : ''}` +
       `${usage ? `, usage weeks ${usage.weeks.join(',')} for ${Object.keys(usage.players).length} players` : ''}` +
-      `${matchups ? `, matchups for ${Object.keys(matchups.defense).length} defenses` : ''} → ${OUT}`,
+      `${matchups ? `, matchups for ${Object.keys(matchups.defense).length} defenses` : ''}` +
+      `${baseline ? `, baseline for ${Object.keys(baseline.players).length} players through week ${baseline.throughWeek}` : ''} → ${OUT}`,
   );
 }
 

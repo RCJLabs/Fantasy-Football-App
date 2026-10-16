@@ -83,7 +83,8 @@ export function Explain({ row }: { row: PlayerRow }) {
     <div class="explain">
       {row.hasProjection ? (
         <p>
-          RotoWire projection (via Sleeper), rescored to your league: <strong>{pts(row.mu)} pts</strong> if he plays.
+          {row.fallback ? "Our baseline (Sleeper's projections are missing this week)" : 'RotoWire projection (via Sleeper)'}, rescored to your
+          league: <strong>{pts(row.mu)} pts</strong> if he plays.
         </p>
       ) : (
         <p>No projection for this player this week.</p>
@@ -98,6 +99,7 @@ export function Explain({ row }: { row: PlayerRow }) {
           ))}
         </ul>
       ) : null}
+      {row.baseline ? <BaselineNote row={row} baseline={row.baseline} /> : null}
       <p>
         Chance to play: <strong>{pct(row.p)}</strong>
         {row.injury ? ` — ${row.injury}${row.injuryBody ? ` (${row.injuryBody})` : ''}` : ' — no injury designation'}
@@ -113,6 +115,20 @@ export function Explain({ row }: { row: PlayerRow }) {
       </p>
       {row.usage ? <UsageTable usage={row.usage} /> : null}
     </div>
+  );
+}
+
+/** The in-house baseline as a labelled second opinion; the projection above stays RotoWire's. */
+function BaselineNote({ row, baseline }: { row: PlayerRow; baseline: NonNullable<PlayerRow['baseline']> }) {
+  return (
+    <p class="small">
+      Second opinion, not used: <strong>{pts(baseline.pts)} pts</strong> if he plays, from our baseline (his recent expected usage × this week's
+      implied team total{baseline.through ? `, games through week ${baseline.through}` : ', last season’s games'}).{' '}
+      <span class="muted">
+        In backtests it was less accurate than RotoWire ({row.pos === 'QB' ? 'by about 20% for QBs' : 'by about 1–5% for RBs, WRs and TEs'}), and averaging
+        the two gained little and not every season.
+      </span>
+    </p>
   );
 }
 

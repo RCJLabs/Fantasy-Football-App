@@ -1,5 +1,5 @@
 import type { Game, League, LeagueUser, Matchup, Player, Roster, StatLine } from '../domain/types';
-import { gamesByTeam, type UsageIndex, type WeekContext } from '../analysis/analyze';
+import { type BaselineIndex, gamesByTeam, type UsageIndex, type WeekContext } from '../analysis/analyze';
 import { sleeperApi, SleeperError } from '../sleeper/api';
 import { indexProjections, parseLeague, parseMatchup, parsePlayersDump, parseRoster, parseUser, type ProjectionIndex } from '../sleeper/parse';
 import type { RawProjection, RawState, RawTradedPick, RawTransaction, RawUser } from '../sleeper/raw';
@@ -7,6 +7,7 @@ import { cached } from './cache';
 import {
   DATA_SCHEMA_VERSION,
   type AccuracyFile,
+  type BaselineFile,
   type CompactPlayer,
   type Manifest,
   type MatchupsFile,
@@ -124,13 +125,46 @@ function fromCompact(c: CompactPlayer, currentReport: boolean): Player {
   return p;
 }
 
+const OFFENSE_STATS = ['pass_yd', 'rush_yd', 'rec', 'rec_yd'];
+
+/** True when the rows carry any QB/RB/WR/TE projection. */
+export function hasOffenseProjections(index: ProjectionIndex): boolean {
+  for (const p of index.byPlayer.values()) if (OFFENSE_STATS.some((k) => (p.stats[k] ?? 0) > 0)) return true;
+  return false;
+}
+
+/** QB/RB/WR/TE projection rows from the in-house baseline, for a week without Sleeper projections. */
+export function baselineProjectionRows(baseline: BaselineIndex, players: ReadonlyMap<string, Player>): RawProjection[] {
+  return [...baseline.players].map(([id, stats]) => ({ player_id: id, stats: { ...stats }, team: players.get(id)?.team ?? null }));
+}
+
 /** Projections + players + schedule for one week, with notes on anything stale or approximate. */
 export async function loadWeek(season: string, week: number, force = false): Promise<WeekContext & DataNotes> {
   const notes: string[] = [];
-  const projRes = await cached(`projections:${season}:${week}`, 30 * MIN, () => sleeperApi.projections(season, week), { force });
-  if (projRes.stale) notes.push('Projections could not be refreshed; showing a saved copy.');
-  const projections = indexProjections(projRes.value, week);
-  let asOf = projRes.savedAt;
+  // The in-house baseline: a second opinion, and the fallback for a week without Sleeper projections.
+  let baseline: BaselineIndex | undefined;
+  let baselineAt = 0;
+  try {
+    const file = (await cached('data:baseline', 3 * HOUR, () => fetchDataFile<BaselineFile>('baseline.json'), { force })).value;
+    if (file.season === season && file.week === week) {
+      baseline = { throughWeek: file.throughWeek, players: new Map(Object.entries(file.players)) };
+      baselineAt = Date.parse(file.generatedAt) || 0;
+    }
+  } catch {
+    /* no second opinion or fallback */
+  }
+
+  let projRows: RawProjection[] = [];
+  let asOf = Date.now();
+  try {
+    const projRes = await cached(`projections:${season}:${week}`, 30 * MIN, () => sleeperApi.projections(season, week), { force });
+    if (projRes.stale) notes.push('Projections could not be refreshed; showing a saved copy.');
+    projRows = projRes.value;
+    asOf = projRes.savedAt;
+  } catch (e) {
+    if (!baseline) throw e;
+  }
+  let projections = indexProjections(projRows, week);
 
   // Player DB: pipeline file first (daily), then Sleeper's full dump (once a day), then projection rows.
   let players = new Map<string, Player>();
@@ -148,6 +182,17 @@ export async function loadWeek(season: string, week: number, force = false): Pro
     }
   }
   mergeProjectionPlayers(players, projections.players);
+
+  let projectionSource: WeekContext['projectionSource'];
+  if (baseline && !hasOffenseProjections(projections)) {
+    // Baseline rows go on top: any K/DEF projections Sleeper did return stay.
+    projections = indexProjections([...projRows, ...baselineProjectionRows(baseline, players)], week);
+    projectionSource = 'baseline';
+    if (baselineAt) asOf = Math.min(asOf, baselineAt);
+    notes.push(
+      `Sleeper's projections aren't available for week ${week}, so QB, RB, WR and TE projections come from our baseline (less accurate in backtests). K and DEF have none.`,
+    );
+  }
 
   let games: Game[] = [];
   let kickoffsApproximate = false;
@@ -174,7 +219,7 @@ export async function loadWeek(season: string, week: number, force = false): Pro
   }
 
   if (!games.some((g) => g.week === week)) {
-    games = approximateGames(projRes.value, week);
+    games = approximateGames(projRows, week);
     kickoffsApproximate = true;
     notes.push('Kickoff times are approximate (schedule file unavailable); lock handling may be off.');
   }
@@ -189,6 +234,8 @@ export async function loadWeek(season: string, week: number, force = false): Pro
     kickoffsApproximate,
     ...(usage ? { usage } : {}),
     ...(matchups ? { matchups } : {}),
+    ...(baseline ? { baseline } : {}),
+    ...(projectionSource ? { projectionSource } : {}),
     notes,
     asOf,
   };

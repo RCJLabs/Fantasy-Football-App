@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PlayersFile, ScheduleFile } from '../app/src/data/contracts';
+import type { BaselineFile, PlayersFile, ScheduleFile } from '../app/src/data/contracts';
 import { playProbability } from '../app/src/engine/availability';
 import { buildPredictions, commitment, sha256, toRawProjection, type ArchivedProjection } from './ledger';
 
@@ -74,6 +74,37 @@ describe('prediction ledger', () => {
     expect(sha256('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
     const text = JSON.stringify(file);
     expect(commitment(file, text)).toEqual({ schemaVersion: 1, createdAt: file.createdAt, season: '2026', week: 6, code: 'abc123', sha256: sha256(text), players: 5, games: ['2026_06_CCC_DDD'] });
+  });
+
+  const baseline: BaselineFile = {
+    schemaVersion: 1,
+    generatedAt: iso(-3),
+    season: '2026',
+    week: 6,
+    throughWeek: 5,
+    players: { q1: { pass_yd: 200, pass_td: 1 }, w1: { rec: 4, rec_yd: 40 } },
+  };
+
+  it("commits the shadow baseline next to the app's own numbers", () => {
+    const by = new Map(buildPredictions({ season: '2026', week: 6, now, projections, players, schedule, baseline }).players.map((p) => [p.id, p]));
+    expect(by.get('q1')!.bl).toBeCloseTo(200 * 0.04 + 4, 2);
+    expect(by.get('q1')!.mu).toBeCloseTo(250 * 0.04 + 2 * 4, 1); // unchanged: the baseline isn't blended
+    expect(by.get('w1')!.bl).toBeCloseTo(4 + 4, 2);
+    expect(by.get('w2')!.bl).toBeUndefined();
+    // A file for another week is ignored.
+    const stale = buildPredictions({ season: '2026', week: 6, now, projections, players, schedule, baseline: { ...baseline, week: 5 } });
+    expect(stale.players.some((p) => p.bl !== undefined)).toBe(false);
+  });
+
+  it('falls back to the baseline, as the app does, in a week without offensive projections', () => {
+    const kickerOnly = projections.filter((p) => p.player_id === 'k1');
+    const fb = buildPredictions({ season: '2026', week: 6, now, projections: kickerOnly, players, schedule, baseline });
+    expect(fb.players.map((p) => p.id)).toEqual(['k1', 'q1', 'w1']);
+    const by = new Map(fb.players.map((p) => [p.id, p]));
+    expect(by.get('q1')).toMatchObject({ fallback: true });
+    expect(by.get('q1')!.mu).toBeCloseTo(200 * 0.04 + 4, 2);
+    expect(by.get('q1')!.bl).toBeUndefined();
+    expect(by.get('k1')!.fallback).toBeUndefined();
   });
 
   it('predicts nothing once every game has started', () => {

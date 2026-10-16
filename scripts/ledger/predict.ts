@@ -4,10 +4,11 @@
 // Exits 0 without output files when there's nothing to predict.
 //
 // Usage: tsx scripts/ledger/predict.ts <snapshot dir>
-// Reads state.json, proj_wNN.json (this week), site_players.json and site_schedule.json.
+// Reads state.json, proj_wNN.json (this week), site_players.json, site_schedule.json and, when archived,
+// site_baseline.json.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { PlayersFile, ScheduleFile } from '../../app/src/data/contracts';
+import type { BaselineFile, PlayersFile, ScheduleFile } from '../../app/src/data/contracts';
 import type { RawState } from '../../app/src/sleeper/raw';
 import { buildPredictions, commitment, type ArchivedProjection } from '../../pipeline/ledger';
 
@@ -24,15 +25,19 @@ const done = (why: string) => {
 const state = read<RawState>('state.json');
 if (state.season_type !== 'regular' || !(state.week >= 1)) done(`season type ${state.season_type}, week ${state.week}`);
 const proj = `proj_w${String(state.week).padStart(2, '0')}.json`;
-for (const name of [proj, 'site_players.json', 'site_schedule.json']) if (!existsSync(path(name))) done(`${name} missing`);
+for (const name of ['site_players.json', 'site_schedule.json']) if (!existsSync(path(name))) done(`${name} missing`);
+// Without this week's projections the app falls back to the baseline, and so do the predictions.
+const hasBaseline = existsSync(path('site_baseline.json'));
+if (!existsSync(path(proj)) && !hasBaseline) done(`${proj} missing`);
 
 const file = buildPredictions({
   season: state.season,
   week: state.week,
   now: Date.now(),
-  projections: read<ArchivedProjection[]>(proj),
+  projections: existsSync(path(proj)) ? read<ArchivedProjection[]>(proj) : [],
   players: read<PlayersFile>('site_players.json'),
   schedule: read<ScheduleFile>('site_schedule.json'),
+  ...(hasBaseline ? { baseline: read<BaselineFile>('site_baseline.json') } : {}),
   ...(process.env.GITHUB_SHA ? { code: process.env.GITHUB_SHA } : {}),
 });
 if (!file.players.length) done(`no games left in week ${state.week}`);

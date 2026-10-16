@@ -10,7 +10,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { StatLine } from '../../app/src/domain/types';
 import { scoreStats } from '../../app/src/engine/scoring';
-import { BASELINE_V0, type BaselineParams, ffoppStats } from '../../pipeline/baseline';
+import { BASELINE_V0, type BaselineParams, ffoppStats, played, SKILL } from '../../pipeline/baseline';
 import {
   accuracy,
   type BacktestRow,
@@ -22,8 +22,6 @@ import {
   gateTable,
   type GateRow,
   mae,
-  played,
-  SKILL,
   walkForward,
   type WeekData,
 } from '../../pipeline/baseline-backtest';

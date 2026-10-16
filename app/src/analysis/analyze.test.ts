@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { Game, League, Roster } from '../domain/types';
+import type { Game, League, Roster, StatLine } from '../domain/types';
 import { playProbability } from '../engine/availability';
 import { indexProjections, parseLeague, parseMatchup, parseRoster } from '../sleeper/parse';
 import type { RawLeague, RawMatchup, RawProjection } from '../sleeper/raw';
+import { baselineProjectionRows } from '../data/repo';
 import { analyzeLineup, analyzeWaivers, gamesByTeam, lineupChanges, playerRow, type PlayerRow, type WeekContext } from './analyze';
 
 const H = 3_600_000;
@@ -96,6 +97,29 @@ describe('playerRow', () => {
     expect(def.mu).toBeGreaterThan(2.5 + 1.6); // sacks + INTs + small bucket edge
     const out = playerRow('rb1', league, ctx);
     expect(out.p).toBe(0);
+  });
+  it('adds the baseline as a labelled second opinion, and labels it as the projection in a fallback week', () => {
+    const baseline = { throughWeek: 5, players: new Map<string, StatLine>([['te1', { rec: 3, rec_yd: 30 }], ['nobody', { rec: 9 }]]) };
+    const ctx: WeekContext = { ...context(), baseline };
+    const te = playerRow('te1', league, ctx);
+    // Half PPR plus the TE premium derived from receptions; RotoWire's projection is untouched.
+    expect(te.baseline!.pts).toBeCloseTo(3 * 0.5 + 3 + 3 * 0.5, 6);
+    expect(te.baseline!.through).toBe(5);
+    expect(te.mu).toBeCloseTo(4 * 0.5 + 4.5 + 0.35 * 6 + 4 * 0.5, 6);
+    expect(te.fallback).toBeUndefined();
+    expect(playerRow('nobody', league, ctx).baseline).toBeUndefined(); // no team, no game
+
+    // A week without Sleeper projections: the baseline becomes the projection and says so; the kicker keeps his.
+    const rowsWithoutOffense = rows.filter((r) => r.player?.position === 'K');
+    const fallback = indexProjections([...rowsWithoutOffense, ...baselineProjectionRows(baseline, ctx.players)], 6);
+    const fbCtx: WeekContext = { ...ctx, projections: fallback, projectionSource: 'baseline' };
+    const fb = playerRow('te1', league, fbCtx);
+    expect(fb).toMatchObject({ fallback: true, hasProjection: true });
+    expect(fb.mu).toBeCloseTo(3 * 0.5 + 3 + 3 * 0.5, 6);
+    expect(fb.baseline).toBeUndefined();
+    const k = playerRow('k1', league, fbCtx);
+    expect(k.fallback).toBeUndefined();
+    expect(k.mu).toBeGreaterThan(0);
   });
   it('locks players whose game has started and records actual points', () => {
     const r = playerRow('wr1', league, context(), 14.2);

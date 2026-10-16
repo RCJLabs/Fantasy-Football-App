@@ -1,4 +1,4 @@
-import type { Game, PracticeStatus } from '../domain/types';
+import type { Game, PracticeStatus, StatLine } from '../domain/types';
 
 /** Bump when a published file changes shape; the app refuses files from a newer major version. */
 export const DATA_SCHEMA_VERSION = 1;
@@ -102,6 +102,21 @@ export interface UsageFile {
   weeks: number[];
   /** By Sleeper player id. */
   players: Record<string, PlayerUsage>;
+}
+
+/**
+ * data/baseline.json: the in-house baseline v0 (docs/baseline.md), a labelled second opinion that isn't
+ * blended into projections. Derived from ffopportunity, so published CC-BY-SA 4.0.
+ */
+export interface BaselineFile {
+  schemaVersion: number;
+  generatedAt: string;
+  season: string;
+  week: number;
+  /** Last week of this season whose games are in the averages (0 before the season's first). */
+  throughWeek: number;
+  /** Expected stat line if active (Sleeper stat keys), by Sleeper player id. */
+  players: Record<string, StatLine>;
 }
 
 export interface ManifestEntry {

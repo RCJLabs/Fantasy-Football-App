@@ -1,6 +1,6 @@
 // Mock Sleeper responses and pipeline data files for the end-to-end test. Shapes follow the live
 // responses recorded in docs/spikes.md; names and numbers are invented.
-import type { CompactPlayer, MatchupsFile, PlayersFile, ScheduleFile, UsageFile } from '../app/src/data/contracts';
+import type { BaselineFile, CompactPlayer, MatchupsFile, PlayersFile, ScheduleFile, UsageFile } from '../app/src/data/contracts';
 import type { RawLeague, RawMatchup, RawProjection, RawRoster, RawTradedPick, RawTransaction } from '../app/src/sleeper/raw';
 
 const H = 3_600_000;
@@ -117,6 +117,16 @@ export const matchupContext: MatchupsFile = {
   priorGames: 4,
   defense: { CCC: { WR: { pg: 2.3, n: 5 } } },
   secondary: { CCC: [{ id: 'cb1', snap: 92 }] },
+};
+
+/** In-house baseline (numbers invented): a second opinion on the Questionable WR. */
+export const baseline: BaselineFile = {
+  schemaVersion: 1,
+  generatedAt: iso(-3),
+  season: '2026',
+  week: 6,
+  throughWeek: 5,
+  players: { w2: { rec: 4, rec_yd: 50, rec_td: 0.3 } },
 };
 
 /** Recent usage (nflverse-shaped, numbers invented): the free-agent RB's role is growing. */

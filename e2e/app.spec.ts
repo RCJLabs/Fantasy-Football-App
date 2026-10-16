@@ -38,6 +38,7 @@ async function mockBackends(page: Page) {
   await page.route('**/data/manifest.json', (route) => route.fulfill({ json: fx.manifest }));
   await page.route('**/data/usage.json', (route) => route.fulfill({ json: fx.usage }));
   await page.route('**/data/matchups.json', (route) => route.fulfill({ json: fx.matchupContext }));
+  await page.route('**/data/baseline.json', (route) => route.fulfill({ json: fx.baseline }));
 }
 
 test.beforeEach(async ({ page }) => {
@@ -84,6 +85,9 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   // Matchup context: CCC against WRs, and its regular cornerback who's out.
   await expect(flanker).toContainText('WRs facing CCC have scored 2.3 PPR more a game than their usual (5 games');
   await expect(flanker).toContainText('CCC cornerbacks out: Corner Back (92% of snaps, Out).');
+  // The in-house baseline, labelled as a second opinion (half PPR: 4 × 0.5 + 5 + 0.3 × 6).
+  await expect(flanker).toContainText('Second opinion, not used: 8.8 pts if he plays');
+  await expect(flanker).toContainText('games through week 5');
   await expect(page.locator('.pl').filter({ hasText: 'Taylor Wideout' }).first()).toContainText('Live');
   await page.screenshot({ path: testInfo.outputPath('lineup.png'), fullPage: true });
 
@@ -141,6 +145,19 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(page.getByRole('heading', { name: 'Your weeks after the trade' })).toBeVisible();
   await expect(page.locator('table.byes tbody tr')).toHaveCount(9); // weeks 7–15
   await page.screenshot({ path: testInfo.outputPath('trade.png'), fullPage: true });
+});
+
+test('a week without Sleeper projections falls back to the baseline, labelled', async ({ page }) => {
+  await page.route(/^https:\/\/api\.sleeper\.com\/projections\/nfl\/2026\/6\?/, (route) => route.fulfill({ json: [] }));
+  await page.goto('./');
+  await page.getByLabel('Sleeper username').fill('testuser');
+  await page.getByRole('button', { name: 'Find my leagues' }).click();
+  await page.locator('.league-card').filter({ hasText: 'Saturday Night Gridiron' }).getByRole('link').first().click();
+  await expect(page.getByText("Sleeper's projections aren't available for week 6")).toBeVisible();
+  const flanker = page.locator('.pl').filter({ hasText: 'Drew Flanker' }).first();
+  await flanker.getByRole('button').click();
+  await expect(flanker).toContainText("Our baseline (Sleeper's projections are missing this week), rescored to your league: 8.8 pts");
+  await expect(flanker).not.toContainText('Second opinion');
 });
 
 test('dynasty league: draft picks in trades and the long-term outlook', async ({ page }, testInfo) => {

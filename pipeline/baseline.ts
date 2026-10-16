@@ -3,7 +3,21 @@
 // actual), shrunk toward the position's average player, then scaled by this week's implied team total
 // over the implied totals of the games averaged. Stat-level, so any league's scoring applies to it the
 // same way it applies to Sleeper's projections.
+import { type BaselineFile, DATA_SCHEMA_VERSION } from '../app/src/data/contracts';
 import type { StatLine } from '../app/src/domain/types';
+
+export const SKILL: readonly string[] = ['QB', 'RB', 'WR', 'TE'];
+
+/** An api.sleeper.com projection or stats row with position and team at the top level. */
+export interface SleeperRow {
+  player_id: string;
+  position?: string | null;
+  team?: string | null;
+  stats?: Record<string, number> | null;
+}
+
+/** Took the field: a game played or an offensive snap (Sleeper stats). */
+export const played = (s: Readonly<StatLine> | null | undefined): boolean => (s?.gp ?? 0) > 0 || (s?.off_snp ?? 0) > 0;
 
 /** ffopportunity `ep_weekly` columns → Sleeper stat keys. Expected values where the model has them. */
 export const FFOPP_STATS: ReadonlyArray<readonly [string, string]> = [
@@ -138,4 +152,98 @@ export function baselineStats(t: Trailing, prior: Readonly<StatLine>, implied: n
     if (v !== 0) out[k] = v * f;
   }
   return out;
+}
+
+/** Lookups the baseline joins on, in the backtest and live. */
+export interface BaselineSources {
+  gsisBySleeper: ReadonlyMap<string, string>;
+  /** ffopportunity expected stats keyed `${gsis}|${season}|${week}`. */
+  expected: ReadonlyMap<string, StatLine>;
+  /** Team implied totals keyed `${season}|${week}|${team}` (Sleeper team codes). */
+  implied: ReadonlyMap<string, number>;
+}
+
+/** Adds one week's played games (Sleeper stats rows) to each skill player's history. */
+export function recordWeek(history: Map<string, BaselineGame[]>, season: number, week: number, stats: readonly SleeperRow[], src: BaselineSources): void {
+  for (const s of stats) {
+    const gsis = src.gsisBySleeper.get(s.player_id);
+    if (!gsis || !SKILL.includes(s.position ?? '') || !played(s.stats)) continue;
+    const implied = src.implied.get(`${season}|${week}|${s.team ?? ''}`);
+    const game: BaselineGame = { season, week, stats: src.expected.get(`${gsis}|${season}|${week}`) ?? {}, ...(implied !== undefined ? { implied } : {}) };
+    (history.get(s.player_id) ?? history.set(s.player_id, []).get(s.player_id)!).push(game);
+  }
+}
+
+/**
+ * Baseline stat lines for one week of `season`: each player's trailing mean, shrunk toward the average of
+ * the players at his position, times his team's implied-total factor. No line without a previous game.
+ */
+export function baselineWeek(
+  players: ReadonlyArray<{ id: string; pos: string; team?: string | null }>,
+  history: ReadonlyMap<string, readonly BaselineGame[]>,
+  season: number,
+  impliedOf: (team: string) => number | undefined,
+  p: BaselineParams,
+): Map<string, StatLine> {
+  const trailing = new Map<string, { pos: string; team?: string | null; t: Trailing }>();
+  for (const pl of players) {
+    if (!SKILL.includes(pl.pos)) continue;
+    const t = trailingMean(history.get(pl.id) ?? [], season, p);
+    if (t) trailing.set(pl.id, { pos: pl.pos, team: pl.team, t });
+  }
+  const all = [...trailing.values()];
+  const priors = new Map(SKILL.map((pos) => [pos, averageLine(all.filter((x) => x.pos === pos).map((x) => x.t.stats))]));
+  const out = new Map<string, StatLine>();
+  for (const [id, x] of trailing) out.set(id, baselineStats(x.t, priors.get(x.pos) ?? {}, x.team ? impliedOf(x.team) : undefined, p));
+  return out;
+}
+
+export interface BaselineShardInput extends BaselineSources {
+  season: number;
+  week: number;
+  now: string;
+  /** Sleeper stats rows of earlier weeks: the previous season's and this season's so far. */
+  weeks: ReadonlyArray<{ season: number; week: number; stats: readonly SleeperRow[] }>;
+  /**
+   * Everyone in this week's Sleeper projection rows (membership only, not values), as in the backtest: they
+   * make up the position averages. Lines are published for those whose team plays this week.
+   */
+  players: ReadonlyArray<{ id: string; pos: string; team?: string | null }>;
+  /** Teams with a game this week. */
+  playing: ReadonlySet<string>;
+  params?: BaselineParams;
+}
+
+const r2 = (x: number) => Math.round(x * 100) / 100;
+
+/** data/baseline.json for this week, or null when there's nothing to project. */
+export function buildBaselineFile(input: BaselineShardInput): BaselineFile | null {
+  const params = input.params ?? BASELINE_V0;
+  // Only weeks ffopportunity already covers: a played game it hasn't processed would count as zero opportunities.
+  const covered = new Set<string>();
+  for (const key of input.expected.keys()) covered.add(key.slice(key.indexOf('|') + 1));
+  const weeks = input.weeks
+    .filter((w) => (w.season < input.season || (w.season === input.season && w.week < input.week)) && covered.has(`${w.season}|${w.week}`))
+    .sort((a, b) => a.season - b.season || a.week - b.week);
+  const history = new Map<string, BaselineGame[]>();
+  for (const w of weeks) recordWeek(history, w.season, w.week, w.stats, input);
+  const lines = baselineWeek(input.players, history, input.season, (team) => input.implied.get(`${input.season}|${input.week}|${team}`), params);
+  const teamOf = new Map(input.players.map((p) => [p.id, p.team]));
+  const players: Record<string, StatLine> = {};
+  for (const [id, line] of [...lines].sort(([a], [b]) => a.localeCompare(b))) {
+    const team = teamOf.get(id);
+    if (!team || !input.playing.has(team)) continue;
+    const out: StatLine = {};
+    for (const k of Object.keys(line).sort()) if (Math.abs(line[k]!) >= 0.005) out[k] = r2(line[k]!);
+    players[id] = out;
+  }
+  if (!Object.keys(players).length) return null;
+  return {
+    schemaVersion: DATA_SCHEMA_VERSION,
+    generatedAt: input.now,
+    season: String(input.season),
+    week: input.week,
+    throughWeek: Math.max(0, ...weeks.filter((w) => w.season === input.season).map((w) => w.week)),
+    players,
+  };
 }

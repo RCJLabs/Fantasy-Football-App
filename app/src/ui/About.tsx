@@ -61,6 +61,12 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             <strong>Matchups</strong>, also context only: how many more (or fewer) PPR points players at a position have scored against this week's
             opponent than in their other games, pulled toward average while the sample is small, and which of the opponent's regular cornerbacks are out.
           </li>
+          <li>
+            <strong>Second opinion</strong>: player details also show our own baseline, built from each player's recent expected usage
+            (ffopportunity) and this week's implied team total. Over 2024–2026 it was about 1–5% less accurate than RotoWire for RBs, WRs and TEs and
+            about 20% for QBs, and averaging the two gained little and not every season, so it isn't used in projections. If Sleeper's projections
+            are missing for a week, QBs, RBs, WRs and TEs fall back to it, labelled.
+          </li>
         </ul>
         <p class="muted small">Coming next: matchup adjustments, added only after backtests show they help.</p>
       </div>
@@ -74,6 +80,13 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           <li>Projections: RotoWire, via Sleeper.</li>
           <li>Practice reports and schedule: nflverse (CC-BY 4.0), processed daily.</li>
           <li>Usage and matchups: nflverse (CC-BY 4.0) weekly stats and snap counts (compiled by Pro Football Reference).</li>
+          <li>
+            Second-opinion baseline: expected points from{' '}
+            <a href="https://github.com/ffverse/ffopportunity" target="_blank" rel="noopener">
+              ffopportunity
+            </a>{' '}
+            (ffverse, CC-BY-SA 4.0); our baseline file is shared under the same licence.
+          </li>
           <li>Trending adds: Sleeper.</li>
           <li>
             Trade market values:{' '}

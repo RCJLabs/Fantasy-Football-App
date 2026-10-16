@@ -69,6 +69,11 @@ export interface LedgerScore {
   tagged: { n: number; brier: number; logLoss: number; calibration: CalibrationRow[] };
   /** Active players projected for at least `minProjected` PPR: points if active against the result. */
   points: { minProjected: number; n: number; mae: number; bias: number; within1: number; within2: number };
+  /**
+   * The shadow baseline against the app's own numbers, on active QB/RB/WR/TE that both predicted and
+   * either put at `minProjected` or more (the backtest's population, docs/baseline.md).
+   */
+  baseline: { n: number; appMae: number; baselineMae: number; ratio: number };
 }
 
 const TAGS = new Set(['Questionable', 'Doubtful', 'Out']);
@@ -105,9 +110,14 @@ export function scoreLedger(
     observed: r3(rows.filter(({ o }) => o.active).length / rows.length),
   }));
 
-  const played = scored.filter(({ p, o }) => o.active && p.mu >= minProjected && ['QB', 'RB', 'WR', 'TE'].includes(p.pos));
+  const skill = (p: PlayerPrediction) => ['QB', 'RB', 'WR', 'TE'].includes(p.pos);
+  const played = scored.filter(({ p, o }) => o.active && p.mu >= minProjected && skill(p));
   const err = played.map(({ p, o }) => o.ppr - p.mu);
   const n = played.length || 1;
+  const both = scored.filter(({ p, o }) => o.active && skill(p) && p.bl !== undefined && Math.max(p.mu, p.bl) >= minProjected);
+  const meanAbs = (f: (x: { p: ScoredPrediction; o: Outcome }) => number) => both.reduce((a, x) => a + Math.abs(x.o.ppr - f(x)), 0) / (both.length || 1);
+  const appMae = meanAbs(({ p }) => p.mu);
+  const baselineMae = meanAbs(({ p }) => p.bl!);
   return {
     season,
     week,
@@ -122,5 +132,6 @@ export function scoreLedger(
       within1: r3(played.filter(({ p, o }) => Math.abs(o.ppr - p.mu) <= p.sd).length / n),
       within2: r3(played.filter(({ p, o }) => Math.abs(o.ppr - p.mu) <= 2 * p.sd).length / n),
     },
+    baseline: { n: both.length, appMae: r3(appMae), baselineMae: r3(baselineMae), ratio: appMae > 0 ? r3(baselineMae / appMae) : 0 },
   };
 }

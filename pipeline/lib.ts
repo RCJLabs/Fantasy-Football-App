@@ -193,6 +193,7 @@ export function compactPlayers(dump: Record<string, RawPlayer>, report?: InjuryR
 export interface PointsRow {
   player_id: string;
   stats?: Record<string, number> | null;
+  team?: string | null;
   player?: { position?: string | null } | null;
 }
 
