@@ -1,7 +1,7 @@
 // Mock Sleeper responses and pipeline data files for the end-to-end test. Shapes follow the live
 // responses recorded in docs/spikes.md; names and numbers are invented.
-import type { BaselineFile, CompactPlayer, LedgerFile, LedgerWeek, MatchupsFile, PlayersFile, ScheduleFile, UsageFile } from '../app/src/data/contracts';
-import type { RawBracketMatch, RawLeague, RawMatchup, RawProjection, RawRoster, RawTradedPick, RawTransaction } from '../app/src/sleeper/raw';
+import type { BaselineFile, CompactPlayer, LedgerFile, LedgerWeek, MatchupsFile, NextSeasonFile, NextSeasonPlayer, PlayersFile, ScheduleFile, UsageFile } from '../app/src/data/contracts';
+import type { RawBracketMatch, RawDraft, RawDraftPick, RawLeague, RawMatchup, RawProjection, RawRoster, RawTradedPick, RawTransaction } from '../app/src/sleeper/raw';
 
 const H = 3_600_000;
 export const now = Date.now();
@@ -327,3 +327,56 @@ export const trending = [
   { player_id: 'fa2', count: 1520 },
   { player_id: 'fa1', count: 830 },
 ];
+
+/**
+ * Next season's projections (numbers invented): the fixture's players plus invented ones, enough for a 4-team, 13-round
+ * mock draft. My WR1 has no contract for 2027.
+ */
+const nextLine = (pos: string, k: number): NextSeasonPlayer['s'] =>
+  pos === 'QB' ? { pass_yd: 280 - 12 * k, pass_td: 1.9 - 0.08 * k, pass_int: 0.7, rush_yd: 15 }
+  : pos === 'RB' ? { rush_yd: 85 - 4 * k, rush_td: 0.6 - 0.03 * k, rec: 3 - 0.1 * k, rec_yd: 22 - k }
+  : pos === 'WR' ? { rec: 6.5 - 0.25 * k, rec_yd: 85 - 3.5 * k, rec_td: 0.5 - 0.02 * k }
+  : pos === 'TE' ? { rec: 4.5 - 0.4 * k, rec_yd: 48 - 4 * k, rec_td: 0.35 - 0.03 * k }
+  : pos === 'K' ? { fgm: 1.8 - 0.05 * k, xpm: 2.4 }
+  : { sack: 2.6 - 0.1 * k, int: 0.8, fum_rec: 0.6, pts_allow: 21 + k };
+const NEXT_IDS: Record<string, string[]> = {
+  QB: ['q1', 'o1', 'q2'],
+  RB: ['r1', 'o2', 'fa1', 'r2', 'r3', 'r4', 'r9', 'fx'],
+  WR: ['w1', 'w2', 'w3', 'fa2'],
+  TE: ['t1'],
+  K: ['k1'],
+  DEF: ['d1'],
+};
+const NEXT_COUNTS: Record<string, number> = { QB: 8, RB: 20, WR: 22, TE: 8, K: 5, DEF: 5 };
+export const nextSeason: NextSeasonFile = {
+  schemaVersion: 1,
+  generatedAt: iso(-3),
+  season: '2026',
+  target: '2027',
+  basis: { season: '2026', weeks: 6 },
+  players: Object.fromEntries(
+    Object.entries(NEXT_COUNTS).flatMap(([pos, n]) =>
+      Array.from({ length: n }, (_, k) => {
+        const id = NEXT_IDS[pos]![k] ?? `x${pos}${k}`;
+        const p: NextSeasonPlayer = { pos, s: nextLine(pos, k), g: pos === 'DEF' ? 17 : 13.5, age: 24 + (k % 9) };
+        if (!NEXT_IDS[pos]![k]) p.n = `Invented ${pos === 'DEF' ? 'Defense' : pos} ${k + 1}`;
+        if (id === 'w1') Object.assign(p, { fa: 1, chg: 0.54 });
+        return [id, p];
+      }),
+    ),
+  ),
+  rookies: [{ pos: 'RB', order: 1, s: { rush_att: 15, rush_yd: 67, rush_td: 0.5, rec: 2.2, rec_yd: 18 }, g: 14.3 }],
+  range: { QB: [0.2, 1.6], RB: [0.05, 1.95], WR: [0.2, 1.75], TE: [0.15, 1.8] },
+};
+
+/** The keeper league's 2026 draft, finished: the rounds my players went in. */
+export const drafts: RawDraft[] = [{ draft_id: 'd2026', season: '2026', status: 'complete', type: 'snake', settings: { rounds: 13, teams: 4 } }];
+export const draftPicks: RawDraftPick[] = (
+  [
+    ['q1', 1],
+    ['w1', 2],
+    ['r1', 3],
+    ['t1', 4],
+    ['r2', 9],
+  ] as const
+).map(([player_id, round], i) => ({ player_id, round, pick_no: i * 4 + 1, roster_id: 1, picked_by: 'u1', is_keeper: false }));

@@ -3,10 +3,17 @@
 import { DATA_SCHEMA_VERSION } from '../app/src/data/contracts';
 import { validateLedgerWeek } from './ledger-score';
 
-export type ShardName = 'accuracy.json' | 'usage.json' | 'matchups.json' | 'baseline.json' | 'ledger.json';
+export type ShardName = 'accuracy.json' | 'usage.json' | 'matchups.json' | 'baseline.json' | 'ledger.json' | 'nextseason.json';
 
 /** Fewest rows a healthy shard has in-season; fewer means an upstream problem. */
-export const MIN_ROWS: Record<ShardName, number> = { 'accuracy.json': 1, 'usage.json': 100, 'matchups.json': 20, 'baseline.json': 150, 'ledger.json': 1 };
+export const MIN_ROWS: Record<ShardName, number> = {
+  'accuracy.json': 1,
+  'usage.json': 100,
+  'matchups.json': 20,
+  'baseline.json': 150,
+  'ledger.json': 1,
+  'nextseason.json': 300,
+};
 
 type Json = Record<string, unknown>;
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -51,6 +58,16 @@ export function validateShard(name: ShardName, shard: unknown): string[] {
       const bad = Object.values(shard.players).filter((line) => !isObject(line) || !Object.values(line).every((v) => finite(v) && (v as number) >= 0));
       if (bad.length) out.push(`${bad.length} lines with non-finite or negative stats`);
     }
+  }
+  if (name === 'nextseason.json') {
+    if (typeof shard.target !== 'string' || !/^\d{4}$/.test(shard.target) || Number(shard.target) < Number(shard.season)) out.push('bad target');
+    if (!Array.isArray(shard.rookies)) out.push('bad rookies');
+    const line = (p: unknown) => isObject(p) && isObject(p.s) && Object.values(p.s).every((v) => finite(v) && (v as number) >= 0) && finite(p.g) && (p.g as number) >= 0 && (p.g as number) <= 18;
+    if (isObject(shard.players)) {
+      const bad = Object.values(shard.players).filter((p) => !line(p));
+      if (bad.length) out.push(`${bad.length} players with a bad line`);
+    }
+    if (Array.isArray(shard.rookies) && !shard.rookies.every(line)) out.push('rookies with a bad line');
   }
   if (name === 'accuracy.json' && Array.isArray(shard.rows) && !shard.rows.every((r) => isObject(r) && finite(r.n) && finite(r.mae))) out.push('bad rows');
   if (name === 'ledger.json' && Array.isArray(shard.weeks)) {

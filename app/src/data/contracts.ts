@@ -165,6 +165,54 @@ export interface BaselineFile {
   players: Record<string, StatLine>;
 }
 
+/** One player's projection for the next season (data/nextseason.json; docs/draft.md). */
+export interface NextSeasonPlayer {
+  /** Name and the position projected (QB/RB/WR/TE/K/DEF), for players the daily player file leaves out (no team). */
+  n?: string;
+  pos?: string;
+  /** Expected stat line a game when he plays (Sleeper keys). */
+  s: StatLine;
+  /** Expected games. */
+  g: number;
+  /** Age on September 1 of the projected season. */
+  age?: number;
+  /** No contract past the current season on record (OverTheCap, via nflverse). */
+  fa?: 1;
+  /** Chance he plays for a different team next season: how often players like him did, 2015–2025. */
+  chg?: number;
+}
+
+/** A rookie of the projected season's NFL draft: a placeholder by the order his position is taken, named once drafted. */
+export interface NextSeasonRookie {
+  pos: string;
+  /** 1 = the first player at his position taken. */
+  order: number;
+  s: StatLine;
+  g: number;
+  /** Sleeper player id, once the NFL draft has happened. */
+  id?: string;
+}
+
+/**
+ * data/nextseason.json: projections for the next season, for the draft helper (docs/draft.md). Derived values only:
+ * no stats, contract terms or draft data are republished.
+ */
+export interface NextSeasonFile {
+  schemaVersion: number;
+  generatedAt: string;
+  /** Sleeper's current season (whether the file is current). */
+  season: string;
+  /** The season projected. */
+  target: string;
+  /** What it's built from: the latest season and its weeks played (18 = complete). */
+  basis: { season: string; weeks: number };
+  /** By Sleeper player id (team defenses by team code). */
+  players: Record<string, NextSeasonPlayer>;
+  rookies: NextSeasonRookie[];
+  /** By position: 10th and 90th percentile of actual ÷ projected season points in the backtest (draftable tier). */
+  range: Record<string, [number, number]>;
+}
+
 export interface ManifestEntry {
   updatedAt: string;
   source: string;

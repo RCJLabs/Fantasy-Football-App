@@ -9,6 +9,7 @@ const leagueBody = (id: string, rest: string): unknown =>
   : rest.startsWith('matchups/') ? (Number(rest.split('/').pop()) < 6 ? fx.pastMatchups : fx.futureMatchups)(Number(rest.split('/').pop()))
   : rest.startsWith('transactions/') ? fx.transactions.filter((t) => t.leg === Number(rest.split('/').pop()))
   : rest === 'traded_picks' ? (id === '1003' ? fx.tradedPicks : [])
+  : rest === 'drafts' ? (id === '1001' ? fx.drafts : [])
   : undefined;
 
 async function mockBackends(page: Page) {
@@ -22,6 +23,7 @@ async function mockBackends(page: Page) {
       : path === '/user/u1/leagues/nfl/2026' ? [fx.league, fx.otherLeague, fx.dynastyLeague]
       : league ? leagueBody(league[1]!, league[2]!)
       : path.startsWith('/players/nfl/trending/add') ? fx.trending
+      : path === '/draft/d2026/picks' ? fx.draftPicks
       : undefined;
     return body === undefined ? route.fulfill({ status: 404, body: 'not mocked' }) : route.fulfill({ json: body });
   });
@@ -39,6 +41,7 @@ async function mockBackends(page: Page) {
   await page.route('**/data/usage.json', (route) => route.fulfill({ json: fx.usage }));
   await page.route('**/data/matchups.json', (route) => route.fulfill({ json: fx.matchupContext }));
   await page.route('**/data/baseline.json', (route) => route.fulfill({ json: fx.baseline }));
+  await page.route('**/data/nextseason.json', (route) => route.fulfill({ json: fx.nextSeason }));
 }
 
 test.beforeEach(async ({ page }) => {
@@ -572,6 +575,68 @@ test('dynasty league: draft picks in trades and the long-term outlook', async ({
   await expect(page.locator('table.table thead').filter({ hasText: 'Picks' })).toBeVisible();
   await expect(page.getByText('Your picks:')).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('dynasty-season.png'), fullPage: true });
+});
+
+test('draft helper: next season\'s board, keepers, a changeable order and a mock draft', async ({ page }, testInfo) => {
+  await page.goto('./');
+  await page.getByLabel('Sleeper username').fill('testuser');
+  await page.getByRole('button', { name: 'Find my leagues' }).click();
+  await page.locator('.league-card').filter({ hasText: 'Saturday Night Gridiron' }).getByRole('link').first().click();
+  await page.getByRole('tab', { name: 'Draft' }).click();
+  await expect(page.getByRole('heading', { name: 'Draft helper · 2027' })).toBeVisible();
+  await expect(page.locator('.card').first()).toContainText('2027 projections from 2026 through week 6 and the two seasons before');
+
+  // Board: ranked by value; my WR has no 2027 contract; the rookie placeholder is there.
+  const board = page.locator('.card', { has: page.getByRole('heading', { name: 'Board' }) });
+  await expect(board.locator('tbody tr').first().locator('td').first()).toHaveText('1');
+  await expect(board.locator('tr', { hasText: 'Taylor Wideout' })).toContainText('No contract · 54% move');
+  await board.getByRole('button', { name: 'Rookies' }).click();
+  await expect(board.locator('tbody tr')).toHaveCount(1);
+  await expect(board.locator('tbody tr')).toContainText('Rookie RB: the first taken');
+  await board.getByRole('button', { name: 'All' }).click();
+
+  // Keepers: two per team (the league's setting); priced at the last round until the rule says otherwise.
+  const keepers = page.locator('.card', { has: page.getByRole('heading', { name: 'Keepers' }) });
+  await expect(keepers.getByLabel('Keepers per team')).toHaveValue('2');
+  const mine = keepers.locator('tr.mine');
+  await expect(mine).toContainText('round 13');
+  const lastRule = await mine.textContent();
+  await keepers.getByLabel('A keeper costs').selectOption('drafted');
+  await expect(mine).not.toHaveText(lastRule!);
+  await expect(board.locator('tr.mine').first()).toContainText('Kept · you');
+
+  // Order: random until set; worst record first puts me (4-1) last, picking 4th and 5th.
+  const order = page.locator('.card', { has: page.getByRole('heading', { name: 'Draft order' }) });
+  await expect(order).toContainText('Random until the league sets it');
+  await order.getByRole('button', { name: 'Worst record first' }).click();
+  await expect(order).toContainText('Set here, on this device.');
+  await expect(order).toContainText('You pick 4th: picks 4, 5, 12, 13…');
+  await order.getByRole('button', { name: 'Compare slots' }).click();
+  const slots = order.locator('table tbody tr');
+  await expect(slots).toHaveCount(4);
+  await expect(order.locator('table')).toContainText('best');
+  await expect(order.locator('table tr.mine')).toContainText('4th');
+
+  // Mock draft: the three teams ahead pick, I'm on the clock at 1.04, then again at 2.01 (snake).
+  const mock = page.locator('.card', { has: page.getByRole('heading', { name: 'Mock draft' }) });
+  await mock.getByRole('button', { name: 'Start a mock draft' }).click();
+  await expect(mock).toContainText("Pick 1.04 (4th overall): you're on the clock.");
+  await expect(mock.locator('table tbody tr').first()).toContainText('%');
+  await mock.locator('table tbody tr').first().getByRole('button', { name: 'Draft' }).click();
+  await expect(mock).toContainText("Pick 2.01 (5th overall): you're on the clock.");
+  await expect(mock.locator('.draft-recent li').first()).toContainText('1.04 You:');
+  await mock.getByRole('button', { name: 'Finish for me' }).click();
+  await expect(mock).toContainText('Draft complete.');
+  await expect(mock.locator('.draft-team li')).toHaveCount(13);
+  await expect(mock.locator('.draft-team')).not.toContainText('—');
+  await page.screenshot({ path: testInfo.outputPath('draft.png'), fullPage: true });
+  await mock.getByRole('button', { name: 'Undo' }).click();
+  await expect(mock).toContainText("Pick 2.01 (5th overall): you're on the clock.");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+
+  // Dynasty leagues: not yet.
+  await page.goto('./#/league/1003/draft');
+  await expect(page.locator('.card').filter({ hasText: 'Draft helper' })).toContainText('covers redraft and keeper leagues for now');
 });
 
 test('ask the analyst: Claude answers from the app\'s figures, which the app puts in and checks', async ({ page }, testInfo) => {

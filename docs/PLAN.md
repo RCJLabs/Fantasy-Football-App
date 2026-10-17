@@ -229,6 +229,23 @@
   - **Home:** one line per league with the next lock and what's due before it.
   - **Push alerts** still need a server (the Cloudflare scheduler).
 
+- **Draft helper, redraft and keeper — built (2026-10-17):** the owner's request, started now for the 2027 drafts; details in
+  [draft.md](draft.md).
+  - **Next season's projections,** in-house, published daily as `data/nextseason.json`:
+    - each player's production a game this season and the two before, pulled toward his position's mean;
+    - adjusted for age and contract status (OverTheCap via nflverse, fifth-year options included);
+    - expected games from age, games missed this season, tier and contract.
+  - **Held out on 2015–2025:** it ranks next season better than "same as this year" (Spearman 0.24–0.48 against 0.05–0.33), but
+    a draftable player's season misses by 56–96 points on average. Contract status barely helps per game; it matters more for
+    games.
+  - **Rookies** of the next NFL draft are placeholders by the order their position is taken, named once nflverse lists the class.
+  - **Draft tab:**
+    - the board by value over replacement under league scoring;
+    - predicted keepers, with the manager's cost rule;
+    - a random, Sleeper or hand-set order, and which slot is best;
+    - a mock draft against teams drafting from the board with noise.
+  - **Not yet:** ADP, a live draft board, Sleeper's draft endpoints checked on a real league, dynasty drafts.
+
 - **Trades without free-agent fills (2026-10-16):** the owner's call. A spot a trade opens isn't filled from free agency in any
   trade evaluation (builder, trade ideas, packages), since that pickup is open without the trade too.
 
@@ -752,7 +769,8 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
    inventory first (rule 8; §8 decision 6).
 9. **Dynasty startup draft assistant.** **Moved to Phase 3:** the startup draft is the week before the 2027 season (the owner,
    2026-10-16), after the freeze. A live board from Sleeper's draft picks that ranks the best available by league scoring,
-   FantasyCalc dynasty values and roster needs. Sleeper's draft data is untested here.
+   FantasyCalc dynasty values and roster needs. Sleeper's draft data is untested here. The redraft and keeper draft helper it
+   can build on was built 2026-10-17 ([draft.md](draft.md)).
 10. **Ask the analyst.** **Built 2026-10-16** with bring-your-own-key ([analyst.md](analyst.md)).
     - Plain-language questions answered only from the app's computed numbers, which the app puts in and checks.
     - **Risk:** confidently wrong prose, which the number check reduces but doesn't remove.
@@ -779,7 +797,13 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
     fact sheet with app-inserted numbers, no tools yet.
   - Play's AI-content policy needs an in-app report button `[reported]`
 - **Draft assistant** for Aug 2027 (ADP + value-based drafting under league scoring), including the **dynasty startup draft
-  assistant**: the owner's startup draft is the week before the 2027 season.
+  assistant**: the owner's startup draft is the week before the 2027 season. **Redraft and keeper helper built 2026-10-17**
+  ([draft.md](draft.md)): next season's projections, board, keepers, orders, slot comparison and mock draft. Remaining:
+  - ADP for the other teams' picks;
+  - a live board that follows Sleeper's draft;
+  - rookies named after the NFL draft (built, untested until April);
+  - the mock draft's noise calibrated on real drafts;
+  - dynasty startup and rookie drafts.
 - **Monetization decision.** If yes: licence requests (Sleeper, RotoWire, FantasyCalc, FantasyPros via support@/api@fantasypros.com), move to Cloudflare, Play Billing.
 - **More platforms:** MFL, Yahoo if approved, ESPN only after the policy review.
 
