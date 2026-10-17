@@ -90,6 +90,7 @@ for id in "${league_ids[@]}"; do
   for did in "${draft_ids[@]}"; do
     mask "$did"
     fetch "$d/draft_picks_$did.json" "$SLEEPER/draft/$did/picks"
+    fetch "$d/draft_traded_$did.json" "$SLEEPER/draft/$did/traded_picks"
   done
   for ((w = 1; w <= LAST_REG_WEEK; w++)); do
     fetch "$d/matchups_w$(printf %02d "$w").json" "$SLEEPER/league/$id/matchups/$w"

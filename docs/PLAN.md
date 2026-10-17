@@ -244,7 +244,13 @@
     - predicted keepers, with the manager's cost rule;
     - a random, Sleeper or hand-set order, and which slot is best;
     - a mock draft against teams drafting from the board with noise.
-  - **Not yet:** ADP, a live draft board, Sleeper's draft endpoints checked on a real league, dynasty drafts.
+  - **Live draft and Sleeper's draft data (2026-10-17):**
+    - the tab follows Sleeper's draft pick by pick once it starts, with look-ahead suggestions for your next pick;
+    - traded picks are applied to the pick order;
+    - the order is read from `draft_order` (Sleeper left `slot_to_roster_id` empty);
+    - on the owner's keeper league, keepers stayed off the 2026 draft board, so they cost nothing beyond the roster spot (the
+      default rule).
+  - **Not yet:** ADP, dynasty drafts.
 
 - **Trades without free-agent fills (2026-10-16):** the owner's call. A spot a trade opens isn't filled from free agency in any
   trade evaluation (builder, trade ideas, packages), since that pickup is open without the trade too.
@@ -800,8 +806,8 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
   assistant**: the owner's startup draft is the week before the 2027 season. **Redraft and keeper helper built 2026-10-17**
   ([draft.md](draft.md)): next season's projections, board, keepers, orders, slot comparison and mock draft. Remaining:
   - ADP for the other teams' picks;
-  - a live board that follows Sleeper's draft;
-  - rookies named after the NFL draft (built, untested until April);
+  - a live board that follows Sleeper's draft (built 2026-10-17; first real use in 2027);
+  - rookies named after the NFL draft (built, checked offline on the 2026 class);
   - the mock draft's noise calibrated on real drafts;
   - dynasty startup and rookie drafts.
 - **Monetization decision.** If yes: licence requests (Sleeper, RotoWire, FantasyCalc, FantasyPros via support@/api@fantasypros.com), move to Cloudflare, Play Billing.

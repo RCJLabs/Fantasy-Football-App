@@ -414,6 +414,24 @@ export async function loadDraftPicks(draftId: string, force = false): Promise<Ra
   return (await cached(`draftpicks:${draftId}`, 24 * HOUR, () => sleeperApi.draftPicks(draftId), { force })).value ?? [];
 }
 
+export interface LiveDraft {
+  draft: RawDraft;
+  picks: RawDraftPick[];
+  traded: RawTradedPick[];
+  savedAt: number;
+  stale: boolean;
+}
+
+/** A draft as it happens: the draft, its picks and traded picks, fresh every call (a saved copy when offline). */
+export async function loadLiveDraft(draftId: string): Promise<LiveDraft> {
+  const [draft, picks, traded] = await Promise.all([
+    cached(`livedraft:${draftId}`, 0, () => sleeperApi.draft(draftId), { force: true }),
+    cached(`livepicks:${draftId}`, 0, () => sleeperApi.draftPicks(draftId), { force: true }),
+    cached(`livetraded:${draftId}`, 0, () => sleeperApi.draftTradedPicks(draftId), { force: true }).catch(() => ({ value: [], savedAt: Date.now(), stale: true })),
+  ]);
+  return { draft: draft.value, picks: picks.value ?? [], traded: traded.value ?? [], savedAt: Math.min(draft.savedAt, picks.savedAt), stale: draft.stale || picks.stale };
+}
+
 /** Next season's projections for the draft helper (docs/draft.md). */
 export async function loadNextSeason(force = false): Promise<NextSeasonFile> {
   return (await cached('data:nextseason', 6 * HOUR, () => fetchDataFile<NextSeasonFile>('nextseason.json'), { force })).value;

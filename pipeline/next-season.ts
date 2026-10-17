@@ -415,9 +415,25 @@ export interface NextSeasonInput {
   inactive?: ReadonlySet<string>;
   /** Sleeper DEF lines by team: the basis season so far and the season before. */
   defenses?: { cur: ReadonlyMap<string, { g: number; s: StatLine }>; prev: ReadonlyMap<string, { g: number; s: StatLine }> };
-  /** The projected season's NFL draft once it has happened: gsis ids in the order taken. */
-  draft?: ReadonlyArray<{ pos: string; gsis: string }>;
+  /** The projected season's NFL draft once it has happened: gsis ids (and names) in the order taken. */
+  draft?: ReadonlyArray<{ pos: string; gsis: string; name?: string }>;
+  /**
+   * Sleeper ids of this year's rookies by `normalizeName(name)|pos`: new rookies often lack a gsis id in Sleeper's data
+   * and in nflverse's rosters until the season starts.
+   */
+  rookieIds?: ReadonlyMap<string, string>;
 }
+
+/** A name for matching across sources: lower case, no accents, punctuation or suffixes (Jr., II…). */
+export const normalizeName = (name: string): string =>
+  name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[.'’]/g, '')
+    .replace(/\b(jr|sr|ii|iii|iv|v)\b/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 
 /** Skill players projected for less than this many PPR points a season are left out of the file. [design] */
 const MIN_SEASON_PPR = 10;
@@ -505,7 +521,8 @@ export function buildNextSeasonFile(input: NextSeasonInput): NextSeasonFile {
     const taken = input.draft?.filter((d) => d.pos === pos) ?? [];
     lines.forEach((line, i) => {
       if (input.draft?.length && !taken[i]) return;
-      const sid = taken[i] ? input.sleeperByGsis.get(taken[i]!.gsis) : undefined;
+      const t = taken[i];
+      const sid = t ? (input.sleeperByGsis.get(t.gsis) ?? (t.name ? input.rookieIds?.get(`${normalizeName(t.name)}|${pos}`) : undefined)) : undefined;
       rookies.push({ pos, order: i + 1, s: compact(line.s), g: r1(line.share * games), ...(sid ? { id: sid } : {}) });
     });
   }
