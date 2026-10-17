@@ -80,6 +80,18 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             they add to your lineups once Sleeper projects them back. On IR they take no bench spot until then.
           </li>
           <li>
+            <strong>Before lock</strong> (Lineup tab, and a line on each Home league card): your lineup as set in Sleeper, kickoff by kickoff, with
+            the changes due before each game starts. For Questionable starters it says when inactives come out (90 minutes before kickoff) and who
+            would replace him if he&apos;s out, including a better fill-in whose game starts before the news. The app can&apos;t send alerts, so this
+            tells you when to look again.
+          </li>
+          <li>
+            <strong>Ask the analyst</strong> (a league&apos;s Ask tab, with your own Anthropic API key): questions in plain words, answered by Claude from
+            the app&apos;s own figures for that league. The model quotes figures by reference and the app puts in the numbers, so they match the other
+            tabs; any number it types itself is checked and marked when it isn&apos;t one of the app&apos;s. It can still misread a figure, so the
+            reasoning is worth a glance.
+          </li>
+          <li>
             <strong>Across your leagues</strong> (Home, with two or more in-season leagues): players in the recommended lineup in more than one
             league, NFL games holding three or more of your starter spots, and on request, free agents who are top waiver targets in more than one
             league, with what each adds in each and where he adds more.
@@ -87,8 +99,7 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           <li>
             <strong>What would it take?</strong> (Trade tab): pick a player on another team, and it searches packages of one or two of your players
             for him that improve both best lineups, best for you first, with market values. When none does, it shows the cheapest packages their
-            lineup gains from, and what they&apos;d cost yours. A two-for-one&apos;s open spot isn&apos;t filled from free agency there, since you could
-            make that pickup anyway.
+            lineup gains from, and what they&apos;d cost yours.
           </li>
           <li>
             <strong>Buy low, sell high</strong> (Trade tab and player details): players whose PPR points over recent games ran 3+ a game ahead of
@@ -106,7 +117,8 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           <li>
             <strong>Trade ideas</strong> search one-for-one and two-for-one trades with every team, among each team's eight most valuable QBs, RBs,
             WRs and TEs, for trades that improve both best lineups over the rest of the season. It's lineup math only: whether the other manager says
-            yes also depends on how they rank players, so market values are shown beside each idea.
+            yes also depends on how they rank players, so market values are shown beside each idea. A spot a trade opens isn&apos;t filled from free
+            agency in any trade evaluation: you could make that pickup without the trade.
           </li>
           <li>
             <strong>Keeper and dynasty leagues</strong> also get a long-term view. Trades show market value this season and beyond it (FantasyCalc
@@ -178,6 +190,10 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
         <ul>
           <li>No accounts and no server-side storage. Your Sleeper username, the lineup picks the app saves for its season review and the data the app loads stay on this device.</li>
           <li>Your browser requests data directly from Sleeper (username, league IDs) and from this site (GitHub Pages, which keeps standard access logs).</li>
+          <li>
+            Ask the analyst (only if you add an Anthropic API key): the key stays on this device, and each question sends that league&apos;s figures (team
+            and player names, projections, odds, free agents) and your question from your browser to Anthropic, under your Anthropic account.
+          </li>
           <li>Errors are logged only on this device; “Report a problem” opens a pre-filled GitHub issue that you choose whether to submit.</li>
         </ul>
         <div class="row">

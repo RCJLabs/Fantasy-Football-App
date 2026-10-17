@@ -221,6 +221,26 @@
   - **FAAB:** each bid comes from the budget left after the claims above. A backup never bids more than its claim.
   - **On the owner's leagues:** three claims each. Bids total $23 of $25 and $9 of $22.
 
+- **Before lock — built (2026-10-16):** item 8 of the owner's assistance list, as the in-app check (the owner's call); details in
+  [before-lock.md](before-lock.md).
+  - **Lineup tab:** the lineup set in Sleeper, kickoff by kickoff. Changes due before each lock; starters ruled out with nobody to
+    fill in; and Questionable starters, with when inactives come out (90 minutes before kickoff) and the fill-in whose game is
+    still open then, including one-move fill-ins through a flex spot.
+  - **Home:** one line per league with the next lock and what's due before it.
+  - **Push alerts** still need a server (the Cloudflare scheduler).
+
+- **Trades without free-agent fills (2026-10-16):** the owner's call. A spot a trade opens isn't filled from free agency in any
+  trade evaluation (builder, trade ideas, packages), since that pickup is open without the trade too.
+
+- **Ask the analyst — built (2026-10-16):** item 10 of the owner's assistance list, brought forward with bring-your-own-key; details
+  in [analyst.md](analyst.md).
+  - **League page, Ask tab:** plain-language questions, answered by Claude (Opus 5.5) from a fact sheet of the app's own figures.
+  - **Numbers come from the app:** the model quotes facts by id and the app puts in the values. Numbers it types itself are checked
+    against the facts and marked when they match none.
+  - **The manager's own Anthropic key,** kept on the device, with calls straight from the browser. Each answer shows its cost;
+    follow-ups reuse the cached fact sheet.
+  - **Not yet run against the real API:** no key in this environment.
+
 - **Across your leagues — built (2026-10-16):** item 7 of the owner's assistance list; details in
   [across-leagues.md](across-leagues.md).
   - **Home card**, with two or more in-season leagues:
@@ -235,8 +255,8 @@
   - **What it does:** for a player on another team, packages of one or two of yours that help both best lineups, best for you
     first, with market values. Packages they'd see as lopsided go last. When none helps both, it shows the cheapest their lineup gains
     from, and it says whether he'd start for you.
-  - **Free agents:** a two-for-one's open spot isn't filled from free agency, unlike the trade builder. You could make that pickup
-    anyway, and counting it made a backup QB look like +32.
+  - **Free agents:** a two-for-one's open spot isn't filled from free agency. You could make that pickup anyway, and counting it
+    made a backup QB look like +32. On the owner's call, trade ideas and the builder stopped counting fills too.
   - **On the owner's leagues:** for rivals' top three players, packages that help both exist for 2 of 27 and 3 of 33. For the rest,
     the cheapest their lineup gains from costs a median 11 points of the owner's.
 
@@ -727,17 +747,14 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
 7. **Across all your leagues (Home).** **Built 2026-10-16** ([across-leagues.md](across-leagues.md)).
    - Players you start in several leagues, and NFL games where your starters bunch up.
    - The same waiver target in two leagues, with where he adds more.
-8. **Game-day inactive alerts.**
-   - Before each Sunday window, if a starter is ruled out, the alert names the swap.
-   - **Needs a server:** an installed web app can't wake itself at a set time. It needs the Cloudflare scheduler (decision pending) plus
-     Web Push, and the push subscription goes into the data inventory first (rule 8; §8 decision 6).
-   - **Until then:** a "before lock" checklist in the app.
-9. **Dynasty startup draft assistant.** A live board from Sleeper's draft picks that ranks the best available by league scoring,
-   FantasyCalc dynasty values and roster needs. This is Phase 3's draft assistant; it comes forward only if the startup draft is before
-   the freeze (date pending). Sleeper's draft data is untested here.
-10. **Ask the analyst.**
-    - Plain-language questions answered only from the app's computed numbers, with every number checked against them. This is Phase 3's
-      LLM layer; it comes forward if you choose bring-your-own-key, which needs no server.
+8. **Game-day inactive alerts.** **Built 2026-10-16 as the in-app "before lock" check** ([before-lock.md](before-lock.md)), the
+   owner's call. Push alerts still need a server: the Cloudflare scheduler plus Web Push, with the push subscription in the data
+   inventory first (rule 8; §8 decision 6).
+9. **Dynasty startup draft assistant.** **Moved to Phase 3:** the startup draft is the week before the 2027 season (the owner,
+   2026-10-16), after the freeze. A live board from Sleeper's draft picks that ranks the best available by league scoring,
+   FantasyCalc dynasty values and roster needs. Sleeper's draft data is untested here.
+10. **Ask the analyst.** **Built 2026-10-16** with bring-your-own-key ([analyst.md](analyst.md)).
+    - Plain-language questions answered only from the app's computed numbers, which the app puts in and checks.
     - **Risk:** confidently wrong prose, which the number check reduces but doesn't remove.
 
 **Checkpoint:** **Dec 6 feature freeze.** After that, only fixes until Week 17.
@@ -758,9 +775,11 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
 - **Cloudflare Worker:** Cron Trigger scheduler; `/llm` proxy with Turnstile + an anonymous per-install quota (declared).
 - **LLM layer**, grounded in computed JSON with every number post-checked:
   - pipeline blurbs (no point values, since scoring lives on the device)
-  - "Ask the analyst" with tool use and a bring-your-own-key option
+  - "Ask the analyst" with tool use and a bring-your-own-key option. **Built 2026-10-16 with bring-your-own-key** ([analyst.md](analyst.md)): a
+    fact sheet with app-inserted numbers, no tools yet.
   - Play's AI-content policy needs an in-app report button `[reported]`
-- **Draft assistant** for Aug 2027 (ADP + value-based drafting under league scoring).
+- **Draft assistant** for Aug 2027 (ADP + value-based drafting under league scoring), including the **dynasty startup draft
+  assistant**: the owner's startup draft is the week before the 2027 season.
 - **Monetization decision.** If yes: licence requests (Sleeper, RotoWire, FantasyCalc, FantasyPros via support@/api@fantasypros.com), move to Cloudflare, Play Billing.
 - **More platforms:** MFL, Yahoo if approved, ESPN only after the policy review.
 

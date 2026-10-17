@@ -83,7 +83,7 @@ function change(model: RosModel, s: Side, out: readonly string[], inn: readonly 
  * best-lineup points; their side first, since most candidates fail it. The best few then get the trade tab's full
  * evaluation (forced drops, free-agent fills, ranges, playoff odds), which is what's reported.
  */
-export async function findTrades(o: LeagueOutlook, ctx: WeekContext, myId: number, freeAgents: readonly string[], opts: FinderOptions = {}): Promise<TradeIdea[]> {
+export async function findTrades(o: LeagueOutlook, ctx: WeekContext, myId: number, opts: FinderOptions = {}): Promise<TradeIdea[]> {
   const { model } = o;
   const depth = opts.depth ?? 8;
   const limit = opts.limit ?? 6;
@@ -131,7 +131,7 @@ export async function findTrades(o: LeagueOutlook, ctx: WeekContext, myId: numbe
   }
   const ideas: TradeIdea[] = [];
   for (const c of shortlist) {
-    const result = evaluateTrade(o, ctx, myId, c.partner, c.give, c.get, freeAgents);
+    const result = evaluateTrade(o, ctx, myId, c.partner, c.give, c.get);
     if (result.me.delta >= minMine && result.them.delta >= minTheirs) ideas.push({ ...c, mine: result.me.delta, theirs: result.them.delta, result });
   }
   return ideas.sort((a, b) => b.mine - a.mine).slice(0, limit);
@@ -177,10 +177,8 @@ export interface TargetSearch {
  * of my most valuable QBs, RBs, WRs and TEs for him is screened on both rosters' weighted best-lineup points, their
  * side first. Packages both sides gain from are kept, each of my players in at most two, and the best get the trade
  * tab's evaluation, which is what's reported. "Cheapest" is in my lineup's terms: the most points left over after the
- * trade. With market values, packages that give them under 1/1.4 of his market value go last.
- *
- * Unlike the trade tab, no free agent fills a spot a package opens: that pickup is open to me anyway (with a drop), so
- * counting it would make two-for-ones look cheaper than they are.
+ * trade. With market values, packages that give them under 1/1.4 of his market value go last. As in the trade tab, no
+ * free agent fills a spot a package opens.
  */
 export async function findPackages(o: LeagueOutlook, ctx: WeekContext, myId: number, target: string, opts: PackageOptions = {}): Promise<TargetSearch | null> {
   const { model } = o;
@@ -214,7 +212,7 @@ export async function findPackages(o: LeagueOutlook, ctx: WeekContext, myId: num
   const evaluate = async (list: readonly Candidate[]): Promise<TargetPackage[]> => {
     const out: TargetPackage[] = [];
     for (const c of list) {
-      const result = evaluateTrade(o, ctx, myId, partner.rosterId, c.give, [target], []);
+      const result = evaluateTrade(o, ctx, myId, partner.rosterId, c.give, [target]);
       out.push({ partner: partner.rosterId, give: c.give, get: [target], mine: result.me.delta, theirs: result.them.delta, result, ...(c.market ? { market: c.market } : {}) });
       // The evaluation simulates the season: let the page breathe between packages.
       await new Promise((r) => setTimeout(r, 0));

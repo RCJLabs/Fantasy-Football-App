@@ -780,3 +780,44 @@ h3 {
 .warn-text {
   color: var(--warn);
 }
+/* Ask the analyst. */
+.connect-form textarea {
+  min-height: 3.2rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  resize: vertical;
+}
+.ask .turn {
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+  margin-top: 0.6rem;
+}
+.ask .question {
+  margin: 0 0 0.3rem;
+}
+.ask .answer {
+  white-space: pre-wrap;
+  margin: 0.3rem 0;
+}
+.ask .fact {
+  font-weight: 600;
+  border-bottom: 1px dotted var(--muted);
+}
+mark.unchecked {
+  background: color-mix(in srgb, var(--warn) 25%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 0.15em;
+}
+/* Before lock. */
+.before-lock h3 {
+  margin: 0.8rem 0 0.3rem;
+}
+.next-lock {
+  margin: 0.4rem 0 0;
+}

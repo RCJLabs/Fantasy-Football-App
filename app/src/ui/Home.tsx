@@ -4,6 +4,7 @@ import type { PlayerRow } from '../analysis/analyze';
 import { waiverBoard } from '../analysis/outlook';
 import { loadTrending } from '../data/repo';
 import type { League } from '../domain/types';
+import { NextLock } from './BeforeLock';
 import { Badge, ErrorBox, Problems, Spinner } from './components';
 import { loadOverview, loadSeason, sharedBundle } from './data';
 import { logError } from './errorLog';
@@ -93,7 +94,14 @@ function LeagueCard({ league, week, session }: { league: League; week: number; s
               </div>
             ) : null}
           </div>
-          {league.rules.bestBall ? <p class="muted small">Best ball: Sleeper sets your lineup automatically.</p> : <Problems problems={a.problems} limit={3} />}
+          {league.rules.bestBall ? (
+            <p class="muted small">Best ball: Sleeper sets your lineup automatically.</p>
+          ) : (
+            <>
+              <Problems problems={a.problems} limit={3} />
+              <NextLock a={a} now={Date.now()} />
+            </>
+          )}
           <p class="muted small">Updated {ago(bundle.data!.data.savedAt)}</p>
         </>
       ) : null}

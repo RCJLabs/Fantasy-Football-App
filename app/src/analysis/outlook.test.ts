@@ -5,7 +5,7 @@ import { parseBracket, parseLeague, parseMatchup, parseRoster } from '../sleeper
 import type { RawBracketMatch, RawLeague, RawTransaction } from '../sleeper/raw';
 import { gamesByTeam, type WeekContext } from './analyze';
 import { faabMarket, marketPrice, suggestBid, tierOf } from './faab';
-import { buildOutlook, byeGrid, evaluateTrade, freeAgentPool, regularStarters, scheduleOutlook, streamers, waiverBoard } from './outlook';
+import { buildOutlook, byeGrid, evaluateTrade, regularStarters, scheduleOutlook, streamers, waiverBoard } from './outlook';
 import {
   addGains,
   changeVariance,
@@ -25,6 +25,7 @@ import {
   RosModel,
   seasonEnd,
   teamDrift,
+  teamIds,
   weekWeights,
 } from './ros';
 import { bracketOrder, simulateSeason, type SeasonTeam } from './season';
@@ -400,10 +401,8 @@ describe('league outlook', () => {
   });
 
   it('evaluates a trade for both sides', () => {
-    const fa = freeAgentPool(o, ctx);
-    expect(fa[0]).toBe('fa_rb');
     // Give my WR for their RB: I have RB depth already, they have none at WR.
-    const t = evaluateTrade(o, ctx, 1, 2, ['wa'], ['rd'], fa);
+    const t = evaluateTrade(o, ctx, 1, 2, ['wa'], ['rd']);
     expect(t.me.delta + t.them.delta).not.toBe(0);
     expect(t.me.weekly).toHaveLength(o.weeks.length);
     expect(t.me.pBefore).toBeCloseTo(o.odds!.get(1)!.pPlayoffs, 9);
@@ -416,12 +415,14 @@ describe('league outlook', () => {
     }
     expect(t.them.titleAfter).toBeGreaterThanOrEqual(0);
     expect(t.deadlinePassed).toBe(false);
-    // 2-for-1: my open spot absorbs the extra player; they may refill only the one spot the trade frees.
-    const two = evaluateTrade(o, ctx, 1, 2, ['wa'], ['rd', 're'], fa);
+    // 2-for-1: my open spot absorbs the extra player. The spot it frees on their roster stays open: the free-agent RB
+    // isn't counted, since they could add him without the trade.
+    const two = evaluateTrade(o, ctx, 1, 2, ['wa'], ['rd', 're']);
     expect(two.me.drops).toHaveLength(0);
-    expect(two.them.adds).toEqual(['fa_rb']);
+    const them = o.teams.get(2)!;
+    expect(two.them.after).toBeCloseTo(o.model.value([...teamIds(them.roster).filter((id) => id !== 'rd' && id !== 're'), 'wa'], them.weights), 9);
     // 3-for-1 overflows my roster by one: the cheapest player goes.
-    const three = evaluateTrade(o, ctx, 1, 2, ['wa'], ['rd', 're', 'wb'], fa);
+    const three = evaluateTrade(o, ctx, 1, 2, ['wa'], ['rd', 're', 'wb']);
     expect(three.me.drops).toHaveLength(1);
   });
 
@@ -488,7 +489,7 @@ describe('league outlook', () => {
       expect(b.bracket!.odds.get(2)!.pTitle + b.bracket!.odds.get(3)!.pTitle).toBeCloseTo(1, 9);
       // My team is out: the free-agent RB adds nothing for the rest of the season.
       expect(waiverBoard(b, rosters[0]!, c17, new Map(), []).rows.every((r) => r.rosGain === 0)).toBe(true);
-      const t = evaluateTrade(b, c17, 2, 3, ['wb'], ['wc'], freeAgentPool(b, c17));
+      const t = evaluateTrade(b, c17, 2, 3, ['wb'], ['wc']);
       expect(t.me.pBefore).toBeUndefined();
       expect(t.me.titleBefore).toBeCloseTo(b.bracket!.odds.get(2)!.pTitle, 9);
       expect(t.me.titleAfter).toBeGreaterThanOrEqual(0);
@@ -505,28 +506,27 @@ describe('league outlook', () => {
   });
 
   it('finds trades that help both lineups, best for me first', async () => {
-    const fa = freeAgentPool(o, ctx);
     let calls = 0;
-    const ideas = await findTrades(o, ctx, 1, fa, { onProgress: () => calls++ });
+    const ideas = await findTrades(o, ctx, 1, { onProgress: () => calls++ });
     expect(calls).toBe(3); // one per other team
     for (const idea of ideas) {
       expect(idea.mine).toBeGreaterThanOrEqual(3);
       expect(idea.theirs).toBeGreaterThanOrEqual(0);
       // Reported numbers are the trade tab's own evaluation of the same trade.
-      expect(idea.mine).toBeCloseTo(evaluateTrade(o, ctx, 1, idea.partner, idea.give, idea.get, fa).me.delta, 6);
+      expect(idea.mine).toBeCloseTo(evaluateTrade(o, ctx, 1, idea.partner, idea.give, idea.get).me.delta, 6);
       expect(idea.result.them.delta).toBeCloseTo(idea.theirs, 9);
       expect(idea.give.every((id) => rosters[0]!.players.includes(id))).toBe(true);
     }
     expect(ideas.map((i) => i.mine)).toEqual([...ideas.map((i) => i.mine)].sort((a, b) => b - a));
     // At most two ideas per partner by default, for variety.
-    const capped = await findTrades(o, ctx, 1, fa, { minMine: -1e9, minTheirs: -1e9, limit: 40 });
+    const capped = await findTrades(o, ctx, 1, { minMine: -1e9, minTheirs: -1e9, limit: 40 });
     for (const partner of [2, 3, 4]) expect(capped.filter((i) => i.partner === partner).length).toBeLessThanOrEqual(2);
     // With no thresholds and no cap every candidate qualifies, two-for-ones included.
-    const any = await findTrades(o, ctx, 1, fa, { minMine: -1e9, minTheirs: -1e9, limit: 40, perPartner: 100 });
+    const any = await findTrades(o, ctx, 1, { minMine: -1e9, minTheirs: -1e9, limit: 40, perPartner: 100 });
     expect(any.length).toBe(40);
     expect(any.some((i) => i.give.length === 2 || i.get.length === 2)).toBe(true);
-    expect(await findTrades(o, ctx, 1, fa, { minMine: 1e9 })).toEqual([]);
-    expect((await findTrades(o, ctx, 1, fa, { minMine: -1e9, minTheirs: -1e9, uneven: false, limit: 40 })).every((i) => i.give.length === 1 && i.get.length === 1)).toBe(true);
+    expect(await findTrades(o, ctx, 1, { minMine: 1e9 })).toEqual([]);
+    expect((await findTrades(o, ctx, 1, { minMine: -1e9, minTheirs: -1e9, uneven: false, limit: 40 })).every((i) => i.give.length === 1 && i.get.length === 1)).toBe(true);
   });
 
   it('lists DEF streamers: mine first, then free agents', () => {

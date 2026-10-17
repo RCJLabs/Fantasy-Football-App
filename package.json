@@ -19,6 +19,7 @@
     "check": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.135.0",
     "idb": "8.0.4",
     "preact": "10.29.8"
   },
