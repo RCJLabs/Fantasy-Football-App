@@ -5,8 +5,11 @@ import {
   type BoardPlayer,
   buildBoard,
   compareSlots,
+  draftGrades,
+  type DraftGrades,
   type DraftSetup,
   type DraftStyle,
+  type DraftTeamGrade,
   fillLineup,
   type Keeper,
   type KeeperCost,
@@ -16,6 +19,7 @@ import {
   nextPick,
   pickOrder,
   pickOwners,
+  type PickValue,
   placeKeepers,
   predictKeepers,
   simulateRest,
@@ -23,13 +27,14 @@ import {
   type SlotValue,
   suggest,
   suggestAhead,
+  valueAndReach,
 } from '../analysis/draft';
 import { mulberry32 } from '../analysis/season';
 import type { NextSeasonFile } from '../data/contracts';
 import { type LiveDraft, loadDraftPicks, loadDrafts, loadLiveDraft, loadNextSeason, loadTradedPicks } from '../data/repo';
 import type { League, Roster } from '../domain/types';
 import type { RawDraft, RawDraftPick, RawTradedPick } from '../sleeper/raw';
-import { Badge, ErrorBox, slotLabel, Spinner } from './components';
+import { Badge, ErrorBox, GradeMark, slotLabel, Spinner } from './components';
 import type { LeagueBundle } from './data';
 import { ago, dateTime, ordinal, pct } from './format';
 import { useAsync } from './hooks';
@@ -760,6 +765,13 @@ function MockDraft({
   const current = mock ? mock.taken.findIndex((t, i) => t === undefined && i < picks.length) : -1;
   const done = !!mock && current < 0;
   const suggestions = useMemo(() => (mock && current >= 0 && picks[current] === me ? suggest(setupFor(mock.taken), current, { sims: 150 }) : []), [mock, current]);
+  const result = useMemo(() => {
+    if (!mock || !done) return undefined;
+    const s = setupFor(mock.taken);
+    const kept = new Set(fixed.keys());
+    const grades = draftGrades(s, kept);
+    return grades ? { grades, ...valueAndReach(s, me, kept) } : undefined;
+  }, [mock, done, fixed]);
   const draft = (id: string) => {
     if (!mock || current < 0) return;
     const taken = [...mock.taken];
@@ -797,7 +809,9 @@ function MockDraft({
   return (
     <div class="card mock">
       <h2>Mock draft</h2>
-      {done ? (
+      {done && result ? (
+        <DraftResult {...result} me={me} name={name} n={n} />
+      ) : done ? (
         <p>
           <strong>Draft complete.</strong> Your lineup value: {whole(lineupValue(myTeam, board.slots))} over replacement, bench counted at a share.
         </p>
@@ -900,5 +914,91 @@ function MockDraft({
         </>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * A finished mock draft graded: every team against the others (analysis/draft.ts). With keepers, the draft is graded
+ * on what the picks added to them, since a roster's grade is then mostly its keepers'.
+ */
+function DraftResult({ grades, value, reach, me, name, n }: { grades: DraftGrades; value?: PickValue; reach?: PickValue; me: number; name: (r: number) => string; n: number }) {
+  const kept = grades.teams.some((t) => t.picks);
+  const draftOf = (t: DraftTeamGrade) => t.picks ?? t;
+  const rows = kept ? [...grades.teams].sort((a, b) => draftOf(a).rank - draftOf(b).rank) : grades.teams;
+  const mine = grades.teams.find((t) => t.rosterId === me);
+  const count = grades.teams.length;
+  const cell = (g: { grade: DraftTeamGrade['grade']; value: number }) => (
+    <td class="num">
+      <GradeMark grade={g.grade} />
+      <span class="grade-value">{whole(g.value)}</span>
+    </td>
+  );
+  return (
+    <>
+      <p>
+        <strong>Draft complete.</strong>{' '}
+        {mine ? (
+          <>
+            Your draft: <GradeMark grade={draftOf(mine).grade} /> ({ordinal(draftOf(mine).rank)} of {count})
+            {mine.picks ? (
+              <>
+                ; with keepers, your team: <GradeMark grade={mine.grade} /> ({ordinal(mine.rank)} of {count})
+              </>
+            ) : null}
+            .
+          </>
+        ) : null}
+      </p>
+      {mine ? (
+        <p class="small draft-positions">
+          Your lineup by position{kept ? ', keepers included' : ''}:{' '}
+          {grades.positions.map((p, i) => (
+            <>
+              {i ? ' · ' : ''}
+              <span>
+                {p} <GradeMark grade={mine.positions[p]!.grade} /> <span class="muted">({ordinal(mine.positions[p]!.rank)})</span>
+              </span>
+            </>
+          ))}
+        </p>
+      ) : null}
+      {value || reach ? (
+        <p class="small">
+          {value
+            ? `Best value: ${value.player.name} at ${pickLabel(value.at, n)}, ${value.spots} picks after his place on the board: ${whole(value.gain)} points over the board's player for that pick. `
+            : ''}
+          {reach
+            ? `Biggest reach: ${reach.player.name} at ${pickLabel(reach.at, n)}, ${-reach.spots} picks before his place: ${whole(-reach.gain)} points under the board's player for that pick.`
+            : ''}
+        </p>
+      ) : null}
+      <div class="table-wrap">
+        <table class="table grades">
+          <thead>
+            <tr>
+              <th>Team</th>
+              <th class="num">{kept ? 'Draft' : 'Grade'}</th>
+              {kept ? <th class="num">With keepers</th> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((t) => (
+              <tr class={t.rosterId === me ? 'mine' : undefined}>
+                <td>{t.rosterId === me ? 'You' : name(t.rosterId)}</td>
+                {cell(draftOf(t))}
+                {kept ? cell(t) : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="muted small">
+        Graded on lineup value, the number under each grade{kept ? ': for the draft, what the picks added to the keepers' : ''}. The other teams in
+        the mock draft from the board with noise and don&apos;t plan their rosters, so following the suggestions usually ranks first or second;
+        real managers will differ. S stands clearly above the rest; A to F step half a standard deviation from the league average, here{' '}
+        {whole((kept ? grades.step.picks : undefined) ?? grades.step.team)} points of value. Value and reach leave keepers out. For scale, a draftable
+        player&apos;s season missed its projection by 56–96 points on average in the backtest.
+      </p>
+    </>
   );
 }

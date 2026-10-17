@@ -6,6 +6,7 @@ import {
   BENCH_SHARE,
   buildBoard,
   compareSlots,
+  draftGrades,
   type DraftSetup,
   fillLineup,
   lineupValue,
@@ -15,6 +16,7 @@ import {
   pickOwners,
   placeKeepers,
   positionCaps,
+  positionValues,
   predictKeepers,
   replacementLevels,
   roundValues,
@@ -22,8 +24,10 @@ import {
   sleeperDraftOrder,
   suggest,
   suggestAhead,
+  valueAndReach,
   withSlot,
 } from './draft';
+import { gradeOf } from './grades';
 
 const SLOTS = ['QB', 'RB', 'RB', 'WR', 'WR', 'TE', 'FLEX', 'K', 'DEF', 'BN', 'BN', 'BN'];
 const league = (over: Partial<League> = {}): League => ({
@@ -214,6 +218,81 @@ describe('mock draft', () => {
     const slots = compareSlots({ board: b, order: [1, 2, 3, 4], rounds: 12, style: 'snake', me: 1 }, { sims: 10 });
     expect(slots.map((s) => s.slot)).toEqual([1, 2, 3, 4]);
     expect(slots.every((s) => Number.isFinite(s.value) && s.value > 0)).toBe(true);
+  });
+});
+
+describe('draft grades', () => {
+  const b = buildBoard(league(), next(), noPlayers);
+  const get = (id: string) => b.players.find((p) => p.id === id)!;
+  const roster = (s: DraftSetup, r: number, only?: ReadonlySet<number>) => s.taken.flatMap((id, i) => (s.picks[i] === r && id && (!only || only.has(i)) ? [get(id)] : []));
+
+  it('grades every team on the roster it ends with, best first, and position by position', () => {
+    const picks = pickOrder([1, 2, 3, 4], 12, 'snake');
+    const s: DraftSetup = { board: b, picks, numTeams: 4, taken: simulateRest({ board: b, picks, numTeams: 4, taken: [] }, 1, { seed: 3 }) };
+    const g = draftGrades(s)!;
+    expect(g.teams.map((t) => t.rank)).toEqual([1, 2, 3, 4]);
+    expect(g.teams.map((t) => t.rosterId).sort()).toEqual([1, 2, 3, 4]);
+    expect(g.positions).toEqual(['QB', 'RB', 'WR', 'TE', 'K', 'DEF']);
+    expect(g.step.team).toBeGreaterThan(0);
+    expect(g.step.picks).toBeUndefined();
+    for (const t of g.teams) {
+      expect(t.value).toBeCloseTo(lineupValue(roster(s, t.rosterId), b.slots), 9);
+      expect(t.grade).toBe(gradeOf(t.z));
+      // The positions add up to the roster's value; no keepers, so no separate grade for the picks.
+      expect(g.positions.reduce((a, p) => a + t.positions[p]!.value, 0)).toBeCloseTo(t.value, 9);
+      expect(t.picks).toBeUndefined();
+    }
+    expect(g.teams.every((t, i) => i === 0 || g.teams[i - 1]!.value >= t.value)).toBe(true);
+    // Fewer than three teams: nothing to grade against.
+    expect(draftGrades({ ...s, picks: pickOrder([1, 2], 12, 'snake') })).toBeUndefined();
+  });
+
+  it('keeps nearly level teams near average and sets a clearly better one apart', () => {
+    // One pick each, a few points of value apart: inside the floor, so all C.
+    const level = draftGrades({ board: b, picks: [1, 2, 3], numTeams: 3, taken: ['RB1', 'RB2', 'RB3'] })!;
+    expect(level.teams.map((t) => t.grade)).toEqual(['C', 'C', 'C']);
+    expect(level.teams.map((t) => t.rosterId)).toEqual([1, 2, 3]);
+    // Team 1 takes the best QB, RB and WR; the others take weaker ones.
+    const picks = pickOrder([1, 2, 3, 4], 3, 'snake');
+    const taken = ['QB1', 'QB6', 'QB7', 'QB8', 'RB12', 'RB13', 'RB14', 'RB1', 'WR1', 'WR13', 'WR14', 'WR15'];
+    const apart = draftGrades({ board: b, picks, numTeams: 4, taken })!;
+    expect(apart.teams[0]).toMatchObject({ rosterId: 1, rank: 1, grade: 'S' });
+    expect(apart.teams.slice(1).every((t) => t.z < 0)).toBe(true);
+    expect(positionValues([get('QB1'), get('RB1'), get('WR1')], b.slots)).toEqual({ QB: get('QB1').vor, RB: get('RB1').vor, WR: get('WR1').vor });
+  });
+
+  it('with keepers, grades what the picks added to them too', () => {
+    const picks = pickOrder([1, 2, 3], 4, 'snake');
+    const kept = new Set([9, 10, 11]);
+    const taken = ['RB1', 'RB2', 'RB3', 'WR4', 'WR5', 'WR6', 'QB1', 'QB2', 'QB3', 'WR1', 'WR2', 'WR3'];
+    const s: DraftSetup = { board: b, picks, numTeams: 3, taken };
+    const g = draftGrades(s, kept)!;
+    for (const t of g.teams) {
+      expect(t.picks!.value).toBeCloseTo(t.value - lineupValue(roster(s, t.rosterId, kept), b.slots), 9);
+      expect(t.picks!.grade).toBe(gradeOf(t.picks!.z));
+    }
+    expect(g.teams.map((t) => t.picks!.rank).sort()).toEqual([1, 2, 3]);
+    expect(g.step.picks).toBeGreaterThan(0);
+  });
+
+  it("finds a team's best value and biggest reach against the board's order, keepers left out", () => {
+    const picks = pickOrder([1, 2, 3, 4], 3, 'snake');
+    const top = b.players.slice(0, 12);
+    expect(top.every((p) => ['QB', 'RB', 'WR', 'TE'].includes(p.pos))).toBe(true);
+    // Team 1 reaches for the 10th player at the 1st pick, then the 2nd falls to it at the 8th; its 9th pick is the 8th player.
+    const order = [9, 0, 2, 3, 4, 5, 6, 1, 7, 8, 10, 11];
+    const s: DraftSetup = { board: b, picks, numTeams: 4, taken: order.map((k) => top[k]!.id) };
+    const { value, reach } = valueAndReach(s, 1);
+    expect(reach).toMatchObject({ at: 0, spots: -9 });
+    expect(reach!.gain).toBeCloseTo(top[9]!.vor - top[0]!.vor, 9);
+    expect(value).toMatchObject({ at: 7, spots: 6 });
+    expect(value!.gain).toBeCloseTo(top[1]!.vor - top[7]!.vor, 9);
+    // The top player kept at pick 2: he's off the board and his pick isn't counted.
+    const kept = valueAndReach(s, 1, new Set([1]));
+    expect(kept.reach).toMatchObject({ at: 0, spots: -8 });
+    expect(kept.value).toMatchObject({ at: 7, spots: 6 });
+    // Within half a round either way: on the board.
+    expect(valueAndReach(s, 2)).toEqual({});
   });
 });
 

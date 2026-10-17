@@ -7,8 +7,9 @@ contract extensions. Dynasty startup and rookie drafts stay in Phase 3.
 Code:
 - `pipeline/next-season.ts`: the model and the published file.
 - `scripts/calibrate/next-season.ts`: the fit and backtest. Its constants are in `pipeline/next-season-fit.json`.
-- `app/src/analysis/draft.ts`: board, keepers, pick order and mock draft.
+- `app/src/analysis/draft.ts`: board, keepers, pick order, mock draft and its grades.
 - `app/src/ui/DraftTab.tsx`: the league page's Draft tab.
+- `scripts/check/draft-grades.ts`: the grades on real leagues' settings (below).
 
 ## What it does
 
@@ -38,6 +39,11 @@ Code:
     next pick;
   - draft one of them or anyone by name;
   - undo, finish the draft for you, or restart. Predicted keepers take their picks first.
+  - **Grades** (added 2026-10-17 at the owner's request), once the draft is complete:
+    - every team graded S–F against the others on lineup value, with your rank;
+    - in a keeper league, the draft is graded on what the picks added to the keepers, with the roster's grade beside it;
+    - your lineup position by position;
+    - your best value and biggest reach against the board.
 - **Live draft:** once Sleeper's draft for the projected season starts, the tab follows it.
   - It checks Sleeper every 10 seconds while the draft runs and the page is open, or on Refresh.
   - Picks go by pick number, with the team that actually made them, so a pick traded during the draft lands with the team
@@ -206,6 +212,25 @@ deployed copy is kept while Sleeper's season is the same.
 - **Your picks in simulations** (slot comparison, "finish for me"): the player who adds most to your lineup value among the best
   available.
 - **Chance he's back at your next pick:** 150 simulations of the picks in between, with your current pick left open.
+- **Grades** (`draftGrades`, `valueAndReach`):
+  - **Measure:** each team's lineup value after the draft (above), the measure the suggestions maximize.
+  - **Picks:** with keepers, also what the picks added: the lineup value with them less that of the keepers alone. This is the
+    draft's grade, since a roster's is mostly its keepers'. On the owner's keeper league, the keepers' value correlated 0.95 with
+    the roster's and 0.05 with the picks'.
+  - **Bands:** Team grades' (`analysis/grades.ts`): z-scores within the league, S from +1.5 SD, then A to F in half-SD steps around
+    the average.
+  - **SD floor,** as in Team grades, so a league of near-equals stays near C:
+    - for rosters and picks, 3% of the average team's season points (a replacement-level lineup's 17 games plus the average
+      lineup value);
+    - for a position, a point a week (17).
+  - **Position:** a position's value is its starters' value over replacement plus the bench's share. A flex counts at its
+    player's position. The positions add up to the lineup value.
+  - **Value and reach** compare your QB, RB, WR and TE picks with the board's order, keepers left out of both.
+    - Spots: how many picks after (or before) his place on the board he went.
+    - Points: his value less that of the board's player for that pick.
+    - The best value has the most points among picks that came more than half a round late; the biggest reach has the fewest
+      among those more than half a round early.
+    - Kickers and defenses are left out: everyone takes them last.
 
 ## Checked
 
@@ -227,10 +252,12 @@ deployed copy is kept while Sleeper's season is the same.
     - snake, linear and third-round reversal orders;
     - full mock drafts that fill every team's lineup;
     - suggestions and slot comparison;
+    - grades: ranks, bands, positions adding up to the lineup value, near-equal teams held at C by the floor, a clearly
+      stronger team at S, picks alone with keepers, and value and reach with keepers left out;
     - Sleeper's order through owners and co-owners, traded picks, live picks by pick number, and look-ahead suggestions.
 - **End to end:**
   - board flags and filter, keepers by cost rule, reordering, the slot comparison, and a mock draft from the 4th slot through to
-    the end, with undo; dynasty leagues get a note instead;
+    the end, graded, with undo; dynasty leagues get a note instead;
   - a live draft in progress: Sleeper's order and a traded pick in the order card, another team on the clock, then you after a
     refresh;
   - on a desktop and a phone, with no sideways scrolling.
@@ -243,7 +270,24 @@ deployed copy is kept while Sleeper's season is the same.
   - **Speed:**
     - the board builds in under 20 ms;
     - suggestions take 30–60 ms and a full mock draft about 5 ms;
-    - the slot comparison takes about 1.5 s at 40 simulations a slot (the app runs 30).
+    - the slot comparison takes about 1.5 s at 40 simulations a slot (the app runs 30);
+    - grading a finished draft, with value and reach for every team, takes about 1 ms.
+  - **Grades** (`scripts/check/draft-grades.ts`, 100 mock drafts per league and check; grade shares only):
+    - **Every team drafting by the noisy board** (a typical manager in the mock):
+      - keeper league: rosters S 1%, A 41%, B 9%, C 1%, D 19%, F 31%, split by their keepers (correlation 0.95 between the
+        keepers' value and the roster's, 0.05 with the picks'); picks alone S 0%, A 6%, B 15%, C 55%, D 23%, F 2%;
+      - redraft league: S 3%, A 15%, B 16%, C 25%, D 24%, F 17%;
+      - grade steps: 41 points (keeper rosters), 31 (keeper picks alone), 28 (redraft rosters);
+      - the floor set the scale in 93 of 100 redraft drafts (rosters' SD 42, floor about 56) and 1 of 100 keeper drafts (SD 82).
+    - **"Finish for me" from the first pick,** from every slot:
+      - the draft ranked first or second in 100 of 100 keeper drafts (picks alone: S 1%, A 42%, B 57%) and 104 of 108 redraft
+        drafts (S 78%, A 22%);
+      - so the grade measures a draft against teams that draft from the board with noise and don't plan their rosters, not
+        against real managers.
+    - **Value and reach:**
+      - with "finish for me", a best value showed in every draft and a reach in 31 of 100 (keeper) and 10 of 108 (redraft);
+      - across every team's drafts by the noisy board, the best value's median was 7 points (keeper) and 14 (redraft), and the
+        reach's 15 and 17 points under the board's player.
 - **Sleeper's draft data, on the owner's leagues** (private league pull, 2026-10-17; counts only):
   - **Order:** `draft_order` (user → slot) was set on both finished drafts and empty on the dynasty league's unscheduled one.
     `slot_to_roster_id` was empty on all three, so the order comes from `draft_order` through each team's owner.
@@ -270,6 +314,11 @@ deployed copy is kept while Sleeper's season is the same.
   - The model doesn't know a player's landing spot or new competition, including the rookies a team drafts.
 - **Market:** no ADP yet, so the mock draft shows likely outcomes under these projections, not under the market's. When the
   market and the board disagree, the board isn't necessarily right.
+- **Grades:**
+  - They grade a draft by the same projections the suggestions use, so following them grades well by construction. The other
+    teams in the mock draft from the board with noise and don't plan their rosters.
+  - A grade step is a few dozen points of season value (28–41 in the checks above): less than one draftable player's average
+    miss (56–96). A grade says how a draft used the board, not how the season will go.
 - **Keeper rules** beyond the count aren't in Sleeper's data; the cost rule is the manager's to set.
 - **Not covered:** IDP, auction drafts, and dynasty startup and rookie drafts.
 

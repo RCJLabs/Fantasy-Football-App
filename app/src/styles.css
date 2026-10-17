@@ -896,3 +896,7 @@ mark.unchecked {
 .mock h3 {
   margin: 0.9rem 0 0.3rem;
 }
+/* Mock draft grades: each position's grade stays on one line. */
+.draft-positions > span {
+  white-space: nowrap;
+}

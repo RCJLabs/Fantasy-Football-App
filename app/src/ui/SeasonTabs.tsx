@@ -3,7 +3,7 @@ import { analyzeWaivers, type PlayerRow } from '../analysis/analyze';
 import { handcuffs, nextUpForOut, type Handcuff } from '../analysis/handcuffs';
 import { irStash } from '../analysis/irStash';
 import { marketPrice } from '../analysis/faab';
-import { GRADE_WEIGHTS, leagueGrades, type Grade, type LeagueGrades, type Part } from '../analysis/grades';
+import { GRADE_WEIGHTS, leagueGrades, type LeagueGrades, type Part } from '../analysis/grades';
 import type { Claim } from '../analysis/claims';
 import { claimPlan, evaluateTrade, streamers, waiverBoard, type ByeWeek, type LeagueOutlook, type TradeSideResult } from '../analysis/outlook';
 import { carriedForward, longTermRanking } from '../analysis/longterm';
@@ -13,7 +13,7 @@ import { teamIds } from '../analysis/ros';
 import { findPackages, findTrades, LOPSIDED, TRADED, type TargetPackage, type TargetSearch, type TradeIdea } from '../analysis/tradeFinder';
 import { FANTASYCALC_URL, horizons, loadMarketValues, marketParams, marketTotals, type Horizon, type Market } from '../data/fantasycalc';
 import { loadTrending } from '../data/repo';
-import { InjuryBadge, ErrorBox, Spinner, touchdowns, usageNote } from './components';
+import { GradeMark, InjuryBadge, ErrorBox, Spinner, touchdowns, usageNote } from './components';
 import { loadSeason, type LeagueBundle, type SeasonBundle } from './data';
 import { logError } from './errorLog';
 import { kickoffLabel, ordinal, pct, pts, roundName, signed } from './format';
@@ -445,10 +445,6 @@ export function SeasonTab({ bundle }: { bundle: LeagueBundle }) {
 const oddsName = (g: LeagueGrades) => (g.odds === 'title' ? 'Title' : g.odds === 'first' ? '1st' : 'Playoffs');
 const PART_SHORT: Record<Part, string> = { week: 'Week', ros: 'ROS', depth: 'Depth', odds: 'Odds' };
 const PART_LONG: Record<Part, string> = { week: "this week's lineup", ros: 'rest of the season', depth: 'bench depth', odds: 'odds' };
-
-function GradeMark({ grade }: { grade: Grade }) {
-  return <span class={`grade grade-${grade}`}>{grade}</span>;
-}
 
 /** Every team graded S–F against the rest of the league, overall and on each part (analysis/grades.ts). */
 function GradesCard({ bundle, o }: { bundle: LeagueBundle; o: LeagueOutlook }) {
