@@ -143,6 +143,7 @@ export interface RawPlayer {
   gsis_id?: string | null;
   espn_id?: string | number | null;
   birth_date?: string | null;
+  years_exp?: number | null;
 }
 
 export interface RawTrending {
@@ -151,8 +152,8 @@ export interface RawTrending {
 }
 
 /**
- * Row of /league/{id}/drafts, from Sleeper's API docs (not yet checked against a live response). The order is set
- * once the commissioner sets or randomizes it.
+ * Row of /league/{id}/drafts and /draft/{id} (checked on real drafts 2026-10-17). The order is `draft_order`, user →
+ * slot, once the commissioner sets or randomizes it; `slot_to_roster_id` stayed empty even on finished drafts.
  */
 export interface RawDraft {
   draft_id: string;
@@ -167,7 +168,11 @@ export interface RawDraft {
   slot_to_roster_id?: Record<string, number> | null;
 }
 
-/** Row of /draft/{id}/picks, from Sleeper's API docs (not yet checked against a live response). */
+/**
+ * Row of /draft/{id}/picks (checked on real drafts 2026-10-17): `pick_no` counts from 1 over the whole draft;
+ * `roster_id` is the team that made the pick, which differs from the slot's when the pick was traded; `is_keeper` was
+ * null on every pick of a keeper league whose keepers weren't drafted.
+ */
 export interface RawDraftPick {
   round: number;
   pick_no: number;
@@ -176,4 +181,5 @@ export interface RawDraftPick {
   picked_by?: string | null;
   player_id: string;
   is_keeper?: boolean | null;
+  metadata?: { first_name?: string; last_name?: string; position?: string; team?: string } | null;
 }

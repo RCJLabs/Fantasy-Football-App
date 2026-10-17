@@ -22,12 +22,14 @@ Code:
 - **Keepers** (keeper leagues):
   - each team's likely keepers, with the league's keeper count (Sleeper's `max_keepers`, changeable);
   - a cost rule the manager sets, since Sleeper doesn't store one:
-    - one of the team's last picks;
+    - nothing: he fills one of the team's last picks (the default; the owner's keeper league works this way, below);
     - the round he was drafted in last year (from Sleeper's last finished draft);
     - one round earlier than that.
 - **Draft order:**
-  - Sleeper's order once the commissioner sets it. Until then, a random order (fixed per league, so it doesn't change between
-    visits).
+  - Sleeper's order once the commissioner sets it (its `draft_order`, user → slot, mapped to teams through their owners). Until
+    then, a random order (fixed per league, so it doesn't change between visits).
+  - Picks for the draft's season that changed hands (Sleeper's traded picks) go to their new owners, in the mock draft and the
+    slot comparison too.
   - The manager can randomize it again, sort it worst record first, or move teams up and down. Saved on the device.
   - Snake, linear or third-round reversal; rounds default to the roster size.
 - **Which slot is best?** Your lineup value after a simulated draft from each first-round slot, for an order not yet set.
@@ -36,6 +38,13 @@ Code:
     next pick;
   - draft one of them or anyone by name;
   - undo, finish the draft for you, or restart. Predicted keepers take their picks first.
+- **Live draft:** once Sleeper's draft for the projected season starts, the tab follows it.
+  - It checks Sleeper every 10 seconds while the draft runs and the page is open, or on Refresh.
+  - Picks go by pick number, with the team that actually made them, so a pick traded during the draft lands with the team
+    that used it.
+  - It shows who's on the clock and your next pick. For that pick it lists the players who'd add most to your lineup, and how
+    often each lasts until then; once you're on the clock, how often each is back at the pick after.
+  - Keepers: Sleeper's own keeper picks when it records them, otherwise the predicted keepers, in their teams' last picks.
 
 ## Next season's projections `[own calc]`
 
@@ -217,9 +226,14 @@ deployed copy is kept while Sleeper's season is the same.
     - keepers by cost rule, and keepers placed in clashing rounds;
     - snake, linear and third-round reversal orders;
     - full mock drafts that fill every team's lineup;
-    - suggestions and slot comparison.
-- **End to end:** board flags and filter; keepers by cost rule; reordering, the slot comparison and a mock draft from the 4th slot
-  through to the end, with undo; dynasty leagues get a note instead. On a desktop and a phone, with no sideways scrolling.
+    - suggestions and slot comparison;
+    - Sleeper's order through owners and co-owners, traded picks, live picks by pick number, and look-ahead suggestions.
+- **End to end:**
+  - board flags and filter, keepers by cost rule, reordering, the slot comparison, and a mock draft from the 4th slot through to
+    the end, with undo; dynasty leagues get a note instead;
+  - a live draft in progress: Sleeper's order and a traded pick in the order card, another team on the clock, then you after a
+    refresh;
+  - on a desktop and a phone, with no sideways scrolling.
 - **The full data build,** offline with week 6's inputs: 546 players (148 KB), with the usual shards unchanged.
 - **On the owner's leagues** (settings and rosters only; projections from that offline build):
   - **Keeper league, 10 teams, 5 keepers:**
@@ -230,8 +244,21 @@ deployed copy is kept while Sleeper's season is the same.
     - the board builds in under 20 ms;
     - suggestions take 30–60 ms and a full mock draft about 5 ms;
     - the slot comparison takes about 1.5 s at 40 simulations a slot (the app runs 30).
-- **Not yet checked:** Sleeper's draft endpoints (`/league/{id}/drafts`, `/draft/{id}/picks`). The fields follow Sleeper's docs.
-  The private league pull now fetches them, for a check on its next run.
+- **Sleeper's draft data, on the owner's leagues** (private league pull, 2026-10-17; counts only):
+  - **Order:** `draft_order` (user → slot) was set on both finished drafts and empty on the dynasty league's unscheduled one.
+    `slot_to_roster_id` was empty on all three, so the order comes from `draft_order` through each team's owner.
+  - **Picks:** `pick_no` counts 1 to the last pick with no gaps, `round` follows from it, and `roster_id` is the team that made
+    the pick. In the keeper league 105 of 110 were made by the slot's own team; the other 5 were picks traded during the draft.
+  - **Keepers:** in the keeper league's 2026 draft, no pick was marked a keeper (`is_keeper` null on every pick). Teams made 9
+    to 14 picks over 11 rounds of a 15-round setting: keepers stayed off the draft board and each team's draft ended earlier.
+    So a keeper cost nothing beyond the roster spot, as the owner thought, which the default rule models.
+  - **Replay:** both finished drafts run through the live board's code put every pick at its number with its real team,
+    resolve the order from `draft_order`, and give look-ahead suggestions in 19–37 ms.
+  - **Not yet seen:** `/draft/{id}/traded_picks`, which the live board reads (shape from Sleeper's docs). The league pull fetches
+    it from now on.
+- **Named rookies,** offline: the 2026 class run through the pipeline as if before that season named all 15 placeholders with
+  Sleeper ids, through nflverse's 2026 rosters. In April 2027 those rosters won't list the class yet, so draftees are also matched
+  to Sleeper's rookies by name and position.
 
 ## Limits
 
@@ -248,8 +275,7 @@ deployed copy is kept while Sleeper's season is the same.
 
 ## Next, for August 2027
 
-- Named rookies after the NFL draft (built; check it then).
+- Named rookies after the NFL draft (built and checked on the 2026 class; check it again on the real one).
 - Sleeper's 2027 ADP for the other teams' picks, once published.
-- A live board that follows Sleeper's draft as picks are made.
 - Calibrate the noise on real drafts.
 - Dynasty startup and rookie drafts (Phase 3).

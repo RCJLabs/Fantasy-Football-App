@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import { teamName } from '../analysis/analyze';
 import {
   type Board,
@@ -12,22 +12,26 @@ import {
   type KeeperCost,
   type KeeperRules,
   lineupValue,
+  livePicks,
   nextPick,
   pickOrder,
+  pickOwners,
   placeKeepers,
   predictKeepers,
   simulateRest,
+  sleeperDraftOrder,
   type SlotValue,
   suggest,
+  suggestAhead,
 } from '../analysis/draft';
 import { mulberry32 } from '../analysis/season';
 import type { NextSeasonFile } from '../data/contracts';
-import { loadDraftPicks, loadDrafts, loadNextSeason } from '../data/repo';
+import { type LiveDraft, loadDraftPicks, loadDrafts, loadLiveDraft, loadNextSeason, loadTradedPicks } from '../data/repo';
 import type { League, Roster } from '../domain/types';
-import type { RawDraft, RawDraftPick } from '../sleeper/raw';
+import type { RawDraft, RawDraftPick, RawTradedPick } from '../sleeper/raw';
 import { Badge, ErrorBox, slotLabel, Spinner } from './components';
 import type { LeagueBundle } from './data';
-import { ordinal, pct } from './format';
+import { ago, dateTime, ordinal, pct } from './format';
 import { useAsync } from './hooks';
 import { draftPrefs, type DraftPrefs, setDraftPrefs } from './prefs';
 
@@ -36,10 +40,12 @@ import { draftPrefs, type DraftPrefs, setDraftPrefs } from './prefs';
 
 interface DraftInputs {
   next: NextSeasonFile;
-  /** Sleeper's coming draft for this league, once it exists. */
-  upcoming?: RawDraft;
-  /** The last finished draft's picks: the round each keeper was drafted in. */
+  /** Sleeper's draft for the projected season, once Sleeper creates it (in the league renewed for that season). */
+  draft?: RawDraft;
+  /** The last finished draft before it: the round each keeper was drafted in. */
   lastPicks: RawDraftPick[];
+  /** That season's picks traded so far. */
+  traded: RawTradedPick[];
 }
 
 const latestComplete = (ds: readonly RawDraft[]) => [...ds].filter((d) => d.status === 'complete').sort((a, b) => Number(b.season) - Number(a.season))[0];
@@ -51,31 +57,23 @@ async function loadDraftInputs(b: LeagueBundle, force: boolean): Promise<DraftIn
   } catch {
     throw new Error("Next season's projections aren't available yet. They're published with the app's daily data.");
   }
+  const target = next.target;
   const drafts = await loadDrafts(b.league.id, force).catch(() => [] as RawDraft[]);
-  const upcoming = drafts.find((d) => d.status === 'pre_draft' || d.status === 'drafting');
-  // Keeper costs: this league's last finished draft, or last season's league's if Sleeper renewed it.
-  let done = latestComplete(drafts);
+  const draft = drafts.find((d) => d.season === target);
+  // Keeper costs: the last finished draft before it, this league's or last season's league's if Sleeper renewed it.
+  let done = latestComplete(drafts.filter((d) => Number(d.season) < Number(target)));
   if (!done && b.league.previousLeagueId) done = latestComplete(await loadDrafts(b.league.previousLeagueId, force).catch(() => []));
-  const lastPicks = done ? await loadDraftPicks(done.draft_id, force).catch(() => []) : [];
-  return { next, ...(upcoming ? { upcoming } : {}), lastPicks };
+  const [lastPicks, traded] = await Promise.all([
+    done ? loadDraftPicks(done.draft_id, force).catch(() => []) : Promise.resolve([]),
+    loadTradedPicks(b.league.id, force).catch(() => [] as RawTradedPick[]),
+  ]);
+  return { next, ...(draft ? { draft } : {}), lastPicks, traded: traded.filter((t) => String(t.season) === target) };
 }
 
 /** An order that names every team once. */
 function validOrder(order: readonly number[] | undefined, rosterIds: readonly number[]): number[] | undefined {
   if (!order || order.length !== rosterIds.length || new Set(order).size !== order.length || !order.every((r) => rosterIds.includes(r))) return undefined;
   return [...order];
-}
-
-/** Round 1's order from Sleeper's draft, once the commissioner sets it. */
-function sleeperOrder(d: RawDraft | undefined, rosterIds: readonly number[]): number[] | undefined {
-  const slots = d?.slot_to_roster_id;
-  if (!slots) return undefined;
-  return validOrder(
-    Object.entries(slots)
-      .sort((a, b) => Number(a[0]) - Number(b[0]))
-      .map(([, r]) => r),
-    rosterIds,
-  );
 }
 
 const sleeperStyle = (d: RawDraft | undefined): DraftStyle | undefined => (!d ? undefined : d.type === 'linear' ? 'linear' : d.settings?.reversal_round === 3 ? '3rr' : 'snake');
@@ -101,7 +99,7 @@ const STYLES: Array<[DraftStyle, string]> = [
   ['3rr', 'Snake, round 3 reversed'],
 ];
 const COSTS: Array<[KeeperCost, string]> = [
-  ['last', "One of the team's last picks"],
+  ['last', "Nothing (he fills one of the team's last picks)"],
   ['drafted', 'The round he was drafted in last year'],
   ['earlier', 'A round earlier than last year'],
 ];
@@ -138,11 +136,12 @@ function DraftHelper({ bundle, inputs }: { bundle: LeagueBundle; inputs: DraftIn
   };
   const rosterIds = data.rosters.map((r) => r.rosterId);
   const mine = validOrder(prefs.order, rosterIds);
-  const fromSleeper = sleeperOrder(inputs.upcoming, rosterIds);
+  const fromSleeper = sleeperDraftOrder(inputs.draft, data.rosters);
   const order = mine ?? fromSleeper ?? shuffled(rosterIds, hash(league.id));
   const source = mine ? 'yours' : fromSleeper ? 'sleeper' : 'random';
-  const rounds = prefs.rounds ?? inputs.upcoming?.settings?.rounds ?? league.rosterPositions.length;
-  const style = prefs.style ?? sleeperStyle(inputs.upcoming) ?? 'snake';
+  const rounds = prefs.rounds ?? inputs.draft?.settings?.rounds ?? league.rosterPositions.length;
+  const style = prefs.style ?? sleeperStyle(inputs.draft) ?? 'snake';
+  const live = inputs.draft && (inputs.draft.status === 'drafting' || inputs.draft.status === 'complete') ? inputs.draft : undefined;
   const rules: KeeperRules | undefined = league.rules.type === 'keeper' ? { count: prefs.keepers ?? league.rules.maxKeepers ?? 3, cost: prefs.cost ?? 'last' } : undefined;
   const drafted = useMemo(() => new Map(inputs.lastPicks.map((p) => [p.player_id, p.round])), [inputs.lastPicks]);
   const keepers = useMemo(
@@ -154,6 +153,7 @@ function DraftHelper({ bundle, inputs }: { bundle: LeagueBundle; inputs: DraftIn
   return (
     <div class="stack draft">
       <DraftIntro board={board} league={league} />
+      {live ? <LiveDraftCard board={board} draft={live} rosters={data.rosters} keepers={keepers} leagueTraded={inputs.traded} me={me} name={name} /> : null}
       <BoardCard board={board} keepers={keepers} name={name} me={me} />
       {rules ? (
         <KeepersCard board={board} keepers={keepers} rules={rules} rosters={data.rosters} me={me} name={name} hasLastDraft={inputs.lastPicks.length > 0} onRules={(r) => update({ keepers: r.count, cost: r.cost })} />
@@ -169,10 +169,22 @@ function DraftHelper({ bundle, inputs }: { bundle: LeagueBundle; inputs: DraftIn
         me={me}
         name={name}
         keepers={keepers}
+        traded={inputs.traded}
+        draft={inputs.draft}
         onChange={update}
       />
       {me !== undefined ? (
-        <MockDraft key={`${order.join(',')}|${style}|${rounds}|${keepers.map((k) => k.id).join(',')}`} board={board} order={order} style={style} rounds={rounds} keepers={keepers} me={me} name={name} />
+        <MockDraft
+          key={`${order.join(',')}|${style}|${rounds}|${keepers.map((k) => k.id).join(',')}`}
+          board={board}
+          order={order}
+          style={style}
+          rounds={rounds}
+          keepers={keepers}
+          traded={inputs.traded}
+          me={me}
+          name={name}
+        />
       ) : null}
     </div>
   );
@@ -400,6 +412,8 @@ function OrderCard({
   me,
   name,
   keepers,
+  traded,
+  draft,
   onChange,
 }: {
   board: Board;
@@ -412,10 +426,12 @@ function OrderCard({
   me: number | undefined;
   name: (r: number) => string;
   keepers: readonly Keeper[];
+  traded: readonly RawTradedPick[];
+  draft: RawDraft | undefined;
   onChange: (p: Partial<DraftPrefs>) => void;
 }) {
   const [slots, setSlots] = useState<{ key: string; values: SlotValue[] } | 'busy' | null>(null);
-  const key = `${order.join(',')}|${style}|${rounds}|${keepers.map((k) => k.id).join(',')}`;
+  const key = `${order.join(',')}|${style}|${rounds}|${keepers.map((k) => k.id).join(',')}|${traded.length}`;
   const move = (i: number, d: number) => {
     const o = [...order];
     const j = i + d;
@@ -424,12 +440,15 @@ function OrderCard({
     onChange({ order: o });
   };
   const mySlot = me === undefined ? undefined : order.indexOf(me) + 1;
-  const myPicks = me === undefined ? [] : pickOrder(order, Math.min(rounds, 4), style).flatMap((r, i) => (r === me ? [i + 1] : []));
+  const owners = pickOwners(pickOrder(order, rounds, style), order.length, traded, board.target);
+  const myPicks = me === undefined ? [] : owners.slice(0, order.length * Math.min(rounds, 4)).flatMap((r, i) => (r === me ? [i + 1] : []));
+  const movedIn = me === undefined ? 0 : traded.filter((t) => t.owner_id === me && t.roster_id !== me).length;
+  const movedOut = me === undefined ? 0 : traded.filter((t) => t.roster_id === me && t.owner_id !== me).length;
   const compare = () => {
     if (me === undefined) return;
     setSlots('busy');
     // Let the button repaint before the simulation runs.
-    setTimeout(() => setSlots({ key, values: compareSlots({ board, order, rounds, style, me, keepers }, { sims: 30 }) }), 20);
+    setTimeout(() => setSlots({ key, values: compareSlots({ board, order, rounds, style, me, keepers, traded }, { sims: 30 }) }), 20);
   };
   const values = slots && slots !== 'busy' && slots.key === key ? slots.values : undefined;
   const best = values ? Math.max(...values.map((v) => v.value)) : 0;
@@ -489,6 +508,20 @@ function OrderCard({
         <p class="small">
           You pick {ordinal(mySlot)}: picks {myPicks.join(', ')}
           {rounds > 4 ? '…' : ''}
+          {movedIn || movedOut ? (
+            <span class="muted">
+              {' '}
+              (traded picks: {movedIn ? `${movedIn} in` : ''}
+              {movedIn && movedOut ? ', ' : ''}
+              {movedOut ? `${movedOut} out` : ''})
+            </span>
+          ) : null}
+        </p>
+      ) : null}
+      {draft?.status === 'pre_draft' ? (
+        <p class="muted small">
+          Sleeper&apos;s {draft.season} draft is set up{draft.start_time ? ` for ${dateTime(draft.start_time)}` : ', not yet scheduled'}. Once it starts, a live board
+          follows it here.
         </p>
       ) : null}
       {me !== undefined ? (
@@ -526,15 +559,188 @@ function OrderCard({
   );
 }
 
+/** How often the live board checks Sleeper while the draft is running. [design] */
+const LIVE_POLL = 10_000;
+
+/**
+ * Sleeper's draft as it happens: the picks made, who's on the clock, and for your coming pick the players who'd add
+ * most to your lineup with how often each lasts until then. Keepers: Sleeper's own keeper picks when it records them,
+ * otherwise the predicted ones in their teams' last picks.
+ */
+function LiveDraftCard({
+  board,
+  draft,
+  rosters,
+  keepers,
+  leagueTraded,
+  me,
+  name,
+}: {
+  board: Board;
+  draft: RawDraft;
+  rosters: readonly Roster[];
+  keepers: readonly Keeper[];
+  leagueTraded: readonly RawTradedPick[];
+  me: number | undefined;
+  name: (r: number) => string;
+}) {
+  const [live, setLive] = useState<LiveDraft | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const refresh = async () => {
+    setBusy(true);
+    try {
+      setLive(await loadLiveDraft(draft.draft_id));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  useEffect(() => {
+    void refresh();
+  }, [draft.draft_id]);
+  const status = live?.draft.status ?? draft.status;
+  useEffect(() => {
+    if (status !== 'drafting') return;
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh();
+    }, LIVE_POLL);
+    return () => clearInterval(id);
+  }, [status, draft.draft_id]);
+  const view = useMemo(() => {
+    if (!live) return undefined;
+    const d = live.draft;
+    const n = rosters.length;
+    const order = sleeperDraftOrder(d, rosters);
+    if (!order) return undefined;
+    const rounds = d.settings?.rounds ?? board.slots.length;
+    const picks = pickOwners(pickOrder(order, rounds, sleeperStyle(d) ?? 'snake'), n, live.traded.length ? live.traded : leagueTraded, board.target);
+    const real = livePicks(live.picks, picks.length);
+    real.by.forEach((r, i) => {
+      if (r !== undefined) picks[i] = r;
+    });
+    const drafted = new Set(real.taken.filter((t): t is string => !!t));
+    const fixed = live.picks.some((p) => p.is_keeper) ? new Map<number, string>() : placeKeepers(picks, n, keepers.filter((k) => !drafted.has(k.id)), real.taken);
+    const taken = picks.map((_, i) => real.taken[i] ?? fixed.get(i));
+    const setup: DraftSetup = { board, picks, numTeams: n, taken };
+    const current = taken.findIndex((t) => t === undefined);
+    const ahead = me !== undefined && current >= 0 && d.status !== 'complete' ? suggestAhead(setup, me, current, { sims: 150 }) : undefined;
+    const names = new Map(live.picks.map((p) => [p.player_id, p.metadata ? `${p.metadata.first_name ?? ''} ${p.metadata.last_name ?? ''}`.trim() : p.player_id]));
+    return { setup, current, ahead, names, made: live.picks.length };
+  }, [live, rosters, keepers, leagueTraded, board, me]);
+
+  const byId = new Map(board.players.map((p) => [p.id, p]));
+  const nameOf = (id: string) => byId.get(id)?.name ?? view?.names.get(id) ?? id;
+  const n = rosters.length;
+  return (
+    <div class="card live-draft" aria-live="polite">
+      <h2>Live draft</h2>
+      {error ? <p class="problem problem-error">Couldn&apos;t reach Sleeper: {error}</p> : null}
+      {!live ? (
+        <Spinner label="Loading Sleeper's draft…" />
+      ) : !view ? (
+        <p>Sleeper&apos;s draft order isn&apos;t set yet.</p>
+      ) : (
+        <>
+          <p>
+            {status === 'complete' || view.current < 0 ? (
+              <strong>Sleeper&apos;s draft is complete.</strong>
+            ) : view.setup.picks[view.current] === me ? (
+              <>
+                Pick {pickLabel(view.current, n)} ({ordinal(view.current + 1)} overall): <strong>you&apos;re on the clock.</strong>
+              </>
+            ) : (
+              <>
+                Pick {pickLabel(view.current, n)} ({ordinal(view.current + 1)} overall): <strong>{name(view.setup.picks[view.current]!)}</strong> on the clock.
+                {view.ahead ? (
+                  <span class="muted small">
+                    {' '}
+                    Your next pick: {pickLabel(view.ahead.at, n)}, {view.ahead.at - view.current} pick{view.ahead.at - view.current === 1 ? '' : 's'} away.
+                  </span>
+                ) : null}
+              </>
+            )}
+          </p>
+          <p class="muted small">
+            {view.made} picks made · updated {ago(live.savedAt)}
+            {live.stale ? ' (saved copy: Sleeper didn’t answer)' : ''}
+            {status === 'drafting' ? ' · checks every 10 seconds while open' : ''}{' '}
+            <button type="button" class="link" disabled={busy} onClick={() => void refresh()}>
+              {busy ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </p>
+          {view.ahead?.suggestions.length ? (
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Best for your lineup at {pickLabel(view.ahead.at, n)}</th>
+                    <th class="num">Adds</th>
+                    <th class="num">{view.ahead.at === view.current ? 'Back at your next' : 'Still there'}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {view.ahead.suggestions.map((s) => (
+                    <tr>
+                      <td>
+                        <strong>{s.player.name}</strong>
+                        <PlayerMeta p={s.player} /> <PlayerBadges p={s.player} />
+                      </td>
+                      <td class="num">{whole(s.gain)}</td>
+                      <td class="num">{s.nextAvailable === undefined ? '–' : pct(s.nextAvailable)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          <h3>Latest picks</h3>
+          <ul class="draft-recent">
+            {[...(live.picks ?? [])]
+              .sort((a, b) => b.pick_no - a.pick_no)
+              .slice(0, 8)
+              .map((p) => (
+                <li>
+                  <span class="muted small">{pickLabel(p.pick_no - 1, n)}</span> {p.roster_id === me ? 'You' : p.roster_id != null ? name(p.roster_id) : '?'}: {nameOf(p.player_id)}
+                  {p.is_keeper ? ' (keeper)' : ''}
+                </li>
+              ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
 interface MockState {
   taken: Array<string | undefined>;
   history: Array<Array<string | undefined>>;
   round: number;
 }
 
-function MockDraft({ board, order, style, rounds, keepers, me, name }: { board: Board; order: number[]; style: DraftStyle; rounds: number; keepers: readonly Keeper[]; me: number; name: (r: number) => string }) {
+function MockDraft({
+  board,
+  order,
+  style,
+  rounds,
+  keepers,
+  traded,
+  me,
+  name,
+}: {
+  board: Board;
+  order: number[];
+  style: DraftStyle;
+  rounds: number;
+  keepers: readonly Keeper[];
+  traded: readonly RawTradedPick[];
+  me: number;
+  name: (r: number) => string;
+}) {
   const n = order.length;
-  const picks = useMemo(() => pickOrder(order, rounds, style), [order, rounds, style]);
+  const picks = useMemo(() => pickOwners(pickOrder(order, rounds, style), n, traded, board.target), [order, rounds, style, traded, board.target]);
   const fixed = useMemo(() => placeKeepers(picks, n, keepers), [picks, n, keepers]);
   const [mock, setMock] = useState<MockState | null>(null);
   const [search, setSearch] = useState('');

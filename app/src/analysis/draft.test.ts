@@ -9,15 +9,19 @@ import {
   type DraftSetup,
   fillLineup,
   lineupValue,
+  livePicks,
   nextPick,
   pickOrder,
+  pickOwners,
   placeKeepers,
   positionCaps,
   predictKeepers,
   replacementLevels,
   roundValues,
   simulateRest,
+  sleeperDraftOrder,
   suggest,
+  suggestAhead,
   withSlot,
 } from './draft';
 
@@ -210,5 +214,67 @@ describe('mock draft', () => {
     const slots = compareSlots({ board: b, order: [1, 2, 3, 4], rounds: 12, style: 'snake', me: 1 }, { sims: 10 });
     expect(slots.map((s) => s.slot)).toEqual([1, 2, 3, 4]);
     expect(slots.every((s) => Number.isFinite(s.value) && s.value > 0)).toBe(true);
+  });
+});
+
+describe("Sleeper's draft", () => {
+  const roster = (rosterId: number, ownerId: string | null, coOwners: string[] = []): Roster => ({
+    rosterId,
+    ownerId,
+    coOwners,
+    players: [],
+    starters: [],
+    reserve: [],
+    taxi: [],
+    wins: 0,
+    losses: 0,
+    ties: 0,
+    pointsFor: 0,
+    waiverBudgetUsed: 0,
+  });
+  const rosters = [roster(1, 'u1'), roster(2, 'u2', ['c2']), roster(3, 'u3'), roster(4, null)];
+
+  it('reads the order from draft_order (user → slot), through owners and co-owners', () => {
+    // As on real drafts: slot_to_roster_id empty, draft_order set.
+    expect(sleeperDraftOrder({ draft_order: { u3: 1, u1: 2, c2: 3, u4: 4 }, slot_to_roster_id: null }, rosters)).toEqual([3, 1, 2, 4]);
+    // A team nobody owns takes the slot left over.
+    expect(sleeperDraftOrder({ draft_order: { u3: 1, u1: 2, u2: 4 } }, rosters)).toEqual([3, 1, 4, 2]);
+    expect(sleeperDraftOrder({ draft_order: null, slot_to_roster_id: { '1': 2, '2': 1, '3': 4, '4': 3 } }, rosters)).toEqual([2, 1, 4, 3]);
+    expect(sleeperDraftOrder({ draft_order: null }, rosters)).toBeUndefined();
+    expect(sleeperDraftOrder(undefined, rosters)).toBeUndefined();
+  });
+
+  it("moves traded picks to their new owners, and places Sleeper's picks by pick number", () => {
+    const original = pickOrder([3, 1, 2, 4], 3, 'snake');
+    const traded = [
+      { season: '2027', round: 2, roster_id: 4, owner_id: 1, previous_owner_id: 4 },
+      { season: '2028', round: 1, roster_id: 3, owner_id: 2 },
+    ];
+    expect(pickOwners(original, 4, traded, '2027')).toEqual([3, 1, 2, 4, 1, 2, 1, 3, 3, 1, 2, 4]);
+    const live = livePicks(
+      [
+        { pick_no: 1, player_id: 'a', roster_id: 3 },
+        { pick_no: 2, player_id: 'b', roster_id: 1 },
+        { pick_no: 4, player_id: 'c', roster_id: 2 },
+        { pick_no: 40, player_id: 'z', roster_id: 1 },
+      ],
+      12,
+    );
+    expect(live.taken.slice(0, 5)).toEqual(['a', 'b', undefined, 'c', undefined]);
+    expect(live.by[3]).toBe(2);
+  });
+
+  it("looks ahead to your pick while another team is on the clock", () => {
+    const b = buildBoard(league(), next(), noPlayers);
+    const picks = pickOrder([1, 2, 3, 4], 12, 'snake');
+    const setup: DraftSetup = { board: b, picks, numTeams: 4, taken: [b.players[0]!.id] };
+    // Team 3 picks 3rd: two picks to go before it, so the best players are likely gone.
+    const ahead = suggestAhead(setup, 3, 1, { sims: 100 })!;
+    expect(ahead.at).toBe(2);
+    expect(ahead.suggestions.every((x) => x.nextAvailable! >= 0 && x.nextAvailable! <= 1)).toBe(true);
+    expect(ahead.suggestions.some((x) => x.nextAvailable! < 1)).toBe(true);
+    // On the clock: the chance is for the pick after.
+    expect(suggestAhead(setup, 2, 1, { sims: 50 })!.at).toBe(1);
+    expect(suggestAhead({ ...setup, taken: picks.map(() => 'x') }, 2, 0)).toBeUndefined();
   });
 });

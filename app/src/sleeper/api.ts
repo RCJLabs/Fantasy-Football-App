@@ -53,7 +53,10 @@ export const sleeperApi = {
   tradedPicks: (leagueId: string) => getJson<RawTradedPick[]>(`${API}/league/${leagueId}/traded_picks`),
   winnersBracket: (leagueId: string) => getJson<RawBracketMatch[] | null>(`${API}/league/${leagueId}/winners_bracket`),
   drafts: (leagueId: string) => getJson<RawDraft[] | null>(`${API}/league/${leagueId}/drafts`),
+  draft: (draftId: string) => getJson<RawDraft>(`${API}/draft/${draftId}`),
   draftPicks: (draftId: string) => getJson<RawDraftPick[] | null>(`${API}/draft/${draftId}/picks`),
+  /** Picks traded during (or for) a draft, shaped like the league's traded picks [unverified: Sleeper's docs]. */
+  draftTradedPicks: (draftId: string) => getJson<RawTradedPick[] | null>(`${API}/draft/${draftId}/traded_picks`),
   trending: (type: 'add' | 'drop', hours = 24, limit = 100) =>
     getJson<RawTrending[]>(`${API}/players/nfl/trending/${type}?lookback_hours=${hours}&limit=${limit}`),
   /** Undocumented endpoint used by Sleeper's own app (RotoWire projections). */

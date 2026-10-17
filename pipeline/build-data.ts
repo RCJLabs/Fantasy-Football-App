@@ -32,7 +32,7 @@ import { buildBaselineFile, ffoppStats, SKILL, type SleeperRow } from './baselin
 import { compactPlayers, csvRecords, gamesFromCsv, latestInjuryReport, missedLastGame, projectionAccuracy, sleeperToGsis, type PointsRow } from './lib';
 import { defGames, dstWeek } from './dst';
 import { buildMatchups } from './matchups';
-import { buildNextSeasonFile, type ContractRow, contractThrough, defenseSums, fantasyPos, type NextSeasonFit, seasonSums, teamGames } from './next-season';
+import { buildNextSeasonFile, type ContractRow, contractThrough, defenseSums, fantasyPos, type NextSeasonFit, normalizeName, seasonSums, teamGames } from './next-season';
 import { decideShard, type ShardName } from './shards';
 import { buildUsage, invert } from './usage';
 
@@ -265,7 +265,11 @@ async function nextSeasonShard(o: {
     const draft = (picksText ? csvRecords(picksText) : [])
       .filter((r) => Number(r.season) === target && r.gsis_id && r.gsis_id !== 'NA')
       .sort((a, b) => Number(a.pick) - Number(b.pick))
-      .map((r) => ({ pos: fantasyPos(r.position), gsis: r.gsis_id! }));
+      .map((r) => ({ pos: fantasyPos(r.position), gsis: r.gsis_id!, ...(r.pfr_player_name ? { name: r.pfr_player_name } : {}) }));
+    // Sleeper's rookies by name and position, for draftees nflverse can't yet link to a Sleeper id.
+    const rookieIds = new Map(
+      Object.entries(o.dump).flatMap(([id, p]) => (p.years_exp === 0 && p.full_name && p.position ? [[`${normalizeName(p.full_name)}|${fantasyPos(p.position)}`, id] as const] : [])),
+    );
     const birthDates = new Map<string, string>();
     for (const r of o.rosterRecords) if (r.gsis_id && r.birth_date && r.birth_date !== 'NA') birthDates.set(r.gsis_id, r.birth_date);
     for (const [sid, g] of o.gsisBySleeper) {
@@ -299,7 +303,7 @@ async function nextSeasonShard(o: {
       names: new Map(Object.entries(o.dump).map(([id, p]) => [id, p.position === 'DEF' ? `${p.first_name ?? id} ${p.last_name ?? ''}`.trim() : (p.full_name ?? `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim())])),
       inactive,
       ...(defenses ? { defenses } : {}),
-      ...(draft.length ? { draft } : {}),
+      ...(draft.length ? { draft, rookieIds } : {}),
     });
   } catch (e) {
     console.warn(`next season skipped: ${e}`);

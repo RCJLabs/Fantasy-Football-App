@@ -132,6 +132,7 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             adjusted for age and contract status; on 2015–2025 they ranked players better than &quot;same as this year&quot;, with wide misses. Rookies
             are placeholders by the order their position is taken until the NFL draft. Keeper leagues get each team&apos;s likely keepers. Set or
             randomize the draft order, compare first-round slots, and run a mock draft against teams picking from the same board with noise.
+            Once Sleeper&apos;s draft starts, the tab follows it pick by pick, with suggestions for your next pick.
           </li>
           <li>
             <strong>FAAB bids</strong> follow what your league has actually paid for players at the same position this season, scaled by your remaining

@@ -639,6 +639,50 @@ test('draft helper: next season\'s board, keepers, a changeable order and a mock
   await expect(page.locator('.card').filter({ hasText: 'Draft helper' })).toContainText('covers redraft and keeper leagues for now');
 });
 
+test('live draft: Sleeper\'s order and picks as they happen, with a traded pick', async ({ page }, testInfo) => {
+  // The 2027 draft is under way: order Three, me, Rival Raiders, Four; I own Four's 3rd-rounder.
+  const live = { ...fx.drafts[0]!, draft_id: 'd2027', season: '2027', status: 'drafting', draft_order: { u3: 1, u1: 2, u2: 3, u4: 4 } };
+  const traded = [{ season: '2027', round: 3, roster_id: 4, owner_id: 1, previous_owner_id: 4 }];
+  const made: Array<[string, number]> = [['r1', 3], ['w1', 1], ['fa1', 2], ['r2', 4], ['w3', 4]];
+  let picks = made.map(([player_id, roster_id], i) => ({ player_id, roster_id, pick_no: i + 1, round: Math.floor(i / 4) + 1, is_keeper: null }));
+  await page.route('https://api.sleeper.app/v1/**', (route) => {
+    const path = new URL(route.request().url()).pathname.replace('/v1/', '/');
+    const body =
+      path === '/league/1001/drafts' ? [fx.drafts[0], live]
+      : path === '/league/1001/traded_picks' ? traded
+      : path === '/draft/d2027' ? live
+      : path === '/draft/d2027/picks' ? picks
+      : path === '/draft/d2027/traded_picks' ? traded
+      : undefined;
+    return body === undefined ? route.fallback() : route.fulfill({ json: body });
+  });
+  await page.goto('./');
+  await page.getByLabel('Sleeper username').fill('testuser');
+  await page.getByRole('button', { name: 'Find my leagues' }).click();
+  await page.locator('.league-card').filter({ hasText: 'Saturday Night Gridiron' }).getByRole('link').first().click();
+  await page.getByRole('tab', { name: 'Draft' }).click();
+
+  const card = page.locator('.card.live-draft');
+  await expect(card).toContainText('Pick 2.02 (6th overall): Rival Raiders on the clock. Your next pick: 2.03, 1 pick away.');
+  await expect(card).toContainText('5 picks made');
+  await expect(card.locator('th').first()).toHaveText('Best for your lineup at 2.03');
+  await expect(card.locator('th').nth(2)).toHaveText('Still there');
+  await expect(card.locator('.draft-recent li').first()).toContainText('2.01 Four: Sam Slot');
+  // The order comes from Sleeper, and the traded 3rd-rounder is mine.
+  const order = page.locator('.card', { has: page.getByRole('heading', { name: 'Draft order' }) });
+  await expect(order).toContainText("From Sleeper's draft settings.");
+  await expect(order).toContainText('You pick 2nd: picks 2, 7, 10, 12, 15… (traded picks: 1 in)');
+
+  // Rival Raiders pick; on refresh I'm on the clock.
+  picks = [...picks, { player_id: 'q1', roster_id: 2, pick_no: 6, round: 2, is_keeper: null }];
+  await card.getByRole('button', { name: 'Refresh' }).click();
+  await expect(card).toContainText("Pick 2.03 (7th overall): you're on the clock.");
+  await expect(card.locator('th').nth(2)).toHaveText('Back at your next');
+  await expect(card.locator('.draft-recent li').first()).toContainText('2.02 Rival Raiders: Casey Quarterback');
+  await card.screenshot({ path: testInfo.outputPath('live-draft.png') });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+});
+
 test('ask the analyst: Claude answers from the app\'s figures, which the app puts in and checks', async ({ page }, testInfo) => {
   const bodies: Array<Record<string, any>> = [];
   // The values the app sent for the two facts the answer quotes (they move with the fixture's kickoff times).

@@ -2,6 +2,7 @@
 // keepers, the pick order, and a mock draft in which the other teams draft from the same board with noise.
 import type { NextSeasonFile, NextSeasonRookie } from '../data/contracts';
 import type { League, Player, Roster } from '../domain/types';
+import type { RawDraft, RawDraftPick, RawTradedPick } from '../sleeper/raw';
 import { canFill, SLOT_ELIGIBILITY } from '../engine/lineup';
 import { projectedPoints } from '../engine/scoring';
 import { mulberry32 } from './season';
@@ -213,7 +214,10 @@ export function allowedPick(team: readonly BoardPlayer[], p: BoardPlayer, picksL
 
 // ---- Keepers -------------------------------------------------------------------------------------------------
 
-/** What a keeper costs: one of the team's last picks, the round he was drafted in last year, or one round earlier. */
+/**
+ * What a keeper costs: nothing (he fills one of the team's last picks, which are worth about nothing), the round he was
+ * drafted in last year, or one round earlier.
+ */
 export type KeeperCost = 'last' | 'drafted' | 'earlier';
 export interface KeeperRules {
   count: number;
@@ -285,19 +289,76 @@ export function withSlot(order: readonly number[], rosterId: number, slot: numbe
   return rest;
 }
 
-/** Keepers placed at their teams' picks in their rounds; a clash moves the later one to the nearest free earlier round. */
-export function placeKeepers(picks: readonly number[], numTeams: number, keepers: readonly Keeper[]): Map<number, string> {
+/**
+ * Round 1's order from Sleeper's draft, once set. `draft_order` maps users to slots (on real drafts, 2026-10-17,
+ * `slot_to_roster_id` was empty even once finished), so slots go to rosters through their owners and co-owners; a team
+ * without an owner takes a slot left over. Undefined until the order covers the league.
+ */
+export function sleeperDraftOrder(draft: Pick<RawDraft, 'draft_order' | 'slot_to_roster_id'> | undefined, rosters: readonly Roster[]): number[] | undefined {
+  const n = rosters.length;
+  if (draft?.draft_order && Object.keys(draft.draft_order).length) {
+    const byUser = new Map<string, number>();
+    for (const r of rosters) {
+      if (r.ownerId) byUser.set(r.ownerId, r.rosterId);
+      for (const c of r.coOwners) if (!byUser.has(c)) byUser.set(c, r.rosterId);
+    }
+    const slots: Array<number | undefined> = Array.from({ length: n }, () => undefined);
+    for (const [user, slot] of Object.entries(draft.draft_order)) {
+      const r = byUser.get(user);
+      if (r !== undefined && slot >= 1 && slot <= n && slots[slot - 1] === undefined && !slots.includes(r)) slots[slot - 1] = r;
+    }
+    const left = rosters.map((r) => r.rosterId).filter((r) => !slots.includes(r));
+    const order = slots.map((r) => r ?? left.shift());
+    if (order.every((r): r is number => r !== undefined)) return order;
+  }
+  const bySlot = draft?.slot_to_roster_id;
+  if (bySlot) {
+    const order = Object.entries(bySlot)
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .map(([, r]) => r);
+    if (order.length === n && new Set(order).size === n && order.every((r) => rosters.some((x) => x.rosterId === r))) return order;
+  }
+  return undefined;
+}
+
+/** Each pick's owner after trades: `traded` lists the season's picks that changed hands, by round and original team. */
+export function pickOwners(original: readonly number[], numTeams: number, traded: readonly RawTradedPick[], season: string): number[] {
+  const owner = new Map(traded.filter((t) => String(t.season) === season).map((t) => [`${t.round}:${t.roster_id}`, t.owner_id]));
+  return original.map((r, i) => owner.get(`${Math.floor(i / numTeams) + 1}:${r}`) ?? r);
+}
+
+/**
+ * Sleeper's picks so far, by overall pick (pick_no − 1): the player, and the team that made it (which a trade during
+ * the draft can change).
+ */
+export function livePicks(picks: readonly Pick<RawDraftPick, 'pick_no' | 'player_id' | 'roster_id'>[], length: number): { taken: Array<string | undefined>; by: Array<number | undefined> } {
+  const taken: Array<string | undefined> = Array.from({ length }, () => undefined);
+  const by: Array<number | undefined> = Array.from({ length }, () => undefined);
+  for (const p of picks) {
+    const i = p.pick_no - 1;
+    if (!(i >= 0 && i < length) || !p.player_id) continue;
+    taken[i] = p.player_id;
+    if (p.roster_id != null) by[i] = p.roster_id;
+  }
+  return { taken, by };
+}
+
+/**
+ * Keepers placed at their teams' picks in their rounds; a clash moves the later one to the nearest free earlier round.
+ * Picks already made (`taken`, a live draft's) aren't free.
+ */
+export function placeKeepers(picks: readonly number[], numTeams: number, keepers: readonly Keeper[], taken: ReadonlyArray<string | undefined> = []): Map<number, string> {
   const rounds = Math.ceil(picks.length / numTeams);
   const fixed = new Map<number, string>();
   const teamPick = (rosterId: number, round: number) => {
-    for (let i = (round - 1) * numTeams; i < Math.min(picks.length, round * numTeams); i++) if (picks[i] === rosterId) return i;
+    for (let i = (round - 1) * numTeams; i < Math.min(picks.length, round * numTeams); i++) if (picks[i] === rosterId && taken[i] === undefined && !fixed.has(i)) return i;
     return -1;
   };
   for (const k of [...keepers].sort((a, b) => b.round - a.round || b.surplus - a.surplus)) {
     for (const round of [k.round, ...Array.from({ length: rounds }, (_, i) => k.round - 1 - i), ...Array.from({ length: rounds }, (_, i) => k.round + 1 + i)]) {
       if (round < 1 || round > rounds) continue;
       const at = teamPick(k.rosterId, round);
-      if (at >= 0 && !fixed.has(at)) {
+      if (at >= 0 && !fixed.has(at) && taken[at] === undefined) {
         fixed.set(at, k.id);
         break;
       }
@@ -399,7 +460,7 @@ export interface Suggestion {
   player: BoardPlayer;
   /** What he adds to your lineup value now. */
   gain: number;
-  /** Chance he's still there at your next pick, if you don't take him now. */
+  /** Chance he's still there at your next pick: the one after this when you're on the clock, else the coming one. */
   nextAvailable?: number;
 }
 
@@ -409,17 +470,13 @@ export function nextPick(s: Pick<DraftSetup, 'picks' | 'taken'>, rosterId: numbe
   return undefined;
 }
 
-/**
- * Suggestions for the pick at `at` (yours): the players who add most to your lineup, and how often each is still
- * there at your next pick when the teams in between draft by the noisy board.
- */
-export function suggest(s: DraftSetup, at: number, opts: { sims?: number; seed?: number; noise?: number; count?: number } = {}): Suggestion[] {
-  const { sims = 200, seed = 1, noise = DRAFT_NOISE, count = 8 } = opts;
-  const me = s.picks[at]!;
+type SimOpts = { sims?: number; seed?: number; noise?: number };
+
+/** The players who add most to `rosterId`'s lineup with its pick at `at`, best first. */
+function bestFor(st: SimState, s: DraftSetup, rosterId: number, at: number, count: number): Suggestion[] {
   const caps = positionCaps(s.board.slots);
-  const st = startState(s);
-  const team = st.teams.get(me)!;
-  const left = picksLeftFor(s.picks, me, at, st.taken);
+  const team = st.teams.get(rosterId) ?? [];
+  const left = picksLeftFor(s.picks, rosterId, at, st.taken);
   const base = lineupValue(team, s.board.slots);
   const out: Suggestion[] = [];
   for (let i = 0; i < s.board.players.length && out.length < count * 3; i++) {
@@ -427,23 +484,52 @@ export function suggest(s: DraftSetup, at: number, opts: { sims?: number; seed?:
     if (!st.available[i] || !allowedPick(team, p, left, s.board.slots, caps)) continue;
     out.push({ player: p, gain: lineupValue([...team, p], s.board.slots) - base });
   }
-  out.sort((a, b) => b.gain - a.gain);
-  const top = out.slice(0, count);
-  const next = nextPick(s, me, at);
+  return out.sort((a, b) => b.gain - a.gain).slice(0, count);
+}
+
+/** How often each player is still on the board at pick `to`, with the picks from `from` up to it made by the noisy board. */
+function lasting(st: SimState, s: DraftSetup, from: number, to: number, ids: readonly string[], opts: SimOpts): number[] {
+  const { sims = 200, seed = 1, noise = DRAFT_NOISE } = opts;
+  const caps = positionCaps(s.board.slots);
+  const rand = mulberry32(seed);
+  const index = new Map(s.board.players.map((p, i) => [p.id, i]));
+  const hits = ids.map(() => 0);
+  for (let k = 0; k < sims; k++) {
+    const sim: SimState = { available: [...st.available], teams: new Map([...st.teams].map(([r, t]) => [r, [...t]])), taken: [...st.taken] };
+    run(sim, s, from, to, noisyOrder(s.board, rand, noise), undefined, caps);
+    ids.forEach((id, j) => (hits[j]! += sim.available[index.get(id)!] ? 1 : 0));
+  }
+  return hits.map((h) => h / sims);
+}
+
+/**
+ * Suggestions for the pick at `at` (yours): the players who add most to your lineup, and how often each is still
+ * there at your next pick when the teams in between draft by the noisy board.
+ */
+export function suggest(s: DraftSetup, at: number, opts: SimOpts & { count?: number } = {}): Suggestion[] {
+  const st = startState(s);
+  const top = bestFor(st, s, s.picks[at]!, at, opts.count ?? 8);
+  const next = nextPick(s, s.picks[at]!, at);
   if (next !== undefined) {
-    const rand = mulberry32(seed);
-    const index = new Map(s.board.players.map((p, i) => [p.id, i]));
-    const hits = top.map(() => 0);
-    for (let k = 0; k < sims; k++) {
-      const sim: SimState = { available: [...st.available], teams: new Map([...st.teams].map(([r, t]) => [r, [...t]])), taken: [...st.taken] };
-      // Your pick now is left open: each suggestion's chance is for when you take someone else.
-      sim.taken[at] = 'mine';
-      run(sim, s, at + 1, next, noisyOrder(s.board, rand, noise), undefined, caps);
-      top.forEach((t, j) => (hits[j]! += sim.available[index.get(t.player.id)!] ? 1 : 0));
-    }
-    top.forEach((t, j) => (t.nextAvailable = hits[j]! / sims));
+    // Your pick now is left open: each suggestion's chance is for when you take someone else.
+    st.taken[at] = 'mine';
+    lasting(st, s, at + 1, next, top.map((t) => t.player.id), opts).forEach((p, j) => (top[j]!.nextAvailable = p));
   }
   return top;
+}
+
+/**
+ * While another team is on the clock (pick `current`): the players who'd add most to `me`'s lineup at its next pick,
+ * and how often each lasts until then.
+ */
+export function suggestAhead(s: DraftSetup, me: number, current: number, opts: SimOpts & { count?: number } = {}): { at: number; suggestions: Suggestion[] } | undefined {
+  const at = s.picks.findIndex((r, i) => i >= current && r === me && s.taken[i] === undefined);
+  if (at < 0) return undefined;
+  if (at === current) return { at, suggestions: suggest(s, at, opts) };
+  const st = startState(s);
+  const top = bestFor(st, s, me, at, opts.count ?? 8);
+  lasting(st, s, current, at, top.map((t) => t.player.id), opts).forEach((p, j) => (top[j]!.nextAvailable = p));
+  return { at, suggestions: top };
 }
 
 /** Simulate the rest of the draft: you pick by lineup gain, the others by the noisy board. */
@@ -465,12 +551,16 @@ export interface SlotValue {
  * Your expected lineup value from each first-round slot, for a draft whose order isn't set: the draft is simulated
  * with you at each slot and the other teams in the given order.
  */
-export function compareSlots(input: { board: Board; order: readonly number[]; rounds: number; style: DraftStyle; me: number; keepers?: readonly Keeper[] }, opts: { sims?: number; seed?: number; noise?: number } = {}): SlotValue[] {
+export function compareSlots(
+  input: { board: Board; order: readonly number[]; rounds: number; style: DraftStyle; me: number; keepers?: readonly Keeper[]; traded?: readonly RawTradedPick[] },
+  opts: { sims?: number; seed?: number; noise?: number } = {},
+): SlotValue[] {
   const { sims = 40, seed = 7, noise = DRAFT_NOISE } = opts;
   const caps = positionCaps(input.board.slots);
   const n = input.order.length;
   return Array.from({ length: n }, (_, k) => {
-    const picks = pickOrder(withSlot(input.order, input.me, k + 1), input.rounds, input.style);
+    // Traded picks move with the team they came from, wherever it picks.
+    const picks = pickOwners(pickOrder(withSlot(input.order, input.me, k + 1), input.rounds, input.style), n, input.traded ?? [], input.board.target);
     const fixed = placeKeepers(picks, n, input.keepers ?? []);
     const setup: DraftSetup = { board: input.board, picks, numTeams: n, taken: picks.map((_, i) => fixed.get(i)) };
     const rand = mulberry32(seed + k);

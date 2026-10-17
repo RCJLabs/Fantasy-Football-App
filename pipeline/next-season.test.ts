@@ -7,6 +7,7 @@ import {
   gamesShare,
   marcelLine,
   type NextSeasonFit,
+  normalizeName,
   type PositionFit,
   pprPoints,
   projectDefenses,
@@ -178,5 +179,14 @@ describe("next season's file", () => {
   it('names rookies once the NFL draft has happened, as far as it went', () => {
     const file = buildNextSeasonFile({ ...base, draft: [{ pos: 'WR', gsis: 'g9' }], sleeperByGsis: new Map([...base.sleeperByGsis, ['g9', '99']]) });
     expect(file.rookies).toEqual([{ pos: 'WR', order: 1, s: { rec: 3, rec_yd: 40 }, g: 13.6, id: '99' }]);
+    // No Sleeper id for his nflverse id yet: matched by name and position instead.
+    const byName = buildNextSeasonFile({
+      ...base,
+      draft: [{ pos: 'WR', gsis: 'g9', name: "D'Andre Rookie Jr." }, { pos: 'WR', gsis: 'g8', name: 'Nobody Known' }],
+      rookieIds: new Map([[`${normalizeName('DAndre Rookie')}|WR`, '77']]),
+    });
+    expect(byName.rookies.map((r) => r.id)).toEqual(['77', undefined]);
+    expect(normalizeName('Amon-Ra St. Brown')).toBe('amon ra st brown');
+    expect(normalizeName('Marvin Harrison Jr.')).toBe('marvin harrison');
   });
 });
