@@ -6,6 +6,7 @@
 //   data/matchups.json  defense vs position beyond players' usual, and regular cornerbacks (nflverse), context only
 //   data/baseline.json  in-house baseline v0, a second opinion the app shows but doesn't blend (ffopportunity, CC-BY-SA)
 //   data/ledger.json    the app's pre-kickoff predictions, scored each finished week (aggregates; the `ledger` release)
+//   data/nextseason.json next season's projections for the draft helper (nflverse stats, contracts and draft picks; derived only)
 //   data/manifest.json  timestamps, sources and licences
 // Usage: tsx pipeline/build-data.ts [--out dist/data] [--cache .cache]
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -17,6 +18,7 @@ import {
   type CompactPlayer,
   type LedgerFile,
   type Manifest,
+  type NextSeasonFile,
   type ManifestEntry,
   type MatchupsFile,
   type PlayersFile,
@@ -25,10 +27,12 @@ import {
 } from '../app/src/data/contracts';
 import type { StatLine } from '../app/src/domain/types';
 import type { RawPlayer, RawState } from '../app/src/sleeper/raw';
+import { parquetReadObjects } from 'hyparquet';
 import { buildBaselineFile, ffoppStats, SKILL, type SleeperRow } from './baseline';
 import { compactPlayers, csvRecords, gamesFromCsv, latestInjuryReport, missedLastGame, projectionAccuracy, sleeperToGsis, type PointsRow } from './lib';
 import { defGames, dstWeek } from './dst';
 import { buildMatchups } from './matchups';
+import { buildNextSeasonFile, type ContractRow, contractThrough, defenseSums, fantasyPos, type NextSeasonFit, seasonSums, teamGames } from './next-season';
 import { decideShard, type ShardName } from './shards';
 import { buildUsage, invert } from './usage';
 
@@ -54,7 +58,21 @@ async function fetchText(url: string): Promise<string> {
   }
 }
 
+async function fetchBuffer(url: string): Promise<ArrayBuffer> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(url, { headers: { 'user-agent': UA } });
+      if (res.ok) return await res.arrayBuffer();
+      if ((res.status < 500 && res.status !== 429) || attempt >= 3) throw new Error(`HTTP ${res.status} ${url}`);
+    } catch (e) {
+      if (attempt >= 3) throw e;
+    }
+    await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+  }
+}
+
 const FFOPPORTUNITY = 'https://github.com/ffverse/ffopportunity/releases/download/latest-data';
+const NFLVERSE = 'https://github.com/nflverse/nflverse-data/releases/download';
 
 const optional = (url: string) =>
   fetchText(url).catch((e) => {
@@ -118,6 +136,13 @@ async function seasonStats(season: string, week: number): Promise<Array<{ week: 
   }
 }
 
+/** A finished regular season of Sleeper stats for QB/RB/WR/TE and team defenses (the baseline's history, defenses next season). */
+async function sleeperSeasonStats(season: number): Promise<Array<{ week: number; rows: PointsRow[] }>> {
+  const out = [];
+  for (let w = 1; w <= 18; w++) out.push({ week: w, rows: await sleeperWeek('stats', season, w, [...SKILL, 'DEF']) });
+  return out;
+}
+
 /** Past weeks' projections (frozen around kickoff, see docs/spikes.md (e)) against actual stats. */
 async function accuracyLedger(season: string, stats: ReadonlyArray<{ week: number; rows: PointsRow[] }>, now: string): Promise<AccuracyFile | null> {
   if (!stats.length) return null;
@@ -156,6 +181,7 @@ async function baselineShard(
   gsisBySleeper: ReadonlyMap<string, string>,
   players: readonly CompactPlayer[],
   cur: string | null,
+  lastSeason: ReadonlyArray<{ week: number; rows: PointsRow[] }>,
 ): Promise<BaselineFile | null> {
   const prev = Number(season) - 1;
   try {
@@ -166,7 +192,7 @@ async function baselineShard(
       for (const r of text ? csvRecords(text) : []) if (Number(r.week) <= 18) expected.set(`${r.player_id}|${Number(r.season)}|${Number(r.week)}`, ffoppStats(r));
     }
     const weeks = thisSeason.map((s) => ({ season: Number(season), week: s.week, stats: s.rows.map(toSleeperRow) }));
-    for (let w = 1; w <= 18; w++) weeks.push({ season: prev, week: w, stats: (await sleeperWeek('stats', prev, w, [...SKILL, 'DEF'])).map(toSleeperRow) });
+    for (const w of lastSeason) weeks.push({ season: prev, week: w.week, stats: w.rows.map(toSleeperRow) });
     const implied = new Map<string, number>();
     const context = new Map<string, { home: boolean; oppImplied?: number }>();
     for (const s of [prev, Number(season)]) {
@@ -203,13 +229,91 @@ async function baselineShard(
   }
 }
 
+/**
+ * Next season's projections for the draft helper (docs/draft.md): nflverse weekly stats of the latest three seasons,
+ * OverTheCap contracts (via nflverse), the NFL draft once it has happened, and Sleeper's team defense lines. Only
+ * derived values are published.
+ */
+async function nextSeasonShard(o: {
+  season: string;
+  now: string;
+  statRecords: Array<Record<string, string>>;
+  rosterRecords: Array<Record<string, string>>;
+  dump: Record<string, RawPlayer>;
+  gsisBySleeper: ReadonlyMap<string, string>;
+  sleeperByGsis: ReadonlyMap<string, string>;
+  /** Sleeper stats: this season's played weeks, and last season's. */
+  thisSeason: ReadonlyArray<{ week: number; rows: PointsRow[] }>;
+  lastSeason: ReadonlyArray<{ week: number; rows: PointsRow[] }>;
+}): Promise<NextSeasonFile | null> {
+  try {
+    const fit = JSON.parse(await readFile(new URL('./next-season-fit.json', import.meta.url), 'utf8')) as NextSeasonFit;
+    const S = Number(o.season);
+    const isReg = (r: Record<string, string>) => (r.season_type ?? 'REG') === 'REG';
+    // Before this season's first game the projection is built on last season, complete.
+    const basis = o.statRecords.some(isReg) ? S : S - 1;
+    const stats = async (y: number) => (y === S ? o.statRecords : csvRecords(await fetchText(`${NFLVERSE}/stats_player/stats_player_week_${y}.csv`)));
+    const curRecs = await stats(basis);
+    const weeks = basis < S ? 18 : Math.min(18, Math.max(0, ...curRecs.filter(isReg).map((r) => Number(r.week) || 0)));
+    const [p1, p2] = [await stats(basis - 1), await stats(basis - 2)];
+    const contracts = await parquetReadObjects({
+      file: await fetchBuffer(`${NFLVERSE}/contracts/historical_contracts.parquet`),
+      columns: ['gsis_id', 'year_signed', 'years', 'is_active', 'draft_round', 'draft_year', 'season_history'],
+    });
+    const target = basis + 1;
+    const picksText = await optional(`${NFLVERSE}/draft_picks/draft_picks.csv`);
+    const draft = (picksText ? csvRecords(picksText) : [])
+      .filter((r) => Number(r.season) === target && r.gsis_id && r.gsis_id !== 'NA')
+      .sort((a, b) => Number(a.pick) - Number(b.pick))
+      .map((r) => ({ pos: fantasyPos(r.position), gsis: r.gsis_id! }));
+    const birthDates = new Map<string, string>();
+    for (const r of o.rosterRecords) if (r.gsis_id && r.birth_date && r.birth_date !== 'NA') birthDates.set(r.gsis_id, r.birth_date);
+    for (const [sid, g] of o.gsisBySleeper) {
+      const b = o.dump[sid]?.birth_date;
+      if (b) birthDates.set(g, b);
+    }
+    const inactive = new Set(Object.entries(o.dump).flatMap(([id, p]) => (p.active === false ? [id] : [])));
+    // Team defenses from Sleeper's DEF lines: the basis season so far and the one before (optional).
+    let defenses: Parameters<typeof buildNextSeasonFile>[0]['defenses'];
+    try {
+      const curDef = basis === S ? o.thisSeason : o.lastSeason;
+      const prevDef = basis === S ? o.lastSeason : await sleeperSeasonStats(basis - 1);
+      if (curDef.length || prevDef.length) defenses = { cur: defenseSums(curDef.map((w) => w.rows.map(toSleeperRow))), prev: defenseSums(prevDef.map((w) => w.rows.map(toSleeperRow))) };
+    } catch (e) {
+      console.warn(`next season: no team defenses (${e})`);
+    }
+    return buildNextSeasonFile({
+      fit,
+      now: o.now,
+      season: o.season,
+      basisSeason: basis,
+      basisWeeks: weeks,
+      cur: seasonSums(curRecs, weeks),
+      prev1: seasonSums(p1),
+      prev2: seasonSums(p2),
+      teamGames: teamGames(curRecs, weeks),
+      birthDates,
+      through: contractThrough(contracts as ContractRow[]),
+      sleeperByGsis: o.sleeperByGsis,
+      // Every player's name, signed or not: free agents without a team aren't in players.json.
+      names: new Map(Object.entries(o.dump).map(([id, p]) => [id, p.position === 'DEF' ? `${p.first_name ?? id} ${p.last_name ?? ''}`.trim() : (p.full_name ?? `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim())])),
+      inactive,
+      ...(defenses ? { defenses } : {}),
+      ...(draft.length ? { draft } : {}),
+    });
+  } catch (e) {
+    console.warn(`next season skipped: ${e}`);
+    return null;
+  }
+}
+
 async function main() {
   const now = new Date().toISOString();
   const state = JSON.parse(await fetchText('https://api.sleeper.app/v1/state/nfl')) as RawState;
   const season = state.season;
   const week = Math.max(1, state.week);
 
-  const nflverse = 'https://github.com/nflverse/nflverse-data/releases/download';
+  const nflverse = NFLVERSE;
   const [dump, injuriesCsv, rostersCsv, gamesCsv, snapsCsv, statsCsv, ffoCurrent] = await Promise.all([
     sleeperPlayers(),
     optional(`${nflverse}/injuries/injuries_${season}.csv`),
@@ -270,7 +374,14 @@ async function main() {
   const matchups = buildMatchups({ season, now, snaps: snapRecords, stats: statRecords, rosters: rosterRecords, sleeperByGsis });
   const stats = await seasonStats(season, week);
   const accuracy = stats ? await accuracyLedger(season, stats, now) : null;
-  const baseline = stats ? await baselineShard(season, week, now, stats, gamesRecords, gsisBySleeper, playersFile.players, ffoCurrent) : null;
+  const lastSeason = stats
+    ? await sleeperSeasonStats(Number(season) - 1).catch((e) => {
+        console.warn(`Sleeper stats for ${Number(season) - 1} unavailable (baseline skipped): ${e}`);
+        return null;
+      })
+    : null;
+  const baseline = stats && lastSeason ? await baselineShard(season, week, now, stats, gamesRecords, gsisBySleeper, playersFile.players, ffoCurrent, lastSeason) : null;
+  const nextSeason = await nextSeasonShard({ season, now, statRecords, rosterRecords, dump, gsisBySleeper, sleeperByGsis, thisSeason: stats ?? [], lastSeason: lastSeason ?? [] });
   const ledger = await scoredLedger();
 
   // Optional shards: publish a fresh build that checks out, otherwise keep the deployed copy while it still
@@ -304,8 +415,22 @@ async function main() {
       license: 'Aggregate scores only; no predictions, projections or stats are republished. nflverse data CC-BY 4.0',
       credits: 'Outcomes via nflverse',
     },
+    'nextseason.json': {
+      source:
+        'In-house next-season projections (docs/draft.md): nflverse weekly player stats of the latest three seasons, contract years from OverTheCap via nflverse, the NFL draft via nflverse once held; team defenses from Sleeper defense stats',
+      license:
+        'Derived projections only: no stats, contract terms or draft data are republished (a no-contract-next-season flag and modelled chances of a team change). nflverse data CC-BY 4.0',
+      credits: 'Stats, contracts (OverTheCap) and draft picks via nflverse',
+    },
   };
-  const fresh: Record<ShardName, unknown> = { 'usage.json': usage, 'matchups.json': matchups, 'accuracy.json': accuracy, 'baseline.json': baseline, 'ledger.json': ledger };
+  const fresh: Record<ShardName, unknown> = {
+    'usage.json': usage,
+    'matchups.json': matchups,
+    'accuracy.json': accuracy,
+    'baseline.json': baseline,
+    'ledger.json': ledger,
+    'nextseason.json': nextSeason,
+  };
   const shards = new Map<ShardName, Record<string, unknown>>();
   const health: string[] = [];
   for (const name of Object.keys(entries) as ShardName[]) {
@@ -342,13 +467,15 @@ async function main() {
   const mat = shards.get('matchups.json') as MatchupsFile | undefined;
   const base = shards.get('baseline.json') as BaselineFile | undefined;
   const led = shards.get('ledger.json') as LedgerFile | undefined;
+  const next = shards.get('nextseason.json') as NextSeasonFile | undefined;
   console.log(
     `season ${season} week ${week}: ${playersFile.players.length} players (${withPractice} with practice status, report week ${report?.week ?? '-'}), ${scheduleFile.games.length} games` +
       `${all ? `, accuracy weeks ${acc!.weeks.join(',')} n=${all.n} MAE ${all.mae} within±1sd ${Math.round(all.within1 * 100)}%` : ''}` +
       `${use ? `, usage weeks ${use.weeks.join(',')} for ${Object.keys(use.players).length} players` : ''}` +
       `${mat ? `, matchups for ${Object.keys(mat.defense).length} defenses` : ''}` +
       `${base ? `, baseline for ${Object.keys(base.players).length} players through week ${base.throughWeek}` : ''}` +
-      `${led ? `, ledger weeks ${led.weeks.map((w) => w.week).join(',')}` : ''} → ${OUT}`,
+      `${led ? `, ledger weeks ${led.weeks.map((w) => w.week).join(',')}` : ''}` +
+      `${next ? `, ${next.target} projections for ${Object.keys(next.players).length} players from ${next.basis.season} week ${next.basis.weeks}` : ''} → ${OUT}`,
   );
   for (const line of health) console.log(line);
 }

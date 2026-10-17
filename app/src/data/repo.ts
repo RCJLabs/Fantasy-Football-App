@@ -2,7 +2,7 @@ import type { BracketMatch, Game, League, LeagueUser, Matchup, Player, Roster, S
 import { type BaselineIndex, gamesByTeam, type UsageIndex, type WeekContext } from '../analysis/analyze';
 import { sleeperApi, SleeperError } from '../sleeper/api';
 import { indexProjections, parseBracket, parseLeague, parseMatchup, parsePlayersDump, parseRoster, parseUser, type ProjectionIndex } from '../sleeper/parse';
-import type { RawProjection, RawState, RawTradedPick, RawTransaction, RawUser } from '../sleeper/raw';
+import type { RawDraft, RawDraftPick, RawProjection, RawState, RawTradedPick, RawTransaction, RawUser } from '../sleeper/raw';
 import { cached } from './cache';
 import {
   DATA_SCHEMA_VERSION,
@@ -12,6 +12,7 @@ import {
   type LedgerFile,
   type Manifest,
   type MatchupsFile,
+  type NextSeasonFile,
   type PlayersFile,
   type ScheduleFile,
   type UsageFile,
@@ -401,6 +402,21 @@ export async function loadPlayedPoints(leagueId: string, weeks: readonly number[
 /** Future draft picks that changed hands (Sleeper lists no others). */
 export async function loadTradedPicks(leagueId: string, force = false): Promise<RawTradedPick[]> {
   return (await cached(`picks:${leagueId}`, HOUR, () => sleeperApi.tradedPicks(leagueId), { force })).value;
+}
+
+/** A league's drafts: past ones, and the coming one once Sleeper creates it. */
+export async function loadDrafts(leagueId: string, force = false): Promise<RawDraft[]> {
+  return (await cached(`drafts:${leagueId}`, HOUR, () => sleeperApi.drafts(leagueId), { force })).value ?? [];
+}
+
+/** A finished draft's picks (they don't change). */
+export async function loadDraftPicks(draftId: string, force = false): Promise<RawDraftPick[]> {
+  return (await cached(`draftpicks:${draftId}`, 24 * HOUR, () => sleeperApi.draftPicks(draftId), { force })).value ?? [];
+}
+
+/** Next season's projections for the draft helper (docs/draft.md). */
+export async function loadNextSeason(force = false): Promise<NextSeasonFile> {
+  return (await cached('data:nextseason', 6 * HOUR, () => fetchDataFile<NextSeasonFile>('nextseason.json'), { force })).value;
 }
 
 export async function loadTrending(): Promise<Map<string, number>> {

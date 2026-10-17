@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { LineupAnalysis, LineupChange, Objective } from '../analysis/analyze';
 import { AskTab } from './AskTab';
 import { BeforeLockCard } from './BeforeLock';
+import { DraftTab } from './DraftTab';
 import { ErrorBox, PlayerLine, Problems, slotLabel, Spinner } from './components';
 import { findLeague, lineupFor, loadLeagueBundle, rememberAdvice, type LeagueBundle } from './data';
 import { ago, pct, pts, signed } from './format';
@@ -16,6 +17,7 @@ const TABS = [
   ['waivers', 'Waivers'],
   ['trade', 'Trade'],
   ['season', 'Season'],
+  ['draft', 'Draft'],
   ['ask', 'Ask'],
 ] as const;
 
@@ -60,7 +62,9 @@ export function LeaguePage({ session, leagueId, tab }: { session: Session; leagu
           </a>
         ))}
       </nav>
-      {!b.myRoster ? (
+      {tab === 'draft' ? (
+        <DraftTab bundle={b} />
+      ) : !b.myRoster ? (
         <p class="card">You don't have a team in this league.</p>
       ) : !b.lineup ? (
         <p class="card">This league isn't in season ({b.league.status.replace('_', ' ')}).</p>

@@ -18,6 +18,18 @@ const baseline = (week: number, throughWeek: number, n = 200) => ({
   players: Object.fromEntries(Array.from({ length: n }, (_, i) => [`p${i}`, { rec: 4, rec_yd: 50 }])),
 });
 
+const nextSeason = (n: number, over: Record<string, unknown> = {}) => ({
+  schemaVersion: 1,
+  generatedAt: '2026-10-15T16:07:00Z',
+  season: '2026',
+  target: '2027',
+  basis: { season: '2026', weeks: 6 },
+  players: Object.fromEntries(Array.from({ length: n }, (_, i) => [`p${i}`, { s: { rec: 4, rec_yd: 50 }, g: 13.2 }])),
+  rookies: [{ pos: 'RB', order: 1, s: { rush_yd: 60 }, g: 14.3 }],
+  range: { RB: [0.06, 1.93] },
+  ...over,
+});
+
 describe('data shards', () => {
   it('passes healthy shards and names what is wrong with others', () => {
     expect(validateShard('usage.json', usage(300))).toEqual([]);
@@ -39,6 +51,20 @@ describe('data shards', () => {
     expect(validateShard('baseline.json', negative)).toEqual(['1 lines with non-finite or negative stats']);
     expect(validateShard('matchups.json', null)).toEqual(['not an object']);
     expect(rowCount('matchups.json', { defense: { KC: {}, BUF: {} } })).toBe(2);
+  });
+
+  it("checks next season's projections", () => {
+    expect(validateShard('nextseason.json', nextSeason(400))).toEqual([]);
+    expect(validateShard('nextseason.json', nextSeason(100))).toEqual(['100 rows (expected 300+)']);
+    expect(validateShard('nextseason.json', nextSeason(400, { target: '2025' }))).toEqual(['bad target']);
+    const bad = nextSeason(400);
+    const players = bad.players as Record<string, unknown>;
+    players.p0 = { s: { rec: -1 }, g: 12 };
+    players.p1 = { s: { rec: 3 }, g: 40 };
+    expect(validateShard('nextseason.json', bad)).toEqual(['2 players with a bad line']);
+    expect(validateShard('nextseason.json', nextSeason(400, { rookies: [{ pos: 'WR', order: 1, s: {}, g: Number.NaN }] }))).toEqual(['rookies with a bad line']);
+    // Kept while Sleeper's season is the same: the projection stays useful between daily builds.
+    expect(decideShard('nextseason.json', null, nextSeason(400), '2026', 9)).toMatchObject({ use: 'kept' });
   });
 
   it('keeps the deployed copy when the fresh build fails, while it still describes this week', () => {

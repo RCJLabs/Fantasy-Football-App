@@ -29,6 +29,7 @@ export interface RawLeague {
   settings: Record<string, number | null | undefined> | null;
   avatar?: string | null;
   previous_league_id?: string | null;
+  draft_id?: string | null;
 }
 
 export interface RawRoster {
@@ -141,9 +142,38 @@ export interface RawPlayer {
   search_rank?: number | null;
   gsis_id?: string | null;
   espn_id?: string | number | null;
+  birth_date?: string | null;
 }
 
 export interface RawTrending {
   player_id: string;
   count: number;
+}
+
+/**
+ * Row of /league/{id}/drafts, from Sleeper's API docs (not yet checked against a live response). The order is set
+ * once the commissioner sets or randomizes it.
+ */
+export interface RawDraft {
+  draft_id: string;
+  season: string;
+  status: 'pre_draft' | 'drafting' | 'complete' | (string & {});
+  type: 'snake' | 'linear' | 'auction' | (string & {});
+  start_time?: number | null;
+  settings?: { rounds?: number; teams?: number; reversal_round?: number } | null;
+  /** user id → first-round slot. */
+  draft_order?: Record<string, number> | null;
+  /** First-round slot → roster id. */
+  slot_to_roster_id?: Record<string, number> | null;
+}
+
+/** Row of /draft/{id}/picks, from Sleeper's API docs (not yet checked against a live response). */
+export interface RawDraftPick {
+  round: number;
+  pick_no: number;
+  draft_slot?: number | null;
+  roster_id?: number | null;
+  picked_by?: string | null;
+  player_id: string;
+  is_keeper?: boolean | null;
 }

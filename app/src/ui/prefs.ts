@@ -22,3 +22,31 @@ export function setObjectivePref(leagueId: string, phase: Phase, value: Objectiv
     /* not saved; the choice still applies for this visit */
   }
 }
+
+/** Draft helper settings for one league (docs/draft.md): kept on this device until the draft. */
+export interface DraftPrefs {
+  /** Roster ids in round 1's order. */
+  order?: number[];
+  style?: 'snake' | 'linear' | '3rr';
+  rounds?: number;
+  keepers?: number;
+  cost?: 'last' | 'drafted' | 'earlier';
+}
+const draftKey = (leagueId: string) => `ff:draft:${leagueId}`;
+
+export function draftPrefs(leagueId: string): DraftPrefs {
+  try {
+    const v = JSON.parse(localStorage.getItem(draftKey(leagueId)) ?? '{}') as unknown;
+    return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as DraftPrefs) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function setDraftPrefs(leagueId: string, value: DraftPrefs): void {
+  try {
+    localStorage.setItem(draftKey(leagueId), JSON.stringify(value));
+  } catch {
+    /* not saved; the settings still apply for this visit */
+  }
+}

@@ -53,6 +53,7 @@ export function parseLeague(raw: RawLeague): League {
     scoring: raw.scoring_settings ?? {},
     rules: parseLeagueRules(raw),
     avatar: raw.avatar ?? null,
+    ...(raw.previous_league_id && raw.previous_league_id !== '0' ? { previousLeagueId: raw.previous_league_id } : {}),
   };
 }
 

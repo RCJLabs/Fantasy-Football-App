@@ -127,6 +127,13 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             lists your likely keepers.
           </li>
           <li>
+            <strong>Draft helper</strong> (Draft tab, redraft and keeper leagues): next season&apos;s board under your league&apos;s scoring, valued over
+            replacement. Projections are our own, from this season so far and the two before it, pulled toward each position&apos;s average and
+            adjusted for age and contract status; on 2015–2025 they ranked players better than &quot;same as this year&quot;, with wide misses. Rookies
+            are placeholders by the order their position is taken until the NFL draft. Keeper leagues get each team&apos;s likely keepers. Set or
+            randomize the draft order, compare first-round slots, and run a mock draft against teams picking from the same board with noise.
+          </li>
+          <li>
             <strong>FAAB bids</strong> follow what your league has actually paid for players at the same position this season, scaled by your remaining
             budget.
           </li>
@@ -159,6 +166,10 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           <li>Projections: RotoWire, via Sleeper.</li>
           <li>Practice reports and schedule: nflverse (CC-BY 4.0), processed daily.</li>
           <li>Usage and matchups: nflverse (CC-BY 4.0) weekly stats and snap counts (compiled by Pro Football Reference).</li>
+          <li>
+            Next season&apos;s projections (draft helper): our own, from nflverse (CC-BY 4.0) weekly stats, NFL draft picks and contract years
+            (OverTheCap, via nflverse). Only projections and a no-contract flag are published, no contract terms.
+          </li>
           <li>
             Second-opinion baseline and points against usage: expected points from{' '}
             <a href="https://github.com/ffverse/ffopportunity" target="_blank" rel="noopener">

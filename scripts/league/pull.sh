@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pull one Sleeper user's leagues (settings, rosters, matchups, transactions, brackets) plus past-week
+# Pull one Sleeper user's leagues (settings, rosters, matchups, transactions, brackets, drafts) plus past-week
 # projections and stats, and last season's finished leagues (brackets, scores, playoff-week projections);
 # encrypt the bundle with age and upload it as a release asset. Used for private
 # testing against real leagues: the username comes from the workflow_dispatch payload (never from the
@@ -84,6 +84,13 @@ for id in "${league_ids[@]}"; do
   fetch "$d/traded_picks.json" "$SLEEPER/league/$id/traded_picks"
   fetch "$d/winners_bracket.json" "$SLEEPER/league/$id/winners_bracket"
   fetch "$d/losers_bracket.json" "$SLEEPER/league/$id/losers_bracket"
+  # Drafts and their picks: the draft helper's order, rounds and keeper costs (docs/draft.md).
+  fetch "$d/drafts.json" "$SLEEPER/league/$id/drafts"
+  mapfile -t draft_ids < <(jq -r '.[]?.draft_id // empty' "$out/$d/drafts.json" 2>/dev/null || true)
+  for did in "${draft_ids[@]}"; do
+    mask "$did"
+    fetch "$d/draft_picks_$did.json" "$SLEEPER/draft/$did/picks"
+  done
   for ((w = 1; w <= LAST_REG_WEEK; w++)); do
     fetch "$d/matchups_w$(printf %02d "$w").json" "$SLEEPER/league/$id/matchups/$w"
   done

@@ -821,3 +821,78 @@ mark.unchecked {
 .next-lock {
   margin: 0.4rem 0 0;
 }
+/* Draft helper. */
+.draft-notes {
+  padding-left: 1.1rem;
+}
+.draft-notes li {
+  margin: 0.3rem 0;
+}
+/* One row that scrolls sideways on a phone rather than wrapping inside the pill. */
+.draft-filter {
+  display: flex;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.draft-filter::-webkit-scrollbar {
+  display: none;
+}
+.draft-filter button {
+  white-space: nowrap;
+  flex: none;
+}
+.table.draft-board tr.kept td {
+  opacity: 0.55;
+}
+.draft-settings {
+  align-items: flex-end;
+}
+.draft-settings .field {
+  margin-bottom: 0;
+}
+.field input {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem 0.5rem;
+  min-width: 0;
+}
+.draft-settings input[type='number'] {
+  width: 5rem;
+}
+.draft-order {
+  padding-left: 1.6rem;
+  margin: 0.6rem 0;
+}
+.draft-order li {
+  padding: 0.15rem 0;
+}
+.draft-order li > span:first-child {
+  display: inline-block;
+  min-width: 9rem;
+  margin-right: 0.4rem;
+}
+.draft-order li > .row {
+  display: inline-flex;
+}
+.draft-order li.mine {
+  font-weight: 600;
+}
+.draft-team,
+.draft-recent,
+.draft-matches {
+  list-style: none;
+  padding-left: 0;
+  margin: 0.3rem 0;
+}
+.draft-team li,
+.draft-recent li,
+.draft-matches li {
+  padding: 0.2rem 0;
+}
+.mock h3 {
+  margin: 0.9rem 0 0.3rem;
+}

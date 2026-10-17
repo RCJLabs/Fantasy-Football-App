@@ -102,6 +102,8 @@ export interface League {
   scoring: ScoringSettings;
   rules: LeagueRules;
   avatar?: string | null;
+  /** Last season's league, when Sleeper renewed this one from it. */
+  previousLeagueId?: string;
 }
 
 export interface Roster {
