@@ -5,6 +5,7 @@ import type { League, Player, Roster } from '../domain/types';
 import type { RawDraft, RawDraftPick, RawTradedPick } from '../sleeper/raw';
 import { canFill, SLOT_ELIGIBILITY } from '../engine/lineup';
 import { projectedPoints } from '../engine/scoring';
+import { gradeValues, type PartGrade, zScale } from './grades';
 import { mulberry32 } from './season';
 
 /** Positions the next-season file projects. IDP isn't projected. */
@@ -572,4 +573,118 @@ export function compareSlots(
     }
     return { slot: k + 1, value: total / sims };
   });
+}
+
+// ---- Grades --------------------------------------------------------------------------------------------------
+
+/** Games a season: a starter's missed games are played at replacement level. */
+const SEASON_GAMES = 17;
+/**
+ * SD floors for the grades (see zScores) [design], as Team grades has them: 3% of the average team's season points for
+ * a roster and for its picks, one point a week for a position.
+ */
+const ROSTER_MIN_SD = 0.03;
+const POSITION_MIN_SD = SEASON_GAMES;
+
+/** A roster's lineup value by position: its starters there, plus its bench there at BENCH_SHARE. They add up to lineupValue. */
+export function positionValues(team: readonly BoardPlayer[], slots: readonly string[]): Record<string, number> {
+  const { starters, bench } = fillLineup(team, slots);
+  const out: Record<string, number> = {};
+  for (const p of starters) if (p) out[p.pos] = (out[p.pos] ?? 0) + p.vor;
+  for (const p of bench) out[p.pos] = (out[p.pos] ?? 0) + BENCH_SHARE * Math.max(0, p.vor);
+  return out;
+}
+
+export interface DraftTeamGrade extends PartGrade {
+  rosterId: number;
+  /** What its picks added to its keepers' lineup value, graded the same way: when the draft has keepers. */
+  picks?: PartGrade;
+  /** By position: what its players there add to the lineup value. */
+  positions: Record<string, PartGrade>;
+}
+
+export interface DraftGrades {
+  /** Best roster first. */
+  teams: DraftTeamGrade[];
+  /** The positions graded: those the league starts. */
+  positions: string[];
+  /** Lineup value that one grade step spans (half the SD graded on): for rosters, and for picks alone with keepers. */
+  step: { team: number; picks?: number };
+}
+
+/**
+ * Every team's draft graded S–F against the others, in Team grades' bands (analysis/grades.ts): on the lineup value of
+ * the roster it ends with, keepers included; with keepers, also on what its picks added to them (a roster's grade is
+ * then mostly its keepers'); and position by position. `keeperPicks`: the overall picks keepers took. Needs three
+ * teams or more.
+ */
+export function draftGrades(s: DraftSetup, keeperPicks: ReadonlySet<number> = new Set()): DraftGrades | undefined {
+  const ids = [...new Set(s.picks)];
+  if (ids.length < 3) return undefined;
+  const { board } = s;
+  const byId = new Map(board.players.map((p) => [p.id, p]));
+  const roster = (rosterId: number, keepersOnly: boolean) =>
+    s.picks.flatMap((r, i) => {
+      const p = r === rosterId && (!keepersOnly || keeperPicks.has(i)) ? byId.get(s.taken[i] ?? '') : undefined;
+      return p ? [p] : [];
+    });
+  const teams = ids.map((r) => roster(r, false));
+  const values = teams.map((t) => lineupValue(t, board.slots));
+  // The floor is a share of the average team's season points: a replacement-level team's, plus the average value.
+  const slotReplacement = (slot: string) => Math.max(0, ...Object.entries(board.replacement).flatMap(([pos, ppg]) => (canFill(slot, [pos]) ? [ppg] : [])));
+  const replacementTeam = board.slots.reduce((a, slot) => a + slotReplacement(slot) * SEASON_GAMES, 0);
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const minSd = ROSTER_MIN_SD * Math.max(0, replacementTeam + mean);
+  const overall = gradeValues(values, minSd);
+  const added = keeperPicks.size ? ids.map((r, k) => values[k]! - lineupValue(roster(r, true), board.slots)) : undefined;
+  const picks = added ? gradeValues(added, minSd) : undefined;
+  const positions = DRAFT_POSITIONS.filter((p) => board.slots.some((slot) => canFill(slot, [p])));
+  const byPosition = teams.map((t) => positionValues(t, board.slots));
+  const atPosition = new Map(positions.map((p) => [p, gradeValues(byPosition.map((v) => v[p] ?? 0), POSITION_MIN_SD)]));
+  const out: DraftTeamGrade[] = ids.map((rosterId, k) => ({
+    rosterId,
+    ...overall[k]!,
+    ...(picks ? { picks: picks[k]! } : {}),
+    positions: Object.fromEntries(positions.map((p) => [p, atPosition.get(p)![k]!])),
+  }));
+  out.sort((a, b) => a.rank - b.rank);
+  return { teams: out, positions, step: { team: zScale(values, minSd) / 2, ...(added ? { picks: zScale(added, minSd) / 2 } : {}) } };
+}
+
+/** One pick against the board's order. */
+export interface PickValue {
+  /** Overall pick, 0-based. */
+  at: number;
+  player: BoardPlayer;
+  /** Picks after (+) or before (−) his place on the board he went. */
+  spots: number;
+  /** His value over replacement less that of the board's player for that pick. */
+  gain: number;
+}
+
+const VALUE_POSITIONS = new Set(['QB', 'RB', 'WR', 'TE']);
+
+/**
+ * A team's best value and biggest reach: its QB, RB, WR and TE picks against the board's order, with keepers left out
+ * of both the picks and the board. A pick within half a round of his place counts as on the board. [design]
+ */
+export function valueAndReach(s: DraftSetup, rosterId: number, keeperPicks: ReadonlySet<number> = new Set()): { value?: PickValue; reach?: PickValue } {
+  const kept = new Set([...keeperPicks].map((i) => s.taken[i]));
+  const order = s.board.players.filter((p) => !kept.has(p.id));
+  const place = new Map(order.map((p, i) => [p.id, i + 1]));
+  const byId = new Map(order.map((p) => [p.id, p]));
+  const mine: PickValue[] = [];
+  let made = 0;
+  s.taken.forEach((id, i) => {
+    if (id === undefined || keeperPicks.has(i)) return;
+    made++;
+    const p = byId.get(id);
+    if (s.picks[i] !== rosterId || !p || !VALUE_POSITIONS.has(p.pos)) return;
+    const expected = order[Math.min(made, order.length) - 1]!;
+    mine.push({ at: i, player: p, spots: made - place.get(id)!, gain: p.vor - expected.vor });
+  });
+  const half = s.numTeams / 2;
+  const value = mine.filter((m) => m.spots > half).sort((a, b) => b.gain - a.gain)[0];
+  const reach = mine.filter((m) => m.spots < -half).sort((a, b) => a.gain - b.gain)[0];
+  return { ...(value ? { value } : {}), ...(reach ? { reach } : {}) };
 }

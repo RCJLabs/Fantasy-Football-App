@@ -244,6 +244,11 @@
     - predicted keepers, with the manager's cost rule;
     - a random, Sleeper or hand-set order, and which slot is best;
     - a mock draft against teams drafting from the board with noise.
+  - **Mock draft grades (2026-10-17):** the owner's request. A finished mock grades every team S–F against the others on lineup
+    value, in Team grades' bands. With keepers, the draft is graded on what the picks added, since a roster's grade is then mostly
+    its keepers'. It also grades your lineup position by position, with your best value and biggest reach against the board.
+    Following the suggestions ranked first or second in 204 of 208 mocks on the owner's leagues: the grade measures a draft
+    against teams drafting from the board with noise, not against real managers.
   - **Live draft and Sleeper's draft data (2026-10-17):**
     - the tab follows Sleeper's draft pick by pick once it starts, with look-ahead suggestions for your next pick;
     - traded picks are applied to the pick order;
@@ -804,7 +809,8 @@ Week N's first game ≈ Oct 15 + 7·(N−6). Hour figures are `[design estimates
   - Play's AI-content policy needs an in-app report button `[reported]`
 - **Draft assistant** for Aug 2027 (ADP + value-based drafting under league scoring), including the **dynasty startup draft
   assistant**: the owner's startup draft is the week before the 2027 season. **Redraft and keeper helper built 2026-10-17**
-  ([draft.md](draft.md)): next season's projections, board, keepers, orders, slot comparison and mock draft. Remaining:
+  ([draft.md](draft.md)): next season's projections, board, keepers, orders, slot comparison and mock draft with grades.
+  Remaining:
   - ADP for the other teams' picks;
   - a live board that follows Sleeper's draft (built 2026-10-17; first real use in 2027);
   - rookies named after the NFL draft (built, checked offline on the 2026 class);

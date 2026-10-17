@@ -1,12 +1,17 @@
 import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 import type { PlayerRow, Problem } from '../analysis/analyze';
+import type { Grade } from '../analysis/grades';
 import { streak, type Streak } from '../analysis/luck';
 import { injuryDuration } from '../engine/injuries';
 import { kickoffLabel, pct, pts, statLabel } from './format';
 
 export function Badge({ kind, children }: { kind: 'ok' | 'warn' | 'error' | 'info' | 'muted'; children: ComponentChildren }) {
   return <span class={`badge badge-${kind}`}>{children}</span>;
+}
+
+export function GradeMark({ grade }: { grade: Grade }) {
+  return <span class={`grade grade-${grade}`}>{grade}</span>;
 }
 
 export function InjuryBadge({ row }: { row: PlayerRow }) {

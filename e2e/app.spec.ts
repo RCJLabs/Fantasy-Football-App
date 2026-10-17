@@ -629,6 +629,14 @@ test('draft helper: next season\'s board, keepers, a changeable order and a mock
   await expect(mock).toContainText('Draft complete.');
   await expect(mock.locator('.draft-team li')).toHaveCount(13);
   await expect(mock.locator('.draft-team')).not.toContainText('—');
+  // Graded against the other three teams: the picks (a keeper league), the roster with its keepers, and by position.
+  await expect(mock).toContainText(/Your draft: [SABCDF] \((1st|2nd|3rd|4th) of 4\); with keepers, your team: [SABCDF] \((1st|2nd|3rd|4th) of 4\)\./);
+  await expect(mock.locator('table.grades tbody tr')).toHaveCount(4);
+  await expect(mock.locator('table.grades tr.mine td').first()).toHaveText('You');
+  await expect(mock.locator('table.grades thead')).toContainText('With keepers');
+  await expect(mock.locator('.draft-positions')).toContainText(/QB [SABCDF] \((1st|2nd|3rd|4th)\)/);
+  await expect(mock).toContainText('A to F step half a standard deviation');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   await page.screenshot({ path: testInfo.outputPath('draft.png'), fullPage: true });
   await mock.getByRole('button', { name: 'Undo' }).click();
   await expect(mock).toContainText("Pick 2.01 (5th overall): you're on the clock.");

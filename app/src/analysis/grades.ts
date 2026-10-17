@@ -25,13 +25,27 @@ export function gradeOf(z: number): Grade {
   return z >= 1.5 ? 'S' : z >= 0.75 ? 'A' : z >= 0.25 ? 'B' : z > -0.25 ? 'C' : z > -0.75 ? 'D' : 'F';
 }
 
+/** The SD that z-scores within the league divide by: the league's own, or the floor when that's larger. */
+export function zScale(values: readonly number[], minSd: number): number {
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const sd = Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length);
+  return Math.max(sd, minSd);
+}
+
 /** z-scores within the league. The SD has a floor, so teams that are nearly level stay near average instead of spreading over every grade. */
 export function zScores(values: readonly number[], minSd: number): number[] {
   if (!values.length) return [];
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  const sd = Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length);
-  const scale = Math.max(sd, minSd);
+  const scale = zScale(values, minSd);
   return values.map((v) => (scale > 0 ? (v - mean) / scale : 0));
+}
+
+/** Each value graded against the others: its z-score (zScores), grade and rank (1 = highest). */
+export function gradeValues(values: readonly number[], minSd: number): PartGrade[] {
+  const zs = zScores(values, minSd);
+  const order = values.map((_, i) => i).sort((a, b) => values[b]! - values[a]!);
+  const rank = new Map(order.map((i, r) => [i, r + 1]));
+  return values.map((v, i) => ({ value: v, z: zs[i]!, grade: gradeOf(zs[i]!), rank: rank.get(i)! }));
 }
 
 export interface PartGrade {
@@ -112,10 +126,7 @@ export function leagueGrades(o: LeagueOutlook, matchups: readonly Matchup[], ctx
   const graded = new Map<Part, PartGrade[]>();
   for (const [part, vs] of values) {
     const mean = vs.reduce((a, b) => a + b, 0) / vs.length;
-    const zs = zScores(vs, MIN_SD[part](Math.abs(mean)));
-    const order = vs.map((_, i) => i).sort((a, b) => vs[b]! - vs[a]!);
-    const rank = new Map(order.map((i, r) => [i, r + 1]));
-    graded.set(part, vs.map((v, i) => ({ value: v, z: zs[i]!, grade: gradeOf(zs[i]!), rank: rank.get(i)! })));
+    graded.set(part, gradeValues(vs, MIN_SD[part](Math.abs(mean))));
   }
   const weight = parts.reduce((s, p) => s + GRADE_WEIGHTS[p], 0);
   const blend = teams.map((_, i) => parts.reduce((s, p) => s + GRADE_WEIGHTS[p] * graded.get(p)![i]!.z, 0) / weight);
