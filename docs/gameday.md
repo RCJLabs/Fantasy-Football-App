@@ -110,7 +110,7 @@ page when the last check is 15 seconds old or more. Checks don't overlap. Each c
 |---|---|---|
 | Points | Sleeper's matchups | Every check, the browser asking Sleeper every time |
 | Lineups | Sleeper's rosters (and league members) | Once a minute, and on coming back to the page |
-| Stat lines | Sleeper's stats | Once a minute; at every check while a starter's line trails his points ("updating"); and on coming back. Sleeper's CDN copy is about as old as the gap since the last request for it; an older copy from another CDN edge is ignored |
+| Stat lines | Sleeper's stats | Once a minute; at every check while a starter's line trails his points ("updating"); and on coming back. Sleeper's CDN copy is about as old as the gap since the last request for it; an older copy from another CDN edge is ignored (by its newest row's `updated_at`, which moves during games) |
 | Game clock, score, ball | ESPN's scoreboard | Kept 30 seconds, plus ESPN's own `max-age` of up to 10 |
 | Scoring plays | ESPN's game summary | Loaded when the game's score changes, and again while the copy trails the scoreboard's score |
 | Win chance, the graph, swing players, around the league, the feed | Worked out on the device | Each check |
@@ -128,8 +128,9 @@ line, and stat lines load at every check until it catches up.
 
 **Why 20 seconds** (asked for on 2026-10-18 after the fix below; my estimates, not measured):
 - A change waits about 10 seconds for the next check on average, instead of 30.
-- Sleeper's CDN copy is roughly as old as the gap between requests for it, so about 20 seconds instead of 60. Together, stat
-  lines should land about 30 seconds behind Sleeper instead of about 1½ minutes.
+- Sleeper's CDN copy is roughly as old as the gap between requests for it, so about 20 seconds instead of 60 while a line
+  trails. The CDN ignores a browser's `no-cache` (run 39151992208), so asking more often is the only lever. Together, stat lines
+  should land about 30 seconds behind Sleeper instead of about 1½ minutes.
 - **Data:** scores-only checks fetch this week's matchups, a few KB. Stat lines (about 390 KB of JSON for six positions, before
   compression) still load once a minute, more only while one trails. ESPN's scoreboard is kept 30 seconds, so it loads every
   other check.
@@ -142,15 +143,17 @@ his first completion only):
     `fetch` with the copy from the request before, and refreshes it behind the scenes.
     - Checked in Chromium against a local server sending the same headers: plain `fetch` got the previous copy;
       `cache: 'no-cache'` got the newest, with no extra CORS preflight.
-  - Sleeper's CDN copy was itself about a minute old, and sometimes 2–9 minutes (run 39145684454 below).
+  - Sleeper's CDN copy was itself about a minute old, and sometimes 3–9 minutes (run 39145684454 below).
 - **Now:**
   - Stat lines load with each check.
   - The browser asks Sleeper every time (`cache: 'no-cache'`) for stats, matchups, rosters and a draft under way.
-  - A copy whose newest row (`updated_at`) is older than the one held is ignored.
+  - A copy whose newest row (`updated_at`) is older than the one held is ignored. Rows' `updated_at` moves during games, a few
+    seconds before each copy is made (run 39151992208), so an older copy has an older newest row.
   - Stat lines are kept per league's positions: leagues with different positions get different copies from Sleeper.
 - **Scoring plays could stay a score behind.** A summary loaded just as a score landed could miss that play, and was kept until
   the game's next score. Now each copy is labelled with the score its own scoring plays reach. One behind the scoreboard is
-  loaded again after 30 seconds, up to 4 times per score.
+  loaded again after 30 seconds, up to 4 times per score. It happens: 2 of 18 summaries loaded as a score changed trailed it
+  (run 39151992208).
 - **Tests:**
   - Unit: the newest copy (dates, an older copy kept out, positions apart); the cache mode of each Sleeper request; a summary's
     own score; when one is loaded again.
@@ -175,8 +178,24 @@ his first completion only):
     - HTTP 200, CORS `*`, `cache-control: public, s-maxage=4, stale-while-revalidate=600, stale-if-error=600`.
     - **It updates during games:** the copy changed in 62 of 69 polls, a median of 60 seconds apart (as often as it was asked).
     - The CDN copy was usually 59–60 seconds old: each request gets the copy fetched after the request before.
-    - 5 of 69 answers were older copies (`age` 120–540 seconds; the PPR sum over all rows fell): other CDN edges, not yet
-      caught up.
+    - 4 of 69 answers were older copies: `age` 180–540 seconds, with the PPR sum over all rows lower than the copy before. These
+      were other CDN edges that hadn't caught up. One more repeated the copy before (`age` 120).
+  - **Sleeper stats, second run** (run 39151992208, 50 polls a minute apart, 17:58–18:47 UTC, the 1 pm games' second and third
+    quarters):
+    - The copy changed in 48 of 49 polls. Sleeper sends an `ETag` (no `Last-Modified`), so a `no-cache` request can come back
+      304 when nothing changed.
+    - **`updated_at` moves during games.** Each copy's newest row was a median of 65 seconds before the poll (8 to 393). That's
+      about 5–15 seconds before the copy was made (its `age`), and it never went backward from one poll to the next.
+    - No older CDN copy turned up this time, apart from the first poll (`age` 386).
+    - The PPR sum fell 4 times, but each time the newest row moved forward: real stat changes (a sack, a fumble, a correction).
+      The older-copy guard rightly lets them through; a guard on the PPR sum would have thrown them away.
+    - **`cache-control: max-age=0` got nothing fresher.** That's what a browser sends for `cache: 'no-cache'`. It got the same
+      copy as the plain request in 49 of 50 polls (median `age` 59 seconds). The CDN ignores it, so `no-cache` only skips the
+      browser's copy; the CDN copy stays about as old as the gap since the last request for it.
+  - **ESPN summaries at a score change** (same run):
+    - 18 loaded the moment a live game's score changed on the scoreboard: 16 had the scoring play, and 2 trailed it.
+    - The header's score matched the last scoring play's in 17 of 18, so the app goes by the scoring plays, which is what it
+      shows.
 - **Unit tests:** the scoreboard parser (clock, halftime, overtime, a later week, `WSH` → `WAS`); the share played; the clock in
   `starterDist` and in live or final; the feed (entries, win chance, stats matched late, two plays before the stats catch up,
   older data ignored); swing players (ranking, theirs, conditioning, a QB with his receiver); what a stat change says.
