@@ -98,6 +98,12 @@ export async function loadLeagueData(leagueId: string, week: number, force = fal
   };
 }
 
+/** This week's scores alone, fresh from Sleeper: the Matchup tab's checks between full ones (lineups load once a minute). */
+export async function loadLiveScores(leagueId: string, week: number): Promise<Pick<LeagueData, 'matchups' | 'stale'>> {
+  const res = await cached(`matchups:${leagueId}:${week}`, 2 * MIN, () => sleeperApi.matchups(leagueId, week), { force: true });
+  return { matchups: res.value.map(parseMatchup), stale: res.stale };
+}
+
 /** Game statuses appear only on a team's final injury report of the week. */
 const GAME_STATUSES = new Set(['Questionable', 'Doubtful', 'Out']);
 
@@ -356,19 +362,30 @@ const LINE_KEYS = [
   'rec_yd',
   'rec_td',
   'fum_lost',
+  'pass_2pt',
+  'rush_2pt',
+  'rec_2pt',
   'fgm',
   'fga',
+  'fgm_yds',
+  'fgmiss',
   'xpm',
   'xpa',
+  'xpmiss',
   'sack',
   'int',
   'fum_rec',
   'def_td',
+  'def_st_td',
+  'safe',
+  'blk_kick',
   'pts_allow',
+  'yds_allow',
   'idp_tkl_solo',
   'idp_tkl_ast',
   'idp_sack',
   'idp_int',
+  'idp_ff',
 ];
 
 /** Stats rows by player, only the keys stat lines show; players without any are left out. */
@@ -405,9 +422,9 @@ export interface WeekStats {
 export const newerStats = (held: WeekStats | null, next: WeekStats): WeekStats => (held && held.asOf > next.asOf ? held : next);
 
 /**
- * How long stat lines are kept while games are on: every check (a minute apart, or on coming back to the page) loads them,
- * and the page's first load and first check, a moment apart, share one. Sleeper's copy changed about once a minute
- * through the 1 pm games of 2026-10-18 (docs/gameday.md).
+ * How long stat lines are kept while games are on: every check that asks for them (once a minute, more while one trails
+ * its points, or on coming back to the page) loads them, and the page's first load and first check, a moment apart, share
+ * one. Sleeper's copy changed about once a minute through the 1 pm games of 2026-10-18 (docs/gameday.md).
  */
 export const LIVE_STATS_TTL = 10_000;
 

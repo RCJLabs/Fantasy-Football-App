@@ -193,7 +193,7 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(score).toContainText(/proj \d+\.\d/);
   await expect(score).toContainText('1 playing');
   await expect(page.getByText(/Win chance with your lineup as set: [<>]?\d+%/)).toBeVisible();
-  await expect(page.getByText('Live: checks Sleeper every minute while games are on.')).toBeVisible();
+  await expect(page.getByText('Live: checks Sleeper every 20 seconds while games are on.')).toBeVisible();
   const grid = page.locator('.mu');
   await expect(grid.locator('.mu-head')).toContainText('Test Titans');
   const wideout = grid.locator('.mu-cell', { hasText: 'T. Wideout' });
@@ -462,6 +462,47 @@ test("game day: each check brings Sleeper's newest stat lines, and an older copy
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await expect(wideout.locator('.mu-line')).toHaveText('7/9 rec, 140 yd, TD');
   expect(served).toBeGreaterThan(before);
+});
+
+test('game day: scores every 20 seconds, and a stat line behind its points says so until it catches up', async ({ page }, testInfo) => {
+  let scored = false;
+  let caughtUp = false;
+  let statsServed = 0;
+  await page.route('https://api.sleeper.app/v1/league/1001/matchups/6', (route) => route.fulfill({ json: scored ? fx.matchupsAfterScore : fx.matchups }));
+  await page.route(/^https:\/\/api\.sleeper\.com\/stats\/nfl\/2026\/6\?/, (route) => {
+    statsServed++;
+    return route.fulfill({ json: caughtUp ? fx.weekStatsAfterScore : fx.weekStats });
+  });
+  await page.clock.install();
+  await page.goto('./');
+  await page.getByLabel('Sleeper username').fill('testuser');
+  await page.getByRole('button', { name: 'Find my leagues' }).click();
+  await page.locator('.league-card').filter({ hasText: 'Saturday Night Gridiron' }).getByRole('link').first().click();
+  await page.getByRole('tab', { name: 'Matchup' }).click();
+  const wideout = page.locator('.mu .mu-cell', { hasText: 'T. Wideout' });
+  await expect(wideout.locator('.mu-pts strong')).toHaveText('11.4');
+  await expect(wideout.locator('.mu-line')).toHaveText('5/7 rec, 89 yd');
+  await expect(wideout.locator('.mu-updating')).toHaveCount(0);
+  await page.waitForTimeout(1_000); // the page's first loads settle
+  const before = statsServed;
+
+  // He scores. The next check, 20 seconds on, brings Sleeper's points alone; his stat line hasn't caught up, and says so.
+  scored = true;
+  await page.clock.fastForward(21_000);
+  await expect(wideout.locator('.mu-pts strong')).toHaveText('17.4');
+  await expect(wideout.locator('.mu-updating')).toHaveText('updating');
+  await expect(wideout.locator('.mu-line')).toHaveText('5/7 rec, 89 yd');
+  expect(statsServed).toBe(before);
+  await wideout.screenshot({ path: testInfo.outputPath('stat-line-updating.png') });
+
+  // The check after loads stat lines because his trails: caught up, the tag goes, and the feed says what happened.
+  caughtUp = true;
+  await page.clock.fastForward(21_000);
+  await expect(wideout.locator('.mu-line')).toHaveText('6/8 rec, 123 yd, TD');
+  await expect(wideout.locator('.mu-updating')).toHaveCount(0);
+  expect(statsServed).toBeGreaterThan(before);
+  const feed = page.locator('.card', { has: page.getByRole('heading', { name: 'Live feed' }) });
+  await expect(feed.locator('.feed > li').first().locator('.feed-lines li')).toContainText('+6.0 T. Wideout yours · TD catch, 34 yd');
 });
 
 test("settings: this device's choices in one place, which the tabs follow", async ({ page }, testInfo) => {
