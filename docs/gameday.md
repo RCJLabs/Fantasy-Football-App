@@ -17,6 +17,8 @@ Code:
 - `app/src/ui/MatchupTab.tsx`: the cards; `app/src/ui/WinChart.tsx`: the graph; `app/src/ui/Home.tsx` (`RootingGuide`).
 - `app/src/ui/statLine.ts` (`statChange`): what a change in a stat line says.
 - `app/src/data/plays.ts`: ESPN's game summary, read into scoring plays and the box score's names; plays matched to players.
+- `app/src/data/repo.ts` (`loadWeekStats`, `newerStats`) and `app/src/sleeper/api.ts`: stat lines with each check, the newer copy
+  kept, and the browser asked every time (see "Live data").
 - `scripts/spike/espn-plays-spike.mjs`: the game summary check (`spike.yml` with `checks: plays`).
 - `scripts/spike/live-gameday-spike.mjs`: the live checks, run from Actions (`spike.yml` with `checks: live`).
 
@@ -84,7 +86,8 @@ Code:
     app's name, compared without punctuation or suffixes ("D.J. Moore Jr." reads as "DJ Moore"). One-word names never match.
     Team defenses are left out: their plays name the players, not the unit.
   - **Data:** a summary is 200–650 KB before compression (sent gzipped). It loads only for games the page shows plays for, and
-    again only when that game's score or state changes; what it found is kept on the device per game.
+    again only when that game's score or state changes, or while the copy trails the scoreboard's score (see "Live data"); what
+    it found is kept on the device per game.
 - **Late swaps (the shortcut):** a Matchup tab card with the Lineup tab's changes for the lineup as it stands (live scores and
   clocks), when they're worth it by what the advice aims for: half a point of win chance, or half an expected point.
   - Each change ("Start X over Y"), the expected points and win chance they add, and a link to the Lineup tab.
@@ -96,6 +99,45 @@ Code:
   the site never stores or republishes it. It's the same rule as the player news.
 - **Privacy:** the request is the plain scoreboard, nothing about the user or their leagues. The About page says so.
 - **On the device:** the live feed stays in this browser's storage (IndexedDB), like the rest of the cache.
+
+## Live data
+
+What the Matchup tab loads with each check: every minute while a starter's game is on and the page is open, and right away on
+coming back to the page when the last check is 15 seconds old or more. Checks don't overlap.
+
+| What | From | How fresh |
+|---|---|---|
+| Points, lineups | Sleeper's matchups and rosters | Loaded each check, the browser asking Sleeper every time |
+| Stat lines | Sleeper's stats | Loaded each check (kept 10 seconds). Sleeper's CDN copy is usually as old as the last request for it, about a minute; an older copy from another CDN edge is ignored |
+| Game clock, score, ball | ESPN's scoreboard | Kept 30 seconds, plus ESPN's own `max-age` of up to 10 |
+| Scoring plays | ESPN's game summary | Loaded when the game's score changes, and again while the copy trails the scoreboard's score |
+| Win chance, the graph, swing players, around the league, the feed | Worked out on the device | Each check |
+
+Not live: the Lineup tab (as the page loaded it) and Home's rooting guide (Home's Refresh).
+
+**Fixed 2026-10-18,** after the owner saw a quarterback's touchdown pass in his points but not in his stat line (the line had
+his first completion only):
+- **Stat lines trailed points by up to about 9 minutes.** Three delays stacked:
+  - The app kept stat lines 4 minutes, from the Thursday check's `s-maxage=300`.
+  - On game day Sleeper sends `s-maxage=4, stale-while-revalidate=600` and no `max-age`. With those headers, Chromium answers a
+    `fetch` with the copy from the request before, and refreshes it behind the scenes.
+    - Checked in Chromium against a local server sending the same headers: plain `fetch` got the previous copy;
+      `cache: 'no-cache'` got the newest, with no extra CORS preflight.
+  - Sleeper's CDN copy was itself about a minute old, and sometimes 2–9 minutes (run 39145684454 below).
+- **Now:**
+  - Stat lines load with each check.
+  - The browser asks Sleeper every time (`cache: 'no-cache'`) for stats, matchups, rosters and a draft under way.
+  - A copy whose newest row (`updated_at`) is older than the one held is ignored.
+  - Stat lines are kept per league's positions: leagues with different positions get different copies from Sleeper.
+- **Scoring plays could stay a score behind.** A summary loaded just as a score landed could miss that play, and was kept until
+  the game's next score. Now each copy is labelled with the score its own scoring plays reach. One behind the scoreboard is
+  loaded again after 30 seconds, up to 4 times per score.
+- **Tests:**
+  - Unit: the newest copy (dates, an older copy kept out, positions apart); the cache mode of each Sleeper request; a summary's
+    own score; when one is loaded again.
+  - End to end: the next automatic check (no Refresh) shows the touchdown's stat line; an older copy after it doesn't roll it
+    back; coming back to the page checks right away.
+  - With the old 4-minute keep, or without the older-copy guard, that end-to-end test fails.
 
 ## Checked
 
@@ -109,9 +151,13 @@ Code:
     - The live game's clock had moved a minute later.
   - **ESPN game summary** (`summary?event={id}`): HTTP 200 and CORS `*` too, but about 640 KB per game. Its scoring plays and plays
     carry text and team ids, no athlete ids; that matters for idea 7.
-  - **Sleeper stats:** HTTP 200, CORS `*`, `cache-control: public, s-maxage=4, stale-while-revalidate=600`; unchanged between two
-    polls a minute apart (the CDN copy was 59 seconds old). Whether its stat lines update during play is for the 70-minute run over
-    the 1 pm games (39145684454); until then the feed's "what happened" may only fill in after Sleeper's stats catch up.
+  - **Sleeper stats** (run 39145684454, 70 polls a minute apart, 16:35–17:44 UTC, through the first 45 minutes of the 1 pm
+    games):
+    - HTTP 200, CORS `*`, `cache-control: public, s-maxage=4, stale-while-revalidate=600, stale-if-error=600`.
+    - **It updates during games:** the copy changed in 62 of 69 polls, a median of 60 seconds apart (as often as it was asked).
+    - The CDN copy was usually 59–60 seconds old: each request gets the copy fetched after the request before.
+    - 5 of 69 answers were older copies (`age` 120–540 seconds; the PPR sum over all rows fell): other CDN edges, not yet
+      caught up.
 - **Unit tests:** the scoreboard parser (clock, halftime, overtime, a later week, `WSH` → `WAS`); the share played; the clock in
   `starterDist` and in live or final; the feed (entries, win chance, stats matched late, two plays before the stats catch up,
   older data ignored); swing players (ranking, theirs, conditioning, a QB with his receiver); what a stat change says.
@@ -146,7 +192,9 @@ Code:
   the rest works as before.
 - **Only while the page is open:** there's no server and no push. Entries are check times, a minute apart at best, not play times;
   one entry can hold several plays.
-- **Stat lines can lag the score,** so "what happened" can arrive a check or more after the points.
+- **Stat lines can trail the score by a minute or so** (Sleeper's CDN copy), so "what happened" can arrive a check after the points.
+- **Points from an older copy:** whether Sleeper's matchups can come from an older CDN copy, as its stats can, isn't measured. It
+  would take a league in the public spike's requests.
 - **Swing players use the normal model:** rough for players who may not play (their spread mixes "inactive" with "active"), and
   the floor is his points so far (negative plays are possible but rare).
 - **The graph only knows what this device saw:** checks while the Matchup tab was open, nothing from before or from other devices.

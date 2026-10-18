@@ -114,6 +114,8 @@ export interface RawProjection {
   game_id?: string | null;
   date?: string | null;
   company?: string;
+  /** When Sleeper last saved the row (ms since 1970). */
+  updated_at?: number | null;
   player?: {
     first_name?: string;
     last_name?: string;

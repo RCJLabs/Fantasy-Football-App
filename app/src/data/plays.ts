@@ -7,6 +7,9 @@ import { getJson } from '../sleeper/api';
 import { loadStored, saveStored } from './cache';
 
 const SUMMARY_URL = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary';
+/** A copy behind the scoreboard's score is loaded again after this long, at most this many times per score. [design] */
+const RETRY = 30_000;
+const MAX_TRIES = 4;
 
 export interface ScoringPlay {
   id: string;
@@ -24,11 +27,15 @@ export interface ScoringPlay {
 
 export interface GamePlays {
   event: string;
-  /** The score this copy was loaded at: a new score means new plays. */
+  /** The score this copy's scoring plays reach, with the game's state (`playsVersion`): a new score means new plays. */
   version: string;
   plays: ScoringPlay[];
   /** ESPN athlete id → ESPN's spelling of his name, from the box score. */
   names: Record<string, string>;
+  /** The scoreboard's version it was loaded for, how many loads that has taken, and when the last one was. */
+  asked?: string;
+  tries?: number;
+  at?: number;
 }
 
 interface RawPlay {
@@ -40,6 +47,9 @@ interface RawPlay {
   scoringType?: { abbreviation?: string };
   wallclock?: string;
   scoringPlay?: boolean;
+  /** The score after a scoring play. */
+  awayScore?: number;
+  homeScore?: number;
 }
 export interface RawSummary {
   scoringPlays?: RawPlay[];
@@ -47,8 +57,20 @@ export interface RawSummary {
   boxscore?: { players?: Array<{ statistics?: Array<{ athletes?: Array<{ athlete?: { id?: string | number; displayName?: string } }> }> }> };
 }
 
-/** The scoring plays in order, their times from the play-by-play, and the box score's names. */
-export function parseSummary(body: RawSummary, event: string, version: string): GamePlays {
+/** "away-home" after the summary's last scoring play ("0-0" before any); undefined when its plays carry no score. */
+export function summaryScore(body: RawSummary): string | undefined {
+  const last = body.scoringPlays?.at(-1);
+  if (!last) return '0-0';
+  return typeof last.awayScore === 'number' && typeof last.homeScore === 'number' ? `${last.awayScore}-${last.homeScore}` : undefined;
+}
+
+/**
+ * The scoring plays in order, their times from the play-by-play, and the box score's names. `asked` is the scoreboard's
+ * version; the copy's own version has the score its scoring plays reach (the asked one when they don't say).
+ */
+export function parseSummary(body: RawSummary, event: string, asked: string): GamePlays {
+  const own = summaryScore(body);
+  const version = own === undefined ? asked : `${asked.split(':')[0]}:${own}`;
   const when = new Map<string, number>();
   for (const p of [...(body.drives?.previous ?? []).flatMap((d) => d.plays ?? []), ...(body.drives?.current?.plays ?? [])]) {
     const t = p.wallclock ? Date.parse(p.wallclock) : NaN;
@@ -99,8 +121,19 @@ export function playsFor(g: GamePlays, player: { name: string; espnId?: string }
 }
 
 /**
- * A game's scoring plays as of `version` (the score): kept on the device per game, and loaded again only when the score
- * has changed, since a summary is 200–650 KB before compression.
+ * Whether a game's plays held on the device need loading again for the scoreboard's `version`. A summary loaded just as a
+ * score lands can trail the scoreboard: it's loaded again after a pause, a few times at most, until its plays reach the score.
+ */
+export function needsLoad(held: GamePlays, version: string, now: number): boolean {
+  if (!Array.isArray(held.plays)) return true;
+  if (held.version === version) return false;
+  if (held.asked === version) return (held.tries ?? 1) < MAX_TRIES && now - (held.at ?? 0) >= RETRY;
+  return true;
+}
+
+/**
+ * A game's scoring plays as of `version` (the scoreboard's score): kept on the device per game, and loaded again only when
+ * the score has changed (or the copy held trails it), since a summary is 200–650 KB before compression.
  */
 export function loadGamePlays(event: string, version: string): Promise<GamePlays> {
   const id = `${event}@${version}`;
@@ -108,20 +141,27 @@ export function loadGamePlays(event: string, version: string): Promise<GamePlays
   if (!p) {
     p = (async () => {
       const key = `espn:plays:${event}`;
-      const held = await loadStored<GamePlays>(key);
-      if (held?.version === version && Array.isArray(held.plays)) return held;
+      const held = (await loadStored<GamePlays>(key)) ?? kept.get(event);
+      if (held && !needsLoad(held, version, Date.now())) return held;
       const fresh = parseSummary(await getJson<RawSummary>(`${SUMMARY_URL}?event=${encodeURIComponent(event)}`, { retries: 1 }), event, version);
-      await saveStored(key, fresh);
-      return fresh;
+      const out: GamePlays = { ...fresh, asked: version, tries: held?.asked === version ? (held.tries ?? 1) + 1 : 1, at: Date.now() };
+      kept.set(event, out);
+      await saveStored(key, out);
+      return out;
     })();
     inflight.set(id, p);
-    p.catch(() => inflight.delete(id));
+    p.then(
+      () => inflight.delete(id),
+      () => inflight.delete(id),
+    );
   }
   return p;
 }
 
 /** One load per game and score at a time, however many players and feed entries ask. */
 const inflight = new Map<string, Promise<GamePlays>>();
+/** The last copy of each game, for when the device can't store it (private mode). */
+const kept = new Map<string, GamePlays>();
 
 /** The score a game's plays are loaded at. */
 export const playsVersion = (c: { homeScore: number; awayScore: number; state: string }) => `${c.state}:${c.awayScore}-${c.homeScore}`;

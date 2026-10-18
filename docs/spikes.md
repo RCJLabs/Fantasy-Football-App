@@ -12,7 +12,7 @@ Every endpoint below returns `access-control-allow-origin: *` (with `allow-crede
 | `api.sleeper.app/v1/players/nfl/trending/add` | `s-maxage=600` |
 | `api.sleeper.com/projections/nfl/{season}/{week}?season_type=regular&position[]=…` | `s-maxage=600` |
 | `api.sleeper.app/v1/projections/nfl/regular/{season}/{week}` | `s-maxage=600` |
-| `api.sleeper.com/stats/nfl/{season}/{week}?season_type=regular&position[]=…` | `s-maxage=300` |
+| `api.sleeper.com/stats/nfl/{season}/{week}?season_type=regular&position[]=…` | `s-maxage=300` (on game day, 2026-10-18: `s-maxage=4, stale-while-revalidate=600`; [gameday.md](gameday.md)) |
 | `api.sleeper.app/v1/stats/nfl/regular/{season}/{week}` | `s-maxage=600` |
 | `api.sleeper.com/schedule/nfl/regular/{season}` | `s-maxage=600` |
 | `raw.githubusercontent.com/nflverse/nfldata/master/data/games.csv` | `max-age=300` |

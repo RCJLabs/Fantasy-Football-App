@@ -242,21 +242,29 @@ export const espnNews = {
   ],
 };
 
-/** Sleeper's stats so far for the live game (AAA@BBB): lines that add up to the points above. */
+/** Sleeper's stats so far for the live game (AAA@BBB): lines that add up to the points above, last saved 5 minutes ago. */
 export const weekStats: RawProjection[] = [
-  { player_id: 'w1', stats: { rec: 5, rec_tgt: 7, rec_yd: 89, pts_ppr: 13.9 }, team: 'AAA' },
-  { player_id: 'o1', stats: { pass_cmp: 9, pass_att: 14, pass_yd: 80, pass_td: 1, pass_int: 1 }, team: 'BBB' },
+  { player_id: 'w1', stats: { rec: 5, rec_tgt: 7, rec_yd: 89, pts_ppr: 13.9 }, team: 'AAA', updated_at: now - 5 * 60_000 },
+  { player_id: 'o1', stats: { pass_cmp: 9, pass_att: 14, pass_yd: 80, pass_td: 1, pass_int: 1 }, team: 'BBB', updated_at: now - 6 * 60_000 },
 ];
 /** The live game after a touchdown catch by the wideout (Sleeper's score first; its stat line catches up later). */
 export const matchupsAfterScore: RawMatchup[] = matchups.map((m) => (m.roster_id === 1 ? { ...m, points: 17.4, players_points: { w1: 17.4 } } : m));
 export const weekStatsAfterScore: RawProjection[] = weekStats.map((r) =>
-  r.player_id === 'w1' ? { ...r, stats: { rec: 6, rec_tgt: 8, rec_yd: 123, rec_td: 1, pts_ppr: 24.3 } } : r,
+  r.player_id === 'w1' ? { ...r, stats: { rec: 6, rec_tgt: 8, rec_yd: 123, rec_td: 1, pts_ppr: 24.3 }, updated_at: now - 60_000 } : r,
 );
 
 /** ESPN's game summary for the live game (its response shape; invented): the wideout's touchdown, a minute ago. */
 export const espnSummary = {
   scoringPlays: [
-    { id: 701, text: 'Taylor Wideout 34 Yd pass from Alex Thrower (Sam Boot Kick)', period: { number: 2 }, clock: { displayValue: '9:12' }, scoringType: { abbreviation: 'TD' } },
+    {
+      id: 701,
+      text: 'Taylor Wideout 34 Yd pass from Alex Thrower (Sam Boot Kick)',
+      period: { number: 2 },
+      clock: { displayValue: '9:12' },
+      scoringType: { abbreviation: 'TD' },
+      awayScore: 10,
+      homeScore: 7,
+    },
   ],
   drives: { previous: [{ plays: [{ id: 701, scoringPlay: true, wallclock: iso(-0.02) }] }] },
   boxscore: { players: [{ statistics: [{ name: 'receiving', athletes: [{ athlete: { id: '9000001', displayName: 'Taylor Wideout' } }] }] }] },

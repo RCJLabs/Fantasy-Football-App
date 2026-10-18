@@ -385,20 +385,48 @@ export function compactStats(rows: readonly RawProjection[]): Record<string, Sta
   return out;
 }
 
+/** The newest row in a copy of Sleeper's stats: when Sleeper last saved any of it (ms), 0 when no row says. */
+export function statsAsOf(rows: readonly RawProjection[]): number {
+  let newest = 0;
+  for (const r of rows) if (typeof r.updated_at === 'number' && Number.isFinite(r.updated_at) && r.updated_at > newest) newest = r.updated_at;
+  return newest;
+}
+
 export interface WeekStats {
   /** By Sleeper player id. */
   stats: Map<string, StatLine>;
+  /** The copy's newest row (`statsAsOf`): a later copy has a later one. */
+  asOf: number;
   savedAt: number;
   stale: boolean;
 }
 
+/** The newer of two copies of the week's stats: `next` unless `held` has newer rows. */
+export const newerStats = (held: WeekStats | null, next: WeekStats): WeekStats => (held && held.asOf > next.asOf ? held : next);
+
 /**
- * The week's stats so far, from Sleeper's stats (the matchup's stat lines; display only). Kept 4 minutes: Sleeper's CDN
- * serves the same copy for up to 5.
+ * How long stat lines are kept while games are on: every check (a minute apart, or on coming back to the page) loads them,
+ * and the page's first load and first check, a moment apart, share one. Sleeper's copy changed about once a minute
+ * through the 1 pm games of 2026-10-18 (docs/gameday.md).
  */
-export async function loadWeekStats(season: string, week: number, positions: readonly string[], force = false): Promise<WeekStats> {
-  const res = await cached(`stats:${season}:${week}`, 4 * MIN, async () => compactStats(await sleeperApi.stats(season, week, positions)), { force });
-  return { stats: new Map(Object.entries(res.value)), savedAt: res.savedAt, stale: res.stale };
+export const LIVE_STATS_TTL = 10_000;
+
+/**
+ * The week's stats so far, from Sleeper's stats (the matchup's stat lines; display only). Kept `ttl` (4 minutes unless
+ * games are on). Sleeper's CDN can answer with a copy a few minutes older than the one held: the newer one is kept.
+ */
+export async function loadWeekStats(season: string, week: number, positions: readonly string[], force = false, ttl = 4 * MIN): Promise<WeekStats> {
+  const res = await cached<{ asOf: number; lines: Record<string, StatLine> }>(
+    `stats:${season}:${week}:${positions.join(',')}`,
+    ttl,
+    async (held) => {
+      const rows = await sleeperApi.stats(season, week, positions);
+      const fresh = { asOf: statsAsOf(rows), lines: compactStats(rows) };
+      return held && held.asOf > fresh.asOf ? held : fresh;
+    },
+    { force },
+  );
+  return { stats: new Map(Object.entries(res.value.lines)), asOf: res.value.asOf, savedAt: res.savedAt, stale: res.stale };
 }
 
 /** One week's matchups (e.g. last week's final scores in a two-week playoff round). */

@@ -7,7 +7,7 @@ import { oddsWithWeek } from '../analysis/outlook';
 import { projectionPositions } from '../analysis/ros';
 import { swingPlayers, type SwingPlayer } from '../analysis/swing';
 import { loadStored, saveStored } from '../data/cache';
-import { type LeagueData, loadLeagueData, loadWeekStats, type WeekStats } from '../data/repo';
+import { type LeagueData, LIVE_STATS_TTL, loadLeagueData, loadWeekStats, newerStats, type WeekStats } from '../data/repo';
 import { loadGamePlays, playsFor, playsVersion, type ScoringPlay } from '../data/plays';
 import { loadScoreboard } from '../data/scoreboard';
 import type { GameClock } from '../domain/types';
@@ -21,6 +21,8 @@ import { WinChart } from './WinChart';
 
 /** How often the Matchup tab checks Sleeper's scores while a starter's game is on and the page is open. [design] */
 const LIVE_POLL = 60_000;
+/** Coming back to the page checks right away when the last check is this old. [design] */
+const RESUME_CHECK = 15_000;
 /** Entries shown before "Show all". */
 const FEED_SHOWN = 6;
 /** Swing players shown, and the least a player must move your win chance to be one. [design] */
@@ -77,22 +79,29 @@ export function MatchupTab({ b, base, objective, now }: { b: LeagueBundle; base:
   const positions = useMemo(() => projectionPositions(b.league), [b.league]);
   const started = [...view.me.slots, ...(view.opponent?.slots ?? [])].some((r) => r && r.kickoff !== null && r.kickoff <= now);
 
-  /** Scores and lineups fresh from Sleeper; stat lines and game clocks from the copies kept a few minutes unless `force`. */
+  // A check under way (a second one waits for the next tick), and when the last one started.
+  const checking = useRef(false);
+  const lastCheck = useRef(0);
+  /** Scores, lineups and stat lines fresh from Sleeper; game clocks from the copy kept 30 seconds. `force` reloads them all. */
   const refresh = async (force: boolean) => {
+    if (checking.current) return;
+    checking.current = true;
+    lastCheck.current = Date.now();
     setBusy(true);
     try {
       const [data, st, sb] = await Promise.all([
         loadLeagueData(b.league.id, b.week, true),
-        loadWeekStats(b.league.season, b.week, positions, force).catch(() => null),
+        loadWeekStats(b.league.season, b.week, positions, force, LIVE_STATS_TTL).catch(() => null),
         loadScoreboard(b.week, force).catch(() => null),
       ]);
       setLive({ data, at: Date.now() });
-      if (st) setStats(st);
+      if (st) setStats((held) => newerStats(held, st));
       if (sb) setClock(sb);
       setError(data.stale ? "Sleeper didn't answer: showing the last scores saved." : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      checking.current = false;
       setBusy(false);
     }
   };
@@ -101,17 +110,25 @@ export function MatchupTab({ b, base, objective, now }: { b: LeagueBundle; base:
   // Stat lines and game clocks once any starter's game has kicked off (the week's final ones afterwards).
   useEffect(() => {
     if (!started) return;
-    if (!stats) void loadWeekStats(b.league.season, b.week, positions).then(setStats, () => undefined);
+    if (!stats) void loadWeekStats(b.league.season, b.week, positions).then((st) => setStats((held) => newerStats(held, st)), () => undefined);
     if (!clock) void loadScoreboard(b.week).then(setClock, () => undefined);
   }, [started]);
-  // Live scores while a starter's game is on and the page is open.
+  // Live scores while a starter's game is on and the page is open, and right away on coming back to it (from Sleeper's app,
+  // say) rather than at the next tick.
   useEffect(() => {
     if (!view.playing) return;
     void refresh(false);
     const id = setInterval(() => {
       if (document.visibilityState === 'visible') void refresh(false);
     }, LIVE_POLL);
-    return () => clearInterval(id);
+    const back = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastCheck.current >= RESUME_CHECK) void refresh(false);
+    };
+    document.addEventListener('visibilitychange', back);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', back);
+    };
   }, [view.playing]);
 
   // The live feed: each check compared with the one before, kept on this device for the week.
@@ -234,7 +251,8 @@ export function MatchupTab({ b, base, objective, now }: { b: LeagueBundle; base:
         <p class="muted small">
           Points so far are Sleeper&apos;s. Before a game, a starter shows his projection (times his chance to play); once it starts, his points and
           his projection. Projected final: points so far plus what&apos;s left of each starter&apos;s projection, by the game clock (ESPN&apos;s
-          scoreboard; time since kickoff when it doesn&apos;t load). Stat lines come from Sleeper and can lag its scores. Win chance treats players
+          scoreboard; time since kickoff when it doesn&apos;t load). Stat lines come from Sleeper&apos;s stats, loaded with each check; they can trail
+          its scores by a minute or so. Win chance treats players
           in the same NFL game as linked (a QB and his receivers rise and fall together).
           {opp?.assumed.size ? ` ${opp.name} is assumed to replace starters who can't play (marked “assumed”).` : ''}
         </p>
@@ -324,8 +342,8 @@ function FeedLine({ e, g, clock }: { e: FeedEvent; g: FeedGroup; clock: GameCloc
 
 /** ESPN's description of the scoring play behind an entry: his plays between the check before (less Sleeper's lag) and this one. */
 function FeedPlay({ e, g, clock }: { e: FeedEvent; g: FeedGroup; clock: GameClock }) {
-  const version = playsVersion(clock);
-  const game = useAsync(() => loadGamePlays(clock.event!, version), [clock.event, version]);
+  // Asked again with each check's clock: a copy that trailed the scoreboard loads again (loadGamePlays).
+  const game = useAsync(() => loadGamePlays(clock.event!, playsVersion(clock)), [clock]);
   if (!game.data) return null;
   const plays = playsFor(game.data, { name: e.name, ...(e.espn ? { espnId: e.espn } : {}) }).filter((p) => p.at !== undefined && p.at > g.since - PLAY_LAG && p.at <= g.at);
   return plays.length ? (
@@ -347,13 +365,14 @@ function ScoringPlays({ row, clock }: { row: PlayerRow; clock: GameClock }) {
       <button type="button" class="link small" aria-expanded={open} onClick={() => setOpen(!open)}>
         {open ? 'Hide scoring plays' : 'Scoring plays'}
       </button>
-      {open ? <PlaysList row={row} event={clock.event!} version={playsVersion(clock)} /> : null}
+      {open ? <PlaysList row={row} clock={clock} /> : null}
     </div>
   );
 }
 
-function PlaysList({ row, event, version }: { row: PlayerRow; event: string; version: string }) {
-  const game = useAsync(() => loadGamePlays(event, version), [event, version]);
+function PlaysList({ row, clock }: { row: PlayerRow; clock: GameClock }) {
+  // Asked again with each check's clock: a copy that trailed the scoreboard loads again (loadGamePlays).
+  const game = useAsync(() => loadGamePlays(clock.event!, playsVersion(clock)), [clock]);
   if (game.error && !game.data) return <p class="muted small">ESPN&apos;s plays didn&apos;t load.</p>;
   if (!game.data) return <p class="muted small">Loading…</p>;
   const plays: ScoringPlay[] = playsFor(game.data, { name: row.name, ...(row.espnId ? { espnId: row.espnId } : {}) });

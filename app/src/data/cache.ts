@@ -56,14 +56,14 @@ export async function saveStored<T>(key: string, value: T): Promise<void> {
 }
 
 /**
- * Return a cached value younger than `ttlMs`, otherwise load and store it. If loading fails and an
- * older copy exists, return that copy marked stale (offline / API down).
+ * Return a cached value younger than `ttlMs`, otherwise load and store it (`load` gets the copy held, if any). If loading
+ * fails and an older copy exists, return that copy marked stale (offline / API down).
  */
-export async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>, opts: { force?: boolean } = {}): Promise<Cached<T>> {
+export async function cached<T>(key: string, ttlMs: number, load: (held: T | undefined) => Promise<T>, opts: { force?: boolean } = {}): Promise<Cached<T>> {
   const hit = await read<T>(key);
   if (hit && !opts.force && Date.now() - hit.savedAt < ttlMs) return { ...hit, stale: false };
   try {
-    const value = await load();
+    const value = await load(hit?.value);
     await write(key, value);
     return { value, savedAt: Date.now(), stale: false };
   } catch (e) {
