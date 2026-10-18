@@ -340,6 +340,66 @@ export async function loadRosWeeks(season: string, weeks: readonly number[], pos
   return { byWeek, missing };
 }
 
+/** Stat keys the matchup's stat lines show (ui/statLine.ts); the rest of each stats row is dropped before caching. */
+const LINE_KEYS = [
+  'pass_cmp',
+  'pass_att',
+  'pass_yd',
+  'pass_td',
+  'pass_int',
+  'rush_att',
+  'rush_yd',
+  'rush_td',
+  'rec',
+  'rec_tgt',
+  'rec_yd',
+  'rec_td',
+  'fum_lost',
+  'fgm',
+  'fga',
+  'xpm',
+  'xpa',
+  'sack',
+  'int',
+  'fum_rec',
+  'def_td',
+  'pts_allow',
+  'idp_tkl_solo',
+  'idp_tkl_ast',
+  'idp_sack',
+  'idp_int',
+];
+
+/** Stats rows by player, only the keys stat lines show; players without any are left out. */
+export function compactStats(rows: readonly RawProjection[]): Record<string, StatLine> {
+  const out: Record<string, StatLine> = {};
+  for (const r of rows) {
+    const line: StatLine = {};
+    for (const k of LINE_KEYS) {
+      const v = r.stats?.[k];
+      if (typeof v === 'number' && v !== 0) line[k] = v;
+    }
+    if (Object.keys(line).length) out[r.player_id] = line;
+  }
+  return out;
+}
+
+export interface WeekStats {
+  /** By Sleeper player id. */
+  stats: Map<string, StatLine>;
+  savedAt: number;
+  stale: boolean;
+}
+
+/**
+ * The week's stats so far, from Sleeper's stats (the matchup's stat lines; display only). Kept 4 minutes: Sleeper's CDN
+ * serves the same copy for up to 5.
+ */
+export async function loadWeekStats(season: string, week: number, positions: readonly string[], force = false): Promise<WeekStats> {
+  const res = await cached(`stats:${season}:${week}`, 4 * MIN, async () => compactStats(await sleeperApi.stats(season, week, positions)), { force });
+  return { stats: new Map(Object.entries(res.value)), savedAt: res.savedAt, stale: res.stale };
+}
+
 /** One week's matchups (e.g. last week's final scores in a two-week playoff round). */
 export async function loadMatchups(leagueId: string, week: number, force = false): Promise<Matchup[]> {
   return (await cached(`matchups:${leagueId}:${week}`, 10 * MIN, () => sleeperApi.matchups(leagueId, week), { force })).value.map(parseMatchup);

@@ -31,6 +31,10 @@ async function mockBackends(page: Page) {
     const week = Number(new URL(route.request().url()).pathname.split('/').pop());
     return route.fulfill({ json: week === 6 ? fx.projections : fx.futureProjections(week) });
   });
+  await page.route(/^https:\/\/api\.sleeper\.com\/stats\/nfl\/2026\/\d+\?/, (route) => {
+    const week = Number(new URL(route.request().url()).pathname.split('/').pop());
+    return route.fulfill({ json: week === 6 ? fx.weekStats : [] });
+  });
   await page.route('https://api.fantasycalc.com/**', (route) => {
     const dynasty = new URL(route.request().url()).searchParams.get('isDynasty') === 'true';
     return route.fulfill({ json: dynasty ? [...fx.marketValues, ...fx.pickValues] : fx.marketValues });
@@ -156,10 +160,29 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(page.getByText(/Tuned for win chance|max-points lineup is also your best shot/)).toBeVisible();
   await mode.getByRole('button', { name: 'Max points' }).click();
 
-  // Matchup
+  // Matchup: both lineups slot by slot, as they'll score. The live game (AAA@BBB) shows points so far, the projection and the
+  // stat line; the rest show projections.
   await page.getByRole('tab', { name: 'Matchup' }).click();
-  await expect(page.locator('.versus')).toContainText('Rival Raiders');
-  await expect(page.getByText('Win chance with the recommended lineup')).toBeVisible();
+  const score = page.locator('.versus');
+  await expect(score).toContainText('Test Titans');
+  await expect(score).toContainText('Rival Raiders');
+  await expect(score.locator('strong').first()).toHaveText('11.4');
+  await expect(score.locator('strong').nth(1)).toHaveText('6.2');
+  await expect(score).toContainText(/proj \d+\.\d/);
+  await expect(score).toContainText('1 playing');
+  await expect(page.getByText(/Win chance with your lineup as set: [<>]?\d+%/)).toBeVisible();
+  await expect(page.getByText('Live: checks Sleeper every minute while games are on.')).toBeVisible();
+  const grid = page.locator('.mu');
+  await expect(grid.locator('.mu-head')).toContainText('Test Titans');
+  const wideout = grid.locator('.mu-cell', { hasText: 'T. Wideout' });
+  await expect(wideout.locator('.mu-pts')).toContainText(/^11\.4 \/ \d+\.\d$/);
+  await expect(wideout.locator('.mu-line')).toHaveText('5/7 rec, 89 yd');
+  await expect(grid.locator('.mu-cell.mu-right', { hasText: 'O. Passer' }).locator('.mu-line')).toHaveText('9/14, 80 yd, TD, 1 INT');
+  await expect(grid.locator('.mu-cell', { hasText: 'C. Quarterback' }).locator('.mu-pts')).toContainText('proj');
+  await expect(grid.locator('.mu-cell', { hasText: 'J. Back' })).toContainText('BYE');
+  await expect(grid.locator('.mu-cell', { hasText: 'FFF DEF' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  await page.screenshot({ path: testInfo.outputPath('matchup.png'), fullPage: true });
 
   // Waivers: the free-agent RB helps most this week and for the rest of the season, with a FAAB bid.
   await page.getByRole('tab', { name: 'Waivers' }).click();

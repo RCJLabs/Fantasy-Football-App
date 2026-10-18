@@ -256,6 +256,73 @@ h3 {
 .vs {
   color: var(--muted);
 }
+.versus > .score-right {
+  text-align: right;
+  justify-items: end;
+}
+
+/* Matchup tab: both lineups slot by slot, yours on the left; one grid, so every row's columns line up. */
+.mu {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+.mu-row {
+  display: contents;
+}
+/* Spacing inside the cells, not between them, so each row's divider runs unbroken. */
+.mu-row > * {
+  padding: 0.45rem 0.4rem;
+  border-top: 1px solid var(--border);
+}
+.mu-row > :first-child {
+  padding-left: 0;
+}
+.mu-row > :last-child {
+  padding-right: 0;
+}
+.mu-head > * {
+  border-top: none;
+  font-weight: 600;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.mu-head > :last-child,
+.mu-right {
+  text-align: right;
+}
+.mu-row > .slot {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+}
+.mu-cell {
+  min-width: 0;
+  font-size: 0.78rem;
+}
+.mu-name {
+  font-size: 0.92rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mu-pts {
+  font-size: 0.85rem;
+}
+.mu-pts strong {
+  font-size: 1.05rem;
+}
+.mu-live .mu-pts strong {
+  color: var(--accent);
+}
+.mu-meta,
+.mu-line {
+  overflow-wrap: anywhere;
+}
+.mu-line {
+  margin-top: 0.1rem;
+}
 
 .problems {
   list-style: none;

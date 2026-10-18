@@ -65,6 +65,14 @@ export const sleeperApi = {
       `${WEB}/projections/nfl/${season}/${week}?season_type=regular&${positions.map((p) => `position[]=${p}`).join('&')}`,
       { timeoutMs: 45_000 },
     ),
+  /**
+   * Undocumented: the week's stats so far, rows shaped like projections (docs/spikes.md (g)). Its CDN keeps a copy for up to
+   * 5 minutes.
+   */
+  stats: (season: string, week: number, positions: readonly string[] = ALL_POSITIONS) =>
+    getJson<RawProjection[]>(`${WEB}/stats/nfl/${season}/${week}?season_type=regular&${positions.map((p) => `position[]=${p}`).join('&')}`, {
+      timeoutMs: 45_000,
+    }),
   /** Full player dump (~15 MB raw). Sleeper asks for at most one call per day; fallback only. */
   players: () => getJson<Record<string, RawPlayer>>(`${API}/players/nfl`, { timeoutMs: 90_000 }),
 };

@@ -217,6 +217,11 @@ export const matchups: RawMatchup[] = [
   { roster_id: 3, matchup_id: 2, starters: [], players: [], points: 0 },
   { roster_id: 4, matchup_id: 2, starters: [], players: [], points: 0 },
 ];
+/** Sleeper's stats so far for the live game (AAA@BBB): lines that add up to the points above. */
+export const weekStats: RawProjection[] = [
+  { player_id: 'w1', stats: { rec: 5, rec_tgt: 7, rec_yd: 89, pts_ppr: 13.9 }, team: 'AAA' },
+  { player_id: 'o1', stats: { pass_cmp: 9, pass_att: 14, pass_yd: 80, pass_td: 1, pass_int: 1 }, team: 'BBB' },
+];
 /**
  * Weeks 1–5, final: 4-1 on scores that beat 10 of 15 others (all-play), and 3-2 against the median. My starters are the same
  * every week; the bench outscored them in weeks 3 (Morgan Halfback, 22) and 5 (Casey Depth, 12).

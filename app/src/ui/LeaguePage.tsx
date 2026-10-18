@@ -7,6 +7,7 @@ import { ErrorBox, PlayerLine, Problems, slotLabel, Spinner } from './components
 import { findLeague, lineupFor, loadLeagueBundle, rememberAdvice, type LeagueBundle } from './data';
 import { ago, pct, pts, signed } from './format';
 import { useAsync, useTick } from './hooks';
+import { MatchupTab } from './MatchupTab';
 import { setObjectivePref } from './prefs';
 import { SeasonTab, TradeTab, WaiversTab } from './SeasonTabs';
 import type { Session } from './session';
@@ -124,7 +125,11 @@ function LineupArea({ b, tab, now }: { b: LeagueBundle; tab: 'lineup' | 'matchup
     setObjectivePref(b.league.id, b.phase, o);
     setChoice(o);
   };
-  return tab === 'matchup' ? <MatchupTab a={a} now={now} /> : <LineupTab a={a} bestBall={b.league.rules.bestBall} now={now} onObjective={choose} />;
+  return tab === 'matchup' ? (
+    <MatchupTab b={b} base={a} objective={choice} now={now} />
+  ) : (
+    <LineupTab a={a} bestBall={b.league.rules.bestBall} now={now} onObjective={choose} />
+  );
 }
 
 function ObjectiveToggle({ a, onObjective }: { a: LineupAnalysis; onObjective: (o: Objective) => void }) {
@@ -251,52 +256,4 @@ function LineupTab({ a, bestBall, now, onObjective }: { a: LineupAnalysis; bestB
   );
 }
 
-function MatchupTab({ a, now }: { a: LineupAnalysis; now: number }) {
-  const sd = (v: number) => Math.sqrt(Math.max(0, v));
-  return (
-    <div class="stack">
-      <div class="card">
-        <div class="versus">
-          <div>
-            <span class="muted small">{a.me.name}</span>
-            <strong>{pts(a.me.dist.mean)}</strong>
-            <span class="muted small">±{pts(sd(a.me.dist.variance))}</span>
-          </div>
-          <div class="vs">vs</div>
-          <div>
-            <span class="muted small">{a.opponent?.name ?? 'No opponent'}</span>
-            <strong>{a.opponent ? pts(a.opponent.dist.mean) : '–'}</strong>
-            {a.opponent ? <span class="muted small">±{pts(sd(a.opponent.dist.variance))}</span> : null}
-          </div>
-        </div>
-        <p>
-          Win chance with the recommended lineup: <strong>{pct(a.winProbRecommended)}</strong>
-          {a.medianProb !== undefined ? (
-            <>
-              {' '}
-              · beat the league median: <strong>{pct(a.medianProb)}</strong>
-            </>
-          ) : null}
-        </p>
-        <p class="muted small">
-          Totals include points already scored; games in progress are prorated. Players in the same NFL game are treated as correlated (a QB and his
-          receivers rise and fall together; a QB and the defense he faces move in opposite directions).
-        </p>
-        {a.opponent?.assumed?.length ? (
-          <p class="muted small">Assumes {a.opponent.name} replaces starters who can't play (marked “assumed”).</p>
-        ) : null}
-      </div>
-      {a.opponent ? (
-        <div class="card">
-          <h2>{a.opponent.name}</h2>
-          <div class="list">
-            {a.opponent.rows.map((row) => (
-              <PlayerLine row={row} now={now} note={row && a.opponent!.assumed?.includes(row.id) ? 'assumed' : undefined} />
-            ))}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
