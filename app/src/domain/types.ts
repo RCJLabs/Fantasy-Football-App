@@ -64,6 +64,29 @@ export interface Game {
   roof?: string;
 }
 
+/** Where an NFL game stands right now, from ESPN's scoreboard (the Matchup tab's game clock). */
+export interface GameClock {
+  state: 'pre' | 'in' | 'post';
+  /** Quarter (5 and up: overtime); 0 before kickoff. */
+  period: number;
+  /** Seconds left in the period. */
+  clock: number;
+  /** "Q2 8:43", "Half", "End Q3", "OT 4:10", "Final", "Final/OT"; empty before kickoff. */
+  label: string;
+  /** Share of a 60-minute game played, 0–1. Overtime counts its clock against the same hour, so little remains. */
+  progress: number;
+  home: string; // Sleeper team codes
+  away: string;
+  homeScore: number;
+  awayScore: number;
+  /** Team with the ball (Sleeper code), while the game is on. */
+  possession?: string;
+  /** ESPN's down and distance, e.g. "3rd & 4 at BUF 18". */
+  down?: string;
+  /** The team with the ball is inside the opponent's 20. */
+  redZone?: boolean;
+}
+
 export interface LeagueRules {
   type: 'redraft' | 'keeper' | 'dynasty';
   bestBall: boolean;

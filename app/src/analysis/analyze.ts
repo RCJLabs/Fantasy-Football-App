@@ -1,4 +1,4 @@
-import type { Game, League, LeagueUser, Matchup, Player, PracticeStatus, Roster, StatLine } from '../domain/types';
+import type { Game, GameClock, League, LeagueUser, Matchup, Player, PracticeStatus, Roster, StatLine } from '../domain/types';
 import { bestAssignment } from '../engine/assignment';
 import { conditionalMean, playProbability } from '../engine/availability';
 import { crossCovariance, pairCorrelation, withinCovariance, type CorrItem } from '../engine/correlation';
@@ -31,6 +31,8 @@ export interface WeekContext {
   baseline?: BaselineIndex;
   /** 'baseline' when Sleeper's projections were missing and QB/RB/WR/TE projections come from the baseline. */
   projectionSource?: 'baseline';
+  /** Live game clocks by Sleeper team code (ESPN's scoreboard), while games are on: how much of each game is left. */
+  clock?: ReadonlyMap<string, GameClock>;
 }
 
 export interface BaselineIndex {
@@ -87,6 +89,8 @@ export interface PlayerRow {
   fallback?: true;
   /** ESPN athlete id: player details load his recent news from ESPN. */
   espnId?: string;
+  /** His game's live clock (ESPN's scoreboard), when loaded. */
+  clock?: GameClock;
 }
 
 export type ProblemLevel = 'error' | 'warn' | 'info';
@@ -148,6 +152,8 @@ export interface LineupAnalysis {
   /** Chance to win this week's game (the whole round in a two-week playoff round). */
   winProbCurrent?: number;
   winProbRecommended?: number;
+  /** Your total minus theirs for the lineup as set, as the win chance models it (swing players condition on it). */
+  marginCurrent?: Dist;
   /** Chance to beat the league median (regular season in median leagues). */
   medianProbCurrent?: number;
   medianProb?: number;
@@ -236,6 +242,9 @@ export function playerRow(id: string, league: League, ctx: WeekContext, actualPo
   };
   if (base?.injuryBody) row.injuryBody = base.injuryBody;
   if (base?.espnId) row.espnId = base.espnId;
+  // Only when ESPN's game is the schedule's (same two teams, whichever is listed at home).
+  const clock = team ? ctx.clock?.get(team) : undefined;
+  if (clock && game && [clock.home, clock.away].sort().join() === [game.home, game.away].sort().join()) row.clock = clock;
   const line = ctx.baseline?.players.get(id);
   if (ctx.projectionSource === 'baseline' && line && hasProjection) row.fallback = true;
   if (line && game && !row.fallback) row.baseline = { pts: scoreStats(expectedStats(line, pos), league.scoring), through: ctx.baseline!.throughWeek };
@@ -256,10 +265,16 @@ export function playerRow(id: string, league: League, ctx: WeekContext, actualPo
   return row;
 }
 
+/** Share of a started game played: from its live clock when loaded, else from the time since kickoff. */
+export function played(row: PlayerRow, now: number): number {
+  if (row.clock) return row.clock.progress;
+  return row.kickoff === null ? 0 : Math.min(1, Math.max(0, (now - row.kickoff) / GAME_MS));
+}
+
 /** Points distribution for a starter, accounting for games already under way. */
 export function starterDist(row: PlayerRow, now: number): Dist {
   if (row.locked && row.kickoff !== null) {
-    const done = Math.min(1, Math.max(0, (now - row.kickoff) / GAME_MS));
+    const done = played(row, now);
     const actual = row.actual ?? 0;
     const remaining = 1 - done;
     return { mean: actual + remaining * row.mu, variance: remaining * row.sd * row.sd };
@@ -272,7 +287,7 @@ const isRow = (r: PlayerRow | null): r is PlayerRow => r !== null;
 /** The part of a starter's points that still moves with his game (for correlations between players). */
 export function corrItem(row: PlayerRow, now: number): CorrItem {
   let sd = row.p * row.sd;
-  if (row.locked && row.kickoff !== null) sd = Math.sqrt(1 - Math.min(1, Math.max(0, (now - row.kickoff) / GAME_MS))) * row.sd;
+  if (row.locked && row.kickoff !== null) sd = Math.sqrt(1 - played(row, now)) * row.sd;
   return { pos: row.pos, team: row.team, opponent: row.opponent ?? null, sd };
 }
 
@@ -387,9 +402,11 @@ export function analyzeLineup(
     const items = starters.map((r) => corrItem(r, ctx.now));
     const variance = sumDists(starters.map((r) => starterDist(r, ctx.now))).variance + withinCovariance(items);
     const mine = { mean: expected + extra.me.mean, variance: Math.max(0, variance) + extra.me.variance };
+    const cross = oppDist ? crossCovariance(items, oppItems) : 0;
     return {
-      win: oppDist ? winProbability(mine, oppDist, crossCovariance(items, oppItems)) : undefined,
+      win: oppDist ? winProbability(mine, oppDist, cross) : undefined,
       median: median ? probBeatAtLeast(mine, median.others, median.need) : undefined,
+      margin: oppDist ? { mean: mine.mean - oppDist.mean, variance: Math.max(0, mine.variance + oppDist.variance - 2 * cross) } : undefined,
     };
   };
   const wins = (o: { win?: number | undefined; median?: number | undefined }) => (o.win ?? 0) + (o.median ?? 0);
@@ -451,6 +468,7 @@ export function analyzeLineup(
     analysis.opponent = opponent;
     analysis.winProbCurrent = oddsCurrent.win!;
     analysis.winProbRecommended = oddsRecommended.win!;
+    analysis.marginCurrent = oddsCurrent.margin!;
   }
   if (median) {
     analysis.medianProbCurrent = oddsCurrent.median!;

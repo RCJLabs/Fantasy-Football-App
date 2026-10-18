@@ -323,6 +323,129 @@ h3 {
 .mu-line {
   margin-top: 0.1rem;
 }
+.mu-ball {
+  margin-top: 0.15rem;
+  overflow-wrap: anywhere;
+}
+
+/* Matchup tab: the live feed, newest check first. */
+.feed {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+}
+.feed > li {
+  padding: 0.45rem 0;
+  border-top: 1px solid var(--border);
+}
+.feed > li:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.feed-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  font-size: 0.8rem;
+}
+.feed-lines {
+  list-style: none;
+  padding: 0;
+  margin: 0.2rem 0 0;
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+.feed-good .feed-pts,
+.toast.feed-good strong {
+  color: var(--good);
+}
+.feed-bad .feed-pts,
+.toast.feed-bad strong {
+  color: var(--bad);
+}
+.feed-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin: 0.6rem 0 0.4rem;
+}
+.feed-buzz {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(32rem, calc(100% - 2rem));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.35);
+  font-size: 0.9rem;
+  z-index: 10;
+}
+.toast .link {
+  font-size: 1.3rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+}
+
+/* Matchup tab: swing players, each opening a what-if slider. */
+.swing {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+}
+.swing > li {
+  border-top: 1px solid var(--border);
+}
+.swing-row {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.2rem 0.75rem;
+  padding: 0.55rem 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.swing-who {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.swing-odds {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.whatif {
+  padding: 0 0 0.7rem;
+}
+.whatif input[type='range'] {
+  display: block;
+  width: 100%;
+  margin-top: 0.4rem;
+  accent-color: var(--accent);
+}
 
 .problems {
   list-style: none;

@@ -2,12 +2,16 @@
 // model's fill-ins for starters who can't play), Sleeper's points so far, and each side's expected final.
 import { type LineupAnalysis, type PlayerRow, starterDist } from './analyze';
 
-/** Where a starter's game stands. There's no game clock: a game counts as final 3.5 hours after kickoff, as the app labels it. */
+/**
+ * Where a starter's game stands: from its live clock (ESPN's scoreboard) when loaded; otherwise a game counts as final
+ * 3.5 hours after kickoff, as the app labels it.
+ */
 export type GameState = 'bye' | 'upcoming' | 'live' | 'final';
 const FINAL_MS = 3.5 * 3_600_000;
 
-export function gameState(row: Pick<PlayerRow, 'kickoff'>, now: number): GameState {
+export function gameState(row: Pick<PlayerRow, 'kickoff' | 'clock'>, now: number): GameState {
   if (row.kickoff === null) return 'bye';
+  if (row.clock) return row.clock.state === 'post' ? 'final' : row.clock.state === 'in' ? 'live' : 'upcoming';
   if (row.kickoff > now) return 'upcoming';
   return now - row.kickoff > FINAL_MS ? 'final' : 'live';
 }
@@ -19,7 +23,7 @@ export interface LiveSide {
   slots: Array<PlayerRow | null>;
   /** Sleeper's points so far. */
   points: number;
-  /** Expected final: points so far plus what's left of each starter's projection (by game time elapsed). */
+  /** Expected final: points so far plus what's left of each starter's projection (by the game clock, else time since kickoff). */
   projected: number;
   /** Starters by where their games stand. */
   games: Record<GameState, number>;
