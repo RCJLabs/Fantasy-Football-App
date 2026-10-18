@@ -33,3 +33,5 @@ jobs:
         run: node scripts/spike/sleeper-spike.mjs | tee -a "$GITHUB_STEP_SUMMARY"
       - name: FantasyCalc checks
         run: node scripts/spike/fantasycalc-spike.mjs | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: ESPN news checks
+        run: node scripts/spike/espn-news-spike.mjs | tee -a "$GITHUB_STEP_SUMMARY"

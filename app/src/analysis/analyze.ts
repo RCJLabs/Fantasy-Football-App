@@ -85,6 +85,8 @@ export interface PlayerRow {
   baseline?: { pts: number; through: number };
   /** `mu` comes from the in-house baseline because Sleeper's projections were missing this week. */
   fallback?: true;
+  /** ESPN athlete id: player details load his recent news from ESPN. */
+  espnId?: string;
 }
 
 export type ProblemLevel = 'error' | 'warn' | 'info';
@@ -233,6 +235,7 @@ export function playerRow(id: string, league: League, ctx: WeekContext, actualPo
     breakdown: hasProjection ? scoreBreakdown(expected, league.scoring).slice(0, 6) : [],
   };
   if (base?.injuryBody) row.injuryBody = base.injuryBody;
+  if (base?.espnId) row.espnId = base.espnId;
   const line = ctx.baseline?.players.get(id);
   if (ctx.projectionSource === 'baseline' && line && hasProjection) row.fallback = true;
   if (line && game && !row.fallback) row.baseline = { pts: scoreStats(expectedStats(line, pos), league.scoring), through: ctx.baseline!.throughWeek };

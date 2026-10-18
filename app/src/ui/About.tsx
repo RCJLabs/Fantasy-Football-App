@@ -193,6 +193,10 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             </a>{' '}
             (fetched by your browser, non-commercial use).
           </li>
+          <li>
+            Player news: ESPN&apos;s fantasy news feed (unofficial), including RotoWire&apos;s blurbs that ESPN carries. Your browser loads it from ESPN
+            when you open a player&apos;s details; this app doesn&apos;t store it on its servers or republish it.
+          </li>
         </ul>
         {manifest.data ? (
           <p class="muted small">
@@ -201,7 +205,7 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
         ) : (
           <p class="muted small">App data files not available in this build.</p>
         )}
-        <p class="muted small">Not affiliated with or endorsed by Sleeper, RotoWire, the NFL or any team.</p>
+        <p class="muted small">Not affiliated with or endorsed by Sleeper, RotoWire, ESPN, the NFL or any team.</p>
       </div>
 
       <div class="card" id="privacy">
@@ -209,6 +213,7 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
         <ul>
           <li>No accounts and no server-side storage. Your Sleeper username, the lineup picks the app saves for its season review and the data the app loads stay on this device.</li>
           <li>Your browser requests data directly from Sleeper (username, league IDs) and from this site (GitHub Pages, which keeps standard access logs).</li>
+          <li>Opening a player&apos;s details asks ESPN for that player&apos;s news (his ESPN id only; nothing about you or your leagues).</li>
           <li>
             Ask the analyst (only if you add an Anthropic API key): the key stays on this device, and each question sends that league&apos;s figures (team
             and player names, projections, odds, free agents) and your question from your browser to Anthropic, under your Anthropic account.

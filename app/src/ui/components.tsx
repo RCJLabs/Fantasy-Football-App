@@ -4,7 +4,9 @@ import type { PlayerRow, Problem } from '../analysis/analyze';
 import type { Grade } from '../analysis/grades';
 import { streak, type Streak } from '../analysis/luck';
 import { injuryDuration } from '../engine/injuries';
-import { kickoffLabel, pct, pts, statLabel } from './format';
+import { espnPlayerPage, loadPlayerNews } from '../data/news';
+import { ago, kickoffLabel, pct, pts, statLabel } from './format';
+import { useAsync } from './hooks';
 
 export function Badge({ kind, children }: { kind: 'ok' | 'warn' | 'error' | 'info' | 'muted'; children: ComponentChildren }) {
   return <span class={`badge badge-${kind}`}>{children}</span>;
@@ -128,6 +130,54 @@ export function Explain({ row }: { row: PlayerRow }) {
       </p>
       {row.usage ? <StreakNote usage={row.usage} /> : null}
       {row.usage ? <UsageTable usage={row.usage} /> : null}
+      {row.espnId ? <PlayerNews espnId={row.espnId} /> : null}
+    </div>
+  );
+}
+
+/** His recent news, loaded from ESPN when his details open (data/news.ts). */
+function PlayerNews({ espnId }: { espnId: string }) {
+  const news = useAsync((force) => loadPlayerNews(espnId, force), [espnId]);
+  const more = (
+    <a href={espnPlayerPage(espnId)} target="_blank" rel="noopener noreferrer">
+      More on ESPN
+    </a>
+  );
+  return (
+    <div class="news">
+      <h4>Recent news</h4>
+      {news.error ? (
+        <p class="muted">ESPN&apos;s news didn&apos;t load. {more}</p>
+      ) : !news.data ? (
+        <p class="muted">Loading news…</p>
+      ) : (
+        <>
+          {news.data.length ? (
+            <ul class="news-list">
+              {news.data.slice(0, 4).map((n) => (
+                <li>
+                  <span class="muted small">
+                    {ago(n.published)} · {n.source}
+                  </span>
+                  <div>
+                    {n.url ? (
+                      <a href={n.url} target="_blank" rel="noopener noreferrer">
+                        {n.headline}
+                      </a>
+                    ) : (
+                      <strong>{n.headline}</strong>
+                    )}
+                  </div>
+                  {n.text ? <div class="small">{n.text}</div> : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p class="muted">No recent news.</p>
+          )}
+          <p class="muted small">{more} · loaded from ESPN by your browser.</p>
+        </>
+      )}
     </div>
   );
 }

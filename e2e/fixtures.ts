@@ -112,6 +112,7 @@ export const playersFile: PlayersFile = {
     ...(DEPTH[id] ? { dp: DEPTH[id][0], do: DEPTH[id][1] } : {}),
     ...(id === 'w2' ? { prac: 'Limited' as const, rpt: 'Questionable', body: 'Hamstring' } : {}),
     ...(id === 'r1' ? { body: 'Knee' } : {}),
+    ...(id === 'w2' ? { espn: '9000002' } : {}),
   })).concat([{ id: 'cb1', n: 'Corner Back', pos: 'CB', t: 'CCC', inj: 'Out' }]),
 };
 
@@ -217,6 +218,29 @@ export const matchups: RawMatchup[] = [
   { roster_id: 3, matchup_id: 2, starters: [], players: [], points: 0 },
   { roster_id: 4, matchup_id: 2, starters: [], players: [], points: 0 },
 ];
+/** ESPN's fantasy news for the Questionable WR (invented text, ESPN's response shape). */
+export const espnNews = {
+  resultsCount: 2,
+  feed: [
+    {
+      id: 7001,
+      type: 'Rotowire',
+      headline: 'Drew Flanker: Limited again Friday',
+      description: 'Drew Flanker: Limited again Friday',
+      published: iso(-20),
+      links: { web: {} },
+    },
+    {
+      id: 7002,
+      type: 'Story',
+      headline: 'Invented notebook: receivers to watch',
+      description: 'An invented look at the receiver room.',
+      published: iso(-30),
+      links: { web: { href: 'https://www.espn.com/nfl/story/_/id/7002/invented' } },
+    },
+  ],
+};
+
 /** Sleeper's stats so far for the live game (AAA@BBB): lines that add up to the points above. */
 export const weekStats: RawProjection[] = [
   { player_id: 'w1', stats: { rec: 5, rec_tgt: 7, rec_yd: 89, pts_ppr: 13.9 }, team: 'AAA' },

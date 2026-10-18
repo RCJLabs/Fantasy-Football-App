@@ -109,6 +109,16 @@
     It doesn't change projections.
   - The archive also runs before Sunday's 4 pm games (after their inactives) and before SNF in EDT, so every slate gets a late prediction.
 
+- **Player news — built (2026-10-18):** the owner's request ([news.md](news.md)).
+  - Player details show recent news from ESPN's unofficial fantasy news feed: headline, a second line, age, and the source
+    ("RotoWire via ESPN" or "ESPN"), with links to espn.com.
+  - The browser loads it straight from ESPN; the pipeline never fetches or republishes it. The daily player file now carries
+    ESPN ids: Sleeper's, filled in from nflverse's weekly rosters (2,218 of 3,089 players, up from Sleeper's 881).
+  - A spike from Actions confirmed browsers may read the per-player endpoint (`access-control-allow-origin: *`).
+  - **Not licensed:** fine for a free app, to be revisited before monetizing.
+  - The other options weighed are still open: Bluesky beat writers, a "what changed" timeline from the app's own data, and a
+    licensed feed.
+
 - **Live matchup — built (2026-10-18):** the owner's request.
   - **Lineups:** the Matchup tab shows both lineups slot by slot.
     - Yours is as set in Sleeper, since that's what scores; the recommended one stays on the Lineup tab.
@@ -602,6 +612,7 @@ What we build instead is a **calculated consensus**: an average of independent *
 | **Sleeper API** `api.sleeper.app/v1` (user, leagues, league, rosters, users, matchups, transactions, traded_picks, state, trending) | League import, opponents, waivers | **Browser-direct**, keyless, <1000 calls/min | Non-commercial; trending requires attribution `[reported]` | Endpoints `[reported]` (ffscrapr source, unmaintained since 2024-10; `/state/nfl` from training knowledge). CORS `ACAO: *` `[reported]`. **Spike (a1)** |
 | **Sleeper `/players/nfl`** | Player DB, injury status, depth order, cross-IDs | Pipeline ≤1×/day, trimmed | Same | Size "~5 MB" `[unverified]`; measured in spike |
 | **Sleeper projections** (undocumented): `api.sleeper.com/projections/nfl/{season}/{week}?season_type=regular&position[]=…` and `api.sleeper.app/v1/projections/nfl/{season_type}/{season}/{week}` | MVP projection source (rows carry `company: "rotowire"` `[reported]`), incl. K/DEF/IDP if present | **On the device** for users. The private pipeline also stores snapshots for backtesting `[design; licensing untested]` | RotoWire's data; never republished | Report that the v1 path went empty in 2026 `[unverified]`. CORS on `api.sleeper.com` unknown. **Spikes (a2), (b), (e), (f)** |
+| **ESPN fantasy news** (unofficial) `site.api.espn.com/apis/fantasy/v2/games/ffl/news/players?playerId=…` | Recent news in player details (since 2026-10-18; [news.md](news.md)) | **On the device** only, when details open | No licence; RotoWire's blurbs and ESPN stories; headline and snippet only, linked; never republished | CORS `*` `[verified: spike 2026-10-18]`; undocumented, can change |
 | **Sleeper stats** (undocumented) `api.sleeper.com/stats/nfl/{season}/{week}?season_type=regular` | Engine golden test; possible snap fallback; the Matchup tab's stat lines (display only, since 2026-10-18) | Pipeline / dev; **on the device** for stat lines | Same | Fields and team snap totals `[unverified]`; **spike (g)**. CORS `*`, CDN copy up to 5 min `[verified: spike (a)]`; updates during games `[unverified]` |
 | **nflverse** releases: pbp, stats_player, injuries, depth_charts, ftn_charting, pfr_advstats, nextgen_stats, weekly rosters, snap_counts | Usage, environment, P(play) training, ID joins, backtests | Pipeline (release assets send no CORS headers `[verified]`) | Broadly CC-BY 4.0; FTN data CC-BY-SA 4.0 ("FTN Data via nflverse") `[verified]`. Underlying NFL, PFR and NGS data "belong to their respective owners" `[verified: nflreadr Terms]`, so we publish derived aggregates only | Updated 10-15; ftn_charting 10-14; snap_counts 10-13 (lags ~2 days) `[verified]` |
 | **ffopportunity** (`ep_weekly`, stat-level `*_exp` incl. first downs) | Baseline, usage/regression | Pipeline | **CC-BY-SA 4.0** `[verified]`; published derivatives carry it (§4 rule 6) | 2026 Weeks 1–5 present; trained 2006–20, recalibrate `[verified]` |

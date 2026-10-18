@@ -29,7 +29,7 @@ import type { StatLine } from '../app/src/domain/types';
 import type { RawPlayer, RawState } from '../app/src/sleeper/raw';
 import { parquetReadObjects } from 'hyparquet';
 import { buildBaselineFile, ffoppStats, SKILL, type SleeperRow } from './baseline';
-import { compactPlayers, csvRecords, gamesFromCsv, latestInjuryReport, missedLastGame, projectionAccuracy, sleeperToGsis, type PointsRow } from './lib';
+import { compactPlayers, csvRecords, gamesFromCsv, latestInjuryReport, missedLastGame, projectionAccuracy, sleeperToEspn, sleeperToGsis, type PointsRow } from './lib';
 import { defGames, dstWeek } from './dst';
 import { buildMatchups } from './matchups';
 import { buildNextSeasonFile, type ContractRow, contractThrough, defenseSums, fantasyPos, type NextSeasonFit, normalizeName, seasonSums, teamGames } from './next-season';
@@ -338,7 +338,7 @@ async function main() {
     season,
     week,
     ...(report ? { injuryReportWeek: report.week } : {}),
-    players: compactPlayers(dump, report, gsisBySleeper, missedLastGame(rosterRecords, gamesRecords, season, week)),
+    players: compactPlayers(dump, report, gsisBySleeper, missedLastGame(rosterRecords, gamesRecords, season, week), sleeperToEspn(dump, rosterRecords, gsisBySleeper)),
   };
   const scheduleFile: ScheduleFile = {
     schemaVersion: DATA_SCHEMA_VERSION,
@@ -465,6 +465,10 @@ async function main() {
     await appendFile(process.env.GITHUB_STEP_SUMMARY, `### Data shards\n\n| shard | status | rows | note |\n|---|---|---|---|\n${health.join('\n')}\n\n`);
   }
   const withPractice = playersFile.players.filter((p) => p.prac).length;
+  const withEspn = playersFile.players.filter((p) => p.espn).length;
+  // ESPN-id coverage where news matters: Sleeper's 300 most-searched players, defenses aside (they get no news).
+  const top = playersFile.players.filter((p) => p.pos !== 'DEF' && p.rk !== undefined).sort((a, b) => a.rk! - b.rk!).slice(0, 300);
+  const topEspn = top.filter((p) => p.espn).length;
   const acc = shards.get('accuracy.json') as AccuracyFile | undefined;
   const all = acc?.rows.find((r) => r.pos === 'ALL');
   const use = shards.get('usage.json') as UsageFile | undefined;
@@ -473,7 +477,7 @@ async function main() {
   const led = shards.get('ledger.json') as LedgerFile | undefined;
   const next = shards.get('nextseason.json') as NextSeasonFile | undefined;
   console.log(
-    `season ${season} week ${week}: ${playersFile.players.length} players (${withPractice} with practice status, report week ${report?.week ?? '-'}), ${scheduleFile.games.length} games` +
+    `season ${season} week ${week}: ${playersFile.players.length} players (${withPractice} with practice status, report week ${report?.week ?? '-'}; ${withEspn} with ESPN ids, ${topEspn} of the top ${top.length} by search rank), ${scheduleFile.games.length} games` +
       `${all ? `, accuracy weeks ${acc!.weeks.join(',')} n=${all.n} MAE ${all.mae} within±1sd ${Math.round(all.within1 * 100)}%` : ''}` +
       `${use ? `, usage weeks ${use.weeks.join(',')} for ${Object.keys(use.players).length} players` : ''}` +
       `${mat ? `, matchups for ${Object.keys(mat.defense).length} defenses` : ''}` +
