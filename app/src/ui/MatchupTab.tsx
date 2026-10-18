@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { LineupAnalysis, Objective, PlayerRow, WeekContext } from '../analysis/analyze';
 import { currentDists, leagueMatchups, weekStartDists, type TeamNow } from '../analysis/aroundLeague';
-import { emptyFeed, feedPlayers, feedSnapshot, stepFeed, type FeedEvent, type FeedGroup, type LiveFeed } from '../analysis/liveFeed';
+import { awaitingStats, checkPlan, emptyFeed, feedPlayers, feedSnapshot, stepFeed, type FeedEvent, type FeedGroup, type LiveFeed } from '../analysis/liveFeed';
 import { gameState, liveMatchup, type LiveSide } from '../analysis/liveMatchup';
 import { oddsWithWeek } from '../analysis/outlook';
 import { projectionPositions } from '../analysis/ros';
 import { swingPlayers, type SwingPlayer } from '../analysis/swing';
 import { loadStored, saveStored } from '../data/cache';
-import { type LeagueData, LIVE_STATS_TTL, loadLeagueData, loadWeekStats, newerStats, type WeekStats } from '../data/repo';
+import { type LeagueData, LIVE_STATS_TTL, loadLeagueData, loadLiveScores, loadWeekStats, newerStats, type WeekStats } from '../data/repo';
 import { loadGamePlays, playsFor, playsVersion, type ScoringPlay } from '../data/plays';
 import { loadScoreboard } from '../data/scoreboard';
 import type { GameClock } from '../domain/types';
@@ -19,10 +19,15 @@ import { buzzPref, setBuzzPref } from './prefs';
 import { statChange, statLine } from './statLine';
 import { WinChart } from './WinChart';
 
-/** How often the Matchup tab checks Sleeper's scores while a starter's game is on and the page is open. [design] */
-const LIVE_POLL = 60_000;
+/**
+ * How often the Matchup tab checks Sleeper's scores while a starter's game is on and the page is open; lineups and stat
+ * lines load once a minute, and stat lines at every check while one trails its points (checkPlan). [design]
+ */
+const LIVE_POLL = 20_000;
 /** Coming back to the page checks right away when the last check is this old. [design] */
 const RESUME_CHECK = 15_000;
+/** A gap this long between checks means the page was closed or in the background: a catch-up, not plays just made. [design] */
+const AWAY = 2 * 60_000;
 /** Entries shown before "Show all". */
 const FEED_SHOWN = 6;
 /** Swing players shown, and the least a player must move your win chance to be one. [design] */
@@ -79,25 +84,33 @@ export function MatchupTab({ b, base, objective, now }: { b: LeagueBundle; base:
   const positions = useMemo(() => projectionPositions(b.league), [b.league]);
   const started = [...view.me.slots, ...(view.opponent?.slots ?? [])].some((r) => r && r.kickoff !== null && r.kickoff <= now);
 
-  // A check under way (a second one waits for the next tick), and when the last one started.
+  // A check under way (a second one waits for the next tick), when the last one started, and when the last full one did.
   const checking = useRef(false);
   const lastCheck = useRef(0);
-  /** Scores, lineups and stat lines fresh from Sleeper; game clocks from the copy kept 30 seconds. `force` reloads them all. */
-  const refresh = async (force: boolean) => {
+  const lastFull = useRef(0);
+  /**
+   * Scores fresh from Sleeper; lineups and stat lines too when the check is a full one (once a minute, `full`, or `force`),
+   * and stat lines whenever a starter's line trails his points; game clocks from the copy kept 30 seconds. `force` reloads
+   * them all.
+   */
+  const refresh = async (force: boolean, full = force) => {
     if (checking.current) return;
     checking.current = true;
-    lastCheck.current = Date.now();
+    const at = Date.now();
+    lastCheck.current = at;
+    const plan = checkPlan(at, lastFull.current, awaitingStats(feed ?? emptyFeed(), at).size > 0, full);
     setBusy(true);
     try {
-      const [data, st, sb] = await Promise.all([
-        loadLeagueData(b.league.id, b.week, true),
-        loadWeekStats(b.league.season, b.week, positions, force, LIVE_STATS_TTL).catch(() => null),
+      const [scores, st, sb] = await Promise.all([
+        plan.full ? loadLeagueData(b.league.id, b.week, true) : loadLiveScores(b.league.id, b.week),
+        plan.stats ? loadWeekStats(b.league.season, b.week, positions, force, LIVE_STATS_TTL).catch(() => null) : null,
         loadScoreboard(b.week, force).catch(() => null),
       ]);
-      setLive({ data, at: Date.now() });
+      if (plan.full) lastFull.current = at;
+      setLive((cur) => ({ data: { ...(cur?.data ?? b.data), ...scores }, at: Date.now() }));
       if (st) setStats((held) => newerStats(held, st));
       if (sb) setClock(sb);
-      setError(data.stale ? "Sleeper didn't answer: showing the last scores saved." : null);
+      setError(scores.stale ? "Sleeper didn't answer: showing the last scores saved." : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -105,6 +118,9 @@ export function MatchupTab({ b, base, objective, now }: { b: LeagueBundle; base:
       setBusy(false);
     }
   };
+  // The timers below call the latest refresh: it reads this render's feed and league.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
   // A reload of the whole page brings newer data than the last live check.
   useEffect(() => setLive(null), [b]);
   // Stat lines and game clocks once any starter's game has kicked off (the week's final ones afterwards).
@@ -117,12 +133,12 @@ export function MatchupTab({ b, base, objective, now }: { b: LeagueBundle; base:
   // say) rather than at the next tick.
   useEffect(() => {
     if (!view.playing) return;
-    void refresh(false);
+    void refreshRef.current(false, true);
     const id = setInterval(() => {
-      if (document.visibilityState === 'visible') void refresh(false);
+      if (document.visibilityState === 'visible') void refreshRef.current(false);
     }, LIVE_POLL);
     const back = () => {
-      if (document.visibilityState === 'visible' && Date.now() - lastCheck.current >= RESUME_CHECK) void refresh(false);
+      if (document.visibilityState === 'visible' && Date.now() - lastCheck.current >= RESUME_CHECK) void refreshRef.current(false, true);
     };
     document.addEventListener('visibilitychange', back);
     return () => {
@@ -144,7 +160,7 @@ export function MatchupTab({ b, base, objective, now }: { b: LeagueBundle; base:
     window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 6000);
     // Only for plays just made, not a catch-up after time away.
-    if (!buzz || g.at - g.since > 3 * LIVE_POLL) return;
+    if (!buzz || g.at - g.since > AWAY) return;
     const swing = g.win ? g.win[1] - g.win[0] : 0;
     const mine = g.events.some((e) => e.side === 'me' && e.pts >= BIG_POINTS);
     if (mine || swing >= BIG_WIN) vibrate(200);
@@ -170,6 +186,8 @@ export function MatchupTab({ b, base, objective, now }: { b: LeagueBundle; base:
   const me = view.me;
   const opp = view.opponent;
   const line = (r: PlayerRow) => statLine(r.pos, stats?.stats.get(r.id));
+  // Starters whose points have moved but whose stat lines haven't yet ("updating").
+  const pending = useMemo(() => (feed ? awaitingStats(feed, Math.max(now, live?.at ?? 0)) : new Set<string>()), [feed, now, live]);
   const changes = a.changes.length > 0 && a.winProbRecommended !== undefined && a.winProbCurrent !== undefined && a.winProbRecommended - a.winProbCurrent >= 0.005;
   return (
     <div class="stack">
@@ -207,7 +225,7 @@ export function MatchupTab({ b, base, objective, now }: { b: LeagueBundle; base:
           </p>
         ) : null}
         <p class="muted small">
-          {view.playing ? 'Live: checks Sleeper every minute while games are on. ' : ''}Updated {ago(live?.at ?? b.data.savedAt, now)}.{' '}
+          {view.playing ? 'Live: checks Sleeper every 20 seconds while games are on. ' : ''}Updated {ago(live?.at ?? b.data.savedAt, now)}.{' '}
           <button type="button" class="link" disabled={busy} onClick={() => void refresh(true)}>
             {busy ? 'Refreshing…' : 'Refresh'}
           </button>
@@ -242,17 +260,17 @@ export function MatchupTab({ b, base, objective, now }: { b: LeagueBundle; base:
           </div>
           {view.slots.map((slot, s) => (
             <div class="mu-row">
-              <Cell row={me.slots[s] ?? null} now={now} line={line} />
+              <Cell row={me.slots[s] ?? null} now={now} line={line} pending={pending} />
               <span class="slot">{slotLabel(slot)}</span>
-              {opp ? <Cell row={opp.slots[s] ?? null} now={now} line={line} right assumed={opp.assumed} /> : <span />}
+              {opp ? <Cell row={opp.slots[s] ?? null} now={now} line={line} pending={pending} right assumed={opp.assumed} /> : <span />}
             </div>
           ))}
         </div>
         <p class="muted small">
           Points so far are Sleeper&apos;s. Before a game, a starter shows his projection (times his chance to play); once it starts, his points and
           his projection. Projected final: points so far plus what&apos;s left of each starter&apos;s projection, by the game clock (ESPN&apos;s
-          scoreboard; time since kickoff when it doesn&apos;t load). Stat lines come from Sleeper&apos;s stats, loaded with each check; they can trail
-          its scores by a minute or so. Win chance treats players
+          scoreboard; time since kickoff when it doesn&apos;t load). Stat lines come from Sleeper&apos;s stats, loaded every minute and at every check
+          while one trails its points (marked “updating”). Win chance treats players
           in the same NFL game as linked (a QB and his receivers rise and fall together).
           {opp?.assumed.size ? ` ${opp.name} is assumed to replace starters who can't play (marked “assumed”).` : ''}
         </p>
@@ -284,11 +302,27 @@ function gameText(row: PlayerRow, now: number): string {
   return `${c.label} · ${mine}–${theirs}`;
 }
 
-function Cell({ row, now, line, right, assumed }: { row: PlayerRow | null; now: number; line: (r: PlayerRow) => string | undefined; right?: boolean; assumed?: ReadonlySet<string> }) {
+function Cell({
+  row,
+  now,
+  line,
+  pending,
+  right,
+  assumed,
+}: {
+  row: PlayerRow | null;
+  now: number;
+  line: (r: PlayerRow) => string | undefined;
+  pending: ReadonlySet<string>;
+  right?: boolean;
+  assumed?: ReadonlySet<string>;
+}) {
   const cls = `mu-cell${right ? ' mu-right' : ''}`;
   if (!row) return <div class={`${cls} muted`}>Empty</div>;
   const state = gameState(row, now);
   const stat = state === 'upcoming' || state === 'bye' ? undefined : line(row);
+  // His points have moved and his stat line hasn't yet: say so rather than show a line that looks wrong.
+  const updating = state !== 'upcoming' && state !== 'bye' && pending.has(row.id);
   const game = row.kickoff === null ? 'BYE' : `${row.home ? 'vs' : '@'} ${row.opponent ?? '?'} · ${gameText(row, now)}`;
   // His offense has the ball (a defense's opponent having it isn't news for the defense).
   const ball = row.clock?.state === 'in' && row.pos !== 'DEF' && row.clock.possession === row.team;
@@ -319,7 +353,16 @@ function Cell({ row, now, line, right, assumed }: { row: PlayerRow | null; now: 
           {row.clock!.down ? <span class="muted"> {row.clock!.down}</span> : null}
         </div>
       ) : null}
-      {stat ? <div class="mu-line">{stat}</div> : null}
+      {stat || updating ? (
+        <div class="mu-stat">
+          {stat ? <span class="mu-line">{stat}</span> : null}
+          {updating ? (
+            <span class="mu-updating" title="Sleeper's points have moved; its stat line hasn't caught up yet">
+              updating
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       {(state === 'live' || state === 'final') && row.pos !== 'DEF' && row.clock?.event ? <ScoringPlays row={row} clock={row.clock} /> : null}
     </div>
   );
@@ -429,8 +472,8 @@ function LateSwaps({ a, leagueId }: { a: LineupAnalysis; leagueId: string }) {
 }
 
 function FeedHead({ g }: { g: FeedGroup }) {
-  // A gap of more than a few checks: the app was closed or in the background.
-  const away = g.at - g.since > 3 * LIVE_POLL;
+  // The app was closed or in the background in between.
+  const away = g.at - g.since > AWAY;
   return (
     <div class="feed-head">
       <span class="muted">
@@ -466,7 +509,7 @@ function FeedCard({ feed, clocks, buzz, onBuzz }: { feed: LiveFeed; clocks: Read
           ))}
         </ol>
       ) : (
-        <p class="muted">Scores show up here as Sleeper records them, checked every minute while this page is open.</p>
+        <p class="muted">Scores show up here as Sleeper records them, checked every 20 seconds while this page is open.</p>
       )}
       <p class="small feed-foot">
         {feed.groups.length > FEED_SHOWN ? (
@@ -479,7 +522,7 @@ function FeedCard({ feed, clocks, buzz, onBuzz }: { feed: LiveFeed; clocks: Read
         </label>
       </p>
       <p class="muted small">
-        One entry per check: every minute while this page is open, longer when it was closed, so an entry can hold several plays. What happened
+        One entry per check: every 20 seconds while this page is open, longer when it was closed, so an entry can hold several plays. What happened
         comes from Sleeper&apos;s stat line, which can lag the score. Buzz: your player scoring {BIG_POINTS}+ at once, or your win chance moving{' '}
         {Math.round(BIG_WIN * 100)} points (phones that support it).
       </p>

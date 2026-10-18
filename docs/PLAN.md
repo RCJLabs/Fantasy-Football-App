@@ -129,8 +129,9 @@
   - **Each side:** points so far, a projected final (points so far plus what's left of each starter's projection, by the game clock
     since game day's idea 6, else time since kickoff), and how many starters are playing or still to play.
   - **Win chance:** for the lineup as set, with the recommended lineup's beside it when they differ.
-  - **Refresh:** while a starter's game is on and the page is open, the tab reloads scores, lineups and stat lines from Sleeper
-    every minute, and right away on coming back to the page.
+  - **Refresh:** while a starter's game is on and the page is open, the tab reloads scores from Sleeper every 20 seconds.
+    Lineups and stat lines reload every minute, stat lines also at every check while one trails its points (tagged "updating"),
+    and all of it right away on coming back to the page.
     - Until 2026-10-18 stat lines loaded every 4 minutes, and the browser's cache added a check's delay on top. The owner saw a
       touchdown pass in the points but not in the stat line; fixed the same day ([gameday.md](gameday.md), "Live data").
   - **Verified 2026-10-18** (run 39145684454, the 1 pm games): Sleeper's stats endpoint updates during games, its copy changing

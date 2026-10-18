@@ -36,7 +36,7 @@ Code:
   - Live or final by the clock, not 3½ hours after kickoff: a delayed start stays "to play", and overtime stays live.
   - **Fallback:** without the scoreboard (ESPN down, another week's scoreboard, a copy older than 5 minutes), time since kickoff
     as before. Team codes: ESPN's `WSH` is Sleeper's `WAS`; the other 27 codes on the week 6 scoreboard match.
-- **Live feed (idea 1):** each check (every minute while a starter's game is on and the page is open) is compared with the one before.
+- **Live feed (idea 1):** each check (every 20 seconds while a starter's game is on and the page is open) is compared with the one before.
   - An entry lists each starter on either side whose points moved, with the win chance before and after. Your gains and their
     losses are green; the rest red.
   - What happened ("TD catch, 34 yd", "2 carries, 11 yd", "INT thrown", "FG, 52 yd", "stat correction") fills in when Sleeper's stat
@@ -56,7 +56,8 @@ Code:
   - Shown when a player moves your chance by at least a point; otherwise the card says nobody left can swing the game.
 
 - **Win chance through the day (idea 2):** a line in the Matchup tab's score card, from the feed's record of each check.
-  - One point per check while the page was open; the line breaks where it was closed (checks more than 3 minutes apart).
+  - A point for each check that moved a score, else one about a minute apart, while the page was open; the line breaks where it
+    was closed (checks more than 3 minutes apart).
   - The 50% line, today's high and low under it, and the latest value at the end of the line.
   - Hover, or focus it and use the arrow keys, to read any check (win chance, time, score); a table lists every move of a point
     or more.
@@ -102,18 +103,36 @@ Code:
 
 ## Live data
 
-What the Matchup tab loads with each check: every minute while a starter's game is on and the page is open, and right away on
-coming back to the page when the last check is 15 seconds old or more. Checks don't overlap.
+The Matchup tab checks every 20 seconds while a starter's game is on and the page is open, and right away on coming back to the
+page when the last check is 15 seconds old or more. Checks don't overlap. Each check loads what's due (`checkPlan`):
 
 | What | From | How fresh |
 |---|---|---|
-| Points, lineups | Sleeper's matchups and rosters | Loaded each check, the browser asking Sleeper every time |
-| Stat lines | Sleeper's stats | Loaded each check (kept 10 seconds). Sleeper's CDN copy is usually as old as the last request for it, about a minute; an older copy from another CDN edge is ignored |
+| Points | Sleeper's matchups | Every check, the browser asking Sleeper every time |
+| Lineups | Sleeper's rosters (and league members) | Once a minute, and on coming back to the page |
+| Stat lines | Sleeper's stats | Once a minute; at every check while a starter's line trails his points ("updating"); and on coming back. Sleeper's CDN copy is about as old as the gap since the last request for it; an older copy from another CDN edge is ignored |
 | Game clock, score, ball | ESPN's scoreboard | Kept 30 seconds, plus ESPN's own `max-age` of up to 10 |
 | Scoring plays | ESPN's game summary | Loaded when the game's score changes, and again while the copy trails the scoreboard's score |
 | Win chance, the graph, swing players, around the league, the feed | Worked out on the device | Each check |
 
 Not live: the Lineup tab (as the page loaded it) and Home's rooting guide (Home's Refresh).
+
+**"Updating":** a starter whose points moved while his stat line hasn't shown it yet gets a small "updating" tag beside his
+line, and stat lines load at every check until it catches up.
+- Quarterbacks, backs, receivers, tight ends, kickers and team defenses only: IDP lines leave out much of what scores.
+- Given up after 3 minutes, since some points never show in a line.
+- A stat line that moves before the points is kept for his next entry rather than lost, so the feed still says what happened.
+- The lines now keep the keys the feed's "what happened" reads: 2-point tries, field goal distance, missed kicks, return
+  touchdowns, safeties, blocked kicks, yards allowed and forced fumbles. Before, they were dropped, so a 2-point catch, say,
+  never found its stat change.
+
+**Why 20 seconds** (asked for on 2026-10-18 after the fix below; my estimates, not measured):
+- A change waits about 10 seconds for the next check on average, instead of 30.
+- Sleeper's CDN copy is roughly as old as the gap between requests for it, so about 20 seconds instead of 60. Together, stat
+  lines should land about 30 seconds behind Sleeper instead of about 1½ minutes.
+- **Data:** scores-only checks fetch this week's matchups, a few KB. Stat lines (about 390 KB of JSON for six positions, before
+  compression) still load once a minute, more only while one trails. ESPN's scoreboard is kept 30 seconds, so it loads every
+  other check.
 
 **Fixed 2026-10-18,** after the owner saw a quarterback's touchdown pass in his points but not in his stat line (the line had
 his first completion only):
@@ -190,9 +209,10 @@ his first completion only):
 
 - **Unofficial:** ESPN's scoreboard can change or disappear without notice. The clock then falls back to time since kickoff, and
   the rest works as before.
-- **Only while the page is open:** there's no server and no push. Entries are check times, a minute apart at best, not play times;
+- **Only while the page is open:** there's no server and no push. Entries are check times, 20 seconds apart at best, not play times;
   one entry can hold several plays.
-- **Stat lines can trail the score by a minute or so** (Sleeper's CDN copy), so "what happened" can arrive a check after the points.
+- **Stat lines can trail the score** by up to about a minute (Sleeper's CDN copy and our check interval). They're tagged "updating"
+  meanwhile, and "what happened" arrives a check or two after the points.
 - **Points from an older copy:** whether Sleeper's matchups can come from an older CDN copy, as its stats can, isn't measured. It
   would take a league in the public spike's requests.
 - **Swing players use the normal model:** rough for players who may not play (their spread mixes "inactive" with "active"), and

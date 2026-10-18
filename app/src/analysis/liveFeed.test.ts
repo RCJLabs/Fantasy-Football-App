@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { StatLine } from '../domain/types';
 import type { LineupAnalysis, PlayerRow } from './analyze';
-import { emptyFeed, feedPlayers, feedSnapshot, statDelta, stepFeed, type LiveFeed } from './liveFeed';
+import { awaitingStats, checkPlan, emptyFeed, FULL_EVERY, feedPlayers, feedSnapshot, statDelta, stepFeed, type LiveFeed } from './liveFeed';
 
 const MIN = 60_000;
 const T0 = Date.parse('2026-10-18T17:30:00Z');
@@ -68,6 +68,45 @@ describe('live feed', () => {
     ({ feed } = check(feed, T0 + 3 * MIN, 10, 0, 0.62, { wr: { rec: 3, rec_yd: 40, rec_td: 1 } }));
     expect(feed.groups[0]!.events[0]!.stats).toEqual({ rec: 2, rec_yd: 30, rec_td: 1 });
     expect(feed.groups[1]!.events[0]!.stats).toEqual({});
+  });
+
+  it('keeps a stat line that moves before the points for his next entry', () => {
+    let { feed } = check(emptyFeed(), T0, 2, 0, 0.5, { wr: { rec: 1, rec_yd: 10 } });
+    // Sleeper's stat line has his catch a check before its points do: nothing to describe yet.
+    ({ feed } = check(feed, T0 + MIN, 2, 0, 0.5, { wr: { rec: 2, rec_yd: 22 } }));
+    expect(feed.groups).toEqual([]);
+    ({ feed } = check(feed, T0 + 2 * MIN, 4.2, 0, 0.55, { wr: { rec: 2, rec_yd: 22 } }));
+    expect(feed.groups[0]!.events[0]!.stats).toEqual({ rec: 1, rec_yd: 12 });
+  });
+
+  it('knows whose stat line trails his points, for a few minutes at most', () => {
+    const s0 = { wr: { rec: 1, rec_yd: 10 } };
+    let { feed } = check(emptyFeed(), T0, 2, 0, 0.5, s0);
+    ({ feed } = check(feed, T0 + MIN, 8, 0, 0.6, s0)); // points first
+    expect([...awaitingStats(feed, T0 + MIN)]).toEqual(['wr']);
+    expect(awaitingStats(feed, T0 + 4 * MIN + 1).size).toBe(0); // given up on: some points never show in a line
+    ({ feed } = check(feed, T0 + 2 * MIN, 8, 0, 0.6, { wr: { rec: 2, rec_yd: 50, rec_td: 1 } }));
+    expect(awaitingStats(feed, T0 + 2 * MIN).size).toBe(0); // caught up
+    // A defense's or IDP's points can move with nothing its line shows: only some positions are waited for.
+    const idp = { ...feed, groups: [{ at: T0 + 3 * MIN, since: T0 + 2 * MIN, events: [{ id: 'lb', name: 'lb', pos: 'LB', team: 'KC', side: 'me' as const, pts: 1, total: 1 }] }] };
+    expect(awaitingStats(idp, T0 + 3 * MIN).size).toBe(0);
+  });
+
+  it('plans checks: scores every time, lineups and stat lines once a minute, stat lines every time while one trails', () => {
+    expect(checkPlan(T0, 0, false)).toEqual({ full: true, stats: true }); // the first check
+    expect(checkPlan(T0 + 20_000, T0, false)).toEqual({ full: false, stats: false });
+    expect(checkPlan(T0 + 20_000, T0, true)).toEqual({ full: false, stats: true });
+    expect(checkPlan(T0 + FULL_EVERY - 1_000, T0, false)).toEqual({ full: true, stats: true }); // timers drift
+    expect(checkPlan(T0 + 20_000, T0, false, true)).toEqual({ full: true, stats: true }); // coming back to the page
+  });
+
+  it('keeps a point for the graph at each check that moved a score, else about a minute apart', () => {
+    let { feed } = check(emptyFeed(), T0, 2, 0, 0.5);
+    ({ feed } = check(feed, T0 + 20_000, 2, 0, 0.51));
+    ({ feed } = check(feed, T0 + 40_000, 8, 0, 0.6));
+    ({ feed } = check(feed, T0 + 60_000, 8, 0, 0.61));
+    ({ feed } = check(feed, T0 + 100_000, 8, 0, 0.62));
+    expect(feed.timeline.map((p) => p[0])).toEqual([T0, T0 + 40_000, T0 + 100_000]);
   });
 
   it('measures stat changes key by key', () => {
