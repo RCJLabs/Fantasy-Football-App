@@ -39,6 +39,7 @@ async function mockBackends(page: Page) {
     const id = new URL(route.request().url()).searchParams.get('playerId');
     return route.fulfill({ json: id === '9000002' ? fx.espnNews : { feed: [] } });
   });
+  await page.route('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard', (route) => route.fulfill({ json: fx.scoreboard }));
   await page.route('https://api.fantasycalc.com/**', (route) => {
     const dynasty = new URL(route.request().url()).searchParams.get('isDynasty') === 'true';
     return route.fulfill({ json: dynasty ? [...fx.marketValues, ...fx.pickValues] : fx.marketValues });
@@ -190,7 +191,15 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   const wideout = grid.locator('.mu-cell', { hasText: 'T. Wideout' });
   await expect(wideout.locator('.mu-pts')).toContainText(/^11\.4 \/ \d+\.\d$/);
   await expect(wideout.locator('.mu-line')).toHaveText('5/7 rec, 89 yd');
-  await expect(grid.locator('.mu-cell.mu-right', { hasText: 'O. Passer' }).locator('.mu-line')).toHaveText('9/14, 80 yd, TD, 1 INT');
+  // The game clock from ESPN's scoreboard: his team's score first, and his offense in the red zone.
+  await expect(wideout.locator('.mu-meta')).toContainText('@ BBB · Q2 8:43 · 10–7');
+  await expect(wideout.locator('.mu-ball')).toHaveText('red zone 1st & Goal at BBB 4');
+  const passer = grid.locator('.mu-cell.mu-right', { hasText: 'O. Passer' });
+  await expect(passer.locator('.mu-meta')).toContainText('vs AAA · Q2 8:43 · 7–10');
+  await expect(passer.locator('.mu-ball')).toHaveCount(0);
+  await expect(passer.locator('.mu-line')).toHaveText('9/14, 80 yd, TD, 1 INT');
+  // A lopsided game: nobody left can swing it.
+  await expect(page.locator('.card', { has: page.getByRole('heading', { name: 'Swing players' }) })).toContainText('Nobody still to play moves your win chance (>99%) by a point or more.');
   await expect(grid.locator('.mu-cell', { hasText: 'C. Quarterback' }).locator('.mu-pts')).toContainText('proj');
   await expect(grid.locator('.mu-cell', { hasText: 'J. Back' })).toContainText('BYE');
   await expect(grid.locator('.mu-cell', { hasText: 'FFF DEF' })).toBeVisible();
@@ -323,6 +332,58 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(takes).toContainText('No package helps both lineups. These help theirs at the least cost to yours:');
   await expect(takes.locator('ol.idea-list li').first()).toContainText(/Give Casey Quarterback\s*You −[\d.]+ pts/);
   await takes.screenshot({ path: testInfo.outputPath('what-it-takes.png') });
+});
+
+test('game day: a feed of scores between checks, then swing players with a what-if', async ({ page }, testInfo) => {
+  let scored = false;
+  let caughtUp = false;
+  // A close game: their QB has piled up points in the live game.
+  const close = (ms: typeof fx.matchups) => ms.map((m) => (m.roster_id === 2 ? { ...m, points: 75, players_points: { o1: 75 } } : m));
+  await page.route('https://api.sleeper.app/v1/league/1001/matchups/6', (route) => route.fulfill({ json: close(scored ? fx.matchupsAfterScore : fx.matchups) }));
+  await page.route(/^https:\/\/api\.sleeper\.com\/stats\/nfl\/2026\/6\?/, (route) => route.fulfill({ json: caughtUp ? fx.weekStatsAfterScore : fx.weekStats }));
+  await page.goto('./');
+  await page.getByLabel('Sleeper username').fill('testuser');
+  await page.getByRole('button', { name: 'Find my leagues' }).click();
+  await page.locator('.league-card').filter({ hasText: 'Saturday Night Gridiron' }).getByRole('link').first().click();
+  await expect(page.getByRole('tab', { name: 'Matchup' })).toBeVisible();
+
+  // The wideout scores between the page load and the Matchup tab's first check: Sleeper's points show it first.
+  scored = true;
+  await page.getByRole('tab', { name: 'Matchup' }).click();
+  const feed = page.locator('.card', { has: page.getByRole('heading', { name: 'Live feed' }) });
+  const entry = feed.locator('.feed > li').first();
+  await expect(entry.locator('.feed-lines li')).toHaveText(['+6.0 T. Wideout yours']);
+  await expect(entry.locator('.feed-head')).toContainText(/win chance [<>]?\d+% → [<>]?\d+%/);
+  await expect(page.locator('.toast')).toContainText('+6.0 T. Wideout');
+  await expect(feed.getByLabel('Buzz on big plays')).toBeChecked();
+  // His stat line catches up on the next check: the entry says what happened.
+  caughtUp = true;
+  await page.locator('.card', { has: page.locator('.versus') }).getByRole('button', { name: 'Refresh' }).click();
+  await expect(entry.locator('.feed-lines li')).toHaveText(['+6.0 T. Wideout yours · TD catch, 34 yd']);
+  await expect(feed.locator('.feed > li')).toHaveCount(1);
+
+  // Swing players: who's left on both sides, with a what-if for one of them.
+  const swing = page.locator('.card', { has: page.getByRole('heading', { name: 'Swing players' }) });
+  const first = swing.locator('.swing-row').first();
+  await expect(first).toContainText(/(yours: root for him|theirs: root against him)/);
+  await expect(first).toContainText(/big game [<>]?\d+% · quiet one [<>]?\d+%/);
+  await first.click();
+  await expect(first).toHaveAttribute('aria-expanded', 'true');
+  const whatIf = swing.locator('.whatif');
+  const before = await whatIf.textContent();
+  await whatIf.getByRole('slider').evaluate((el: HTMLInputElement) => {
+    el.value = el.max;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect(whatIf).toContainText(/your win chance [<>]?\d+%/);
+  expect(await whatIf.textContent()).not.toBe(before);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  await page.screenshot({ path: testInfo.outputPath('game-day.png'), fullPage: true });
+
+  // The feed is kept on this device: after a reload it's still there.
+  await page.reload();
+  await page.getByRole('tab', { name: 'Matchup' }).click();
+  await expect(page.locator('.feed > li').first().locator('.feed-lines li')).toHaveText(['+6.0 T. Wideout yours · TD catch, 34 yd']);
 });
 
 test("claim plan: a full roster gets drops, a backup for the same drop, and bids from what's left", async ({ page }, testInfo) => {

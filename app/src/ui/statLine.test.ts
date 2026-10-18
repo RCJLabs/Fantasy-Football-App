@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { statLine } from './statLine';
+import { statChange, statLine } from './statLine';
 
 describe('stat lines', () => {
   it('prints each position the way box scores do, leading with its main job', () => {
@@ -19,5 +19,25 @@ describe('stat lines', () => {
     expect(statLine('WR', undefined)).toBeUndefined();
     expect(statLine('WR', {})).toBeUndefined();
     expect(statLine('K', { pass_yd: 0 })).toBeUndefined();
+  });
+});
+
+describe('stat line changes (the live feed)', () => {
+  it('says what a change in a stat line was', () => {
+    expect(statChange('WR', { rec: 1, rec_tgt: 1, rec_yd: 34, rec_td: 1 })).toBe('TD catch, 34 yd');
+    expect(statChange('WR', { rec: 2, rec_tgt: 3, rec_yd: 21 })).toBe('2 catches, 21 yd');
+    expect(statChange('RB', { rush_att: 1, rush_yd: -3 })).toBe('carry, -3 yd');
+    expect(statChange('QB', { pass_att: 1, pass_cmp: 1, pass_yd: 22, pass_td: 1 })).toBe('TD pass, 22 yd');
+    expect(statChange('QB', { pass_att: 1, pass_int: 1 })).toBe('INT thrown');
+    expect(statChange('K', { fga: 1, fgm: 1, fgm_yds: 52, fgm_50p: 1 })).toBe('FG, 52 yd');
+    expect(statChange('DEF', { sack: 1, pts_allow: 7 })).toBe('sack, 7 pts allowed');
+    expect(statChange('LB', { idp_tkl_solo: 1, idp_tkl_ast: 1 })).toBe('2 tackles');
+  });
+
+  it('calls a drop in a count a correction, and says nothing about plays that add nothing to show', () => {
+    expect(statChange('WR', { rec: -1, rec_yd: -12 })).toBe('stat correction');
+    expect(statChange('QB', { pass_att: 1 })).toBeUndefined();
+    expect(statChange('WR', {})).toBeUndefined();
+    expect(statChange('WR', undefined)).toBeUndefined();
   });
 });

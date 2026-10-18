@@ -46,6 +46,15 @@ async function write<T>(key: string, value: T): Promise<void> {
   }
 }
 
+/** A value kept on this device (e.g. the Matchup tab's live feed), or undefined. Best-effort, like the cache. */
+export async function loadStored<T>(key: string): Promise<T | undefined> {
+  return (await read<T>(key))?.value;
+}
+
+export async function saveStored<T>(key: string, value: T): Promise<void> {
+  await write(key, value);
+}
+
 /**
  * Return a cached value younger than `ttlMs`, otherwise load and store it. If loading fails and an
  * older copy exists, return that copy marked stale (offline / API down).

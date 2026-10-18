@@ -41,8 +41,10 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           </li>
           <li>
             <strong>Matchup</strong>: both lineups slot by slot, with Sleeper&apos;s live points, each starter&apos;s projection and, once his game starts,
-            his stat line. Each side&apos;s projected final adds what&apos;s left of its starters&apos; projections to the points so far. While a starter&apos;s
-            game is on, the tab checks Sleeper every minute; stat lines come from Sleeper&apos;s stats, which can lag its scores by up to 5 minutes.
+            his stat line and his game&apos;s clock. Each side&apos;s projected final adds what&apos;s left of its starters&apos; projections to the points so far,
+            by the game clock. While a starter&apos;s game is on, the tab checks Sleeper every minute; stat lines come from Sleeper&apos;s stats, which can
+            lag its scores. A live feed lists who scored between checks with the win chance before and after, and swing players are the starters
+            left to play whose games move your win chance most, with a what-if for each.
           </li>
           <li>
             <strong>Playoff mode</strong>: in playoff weeks the lineup maximizes your chance to win the round (both weeks of a two-week round),
@@ -197,6 +199,10 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             Player news: ESPN&apos;s fantasy news feed (unofficial), including RotoWire&apos;s blurbs that ESPN carries. Your browser loads it from ESPN
             when you open a player&apos;s details; this app doesn&apos;t store it on its servers or republish it.
           </li>
+          <li>
+            Live game clock (quarter, clock, score, possession, red zone): ESPN&apos;s NFL scoreboard (unofficial), loaded by your browser while games are
+            on, the same way.
+          </li>
         </ul>
         {manifest.data ? (
           <p class="muted small">
@@ -214,6 +220,7 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           <li>No accounts and no server-side storage. Your Sleeper username, the lineup picks the app saves for its season review and the data the app loads stay on this device.</li>
           <li>Your browser requests data directly from Sleeper (username, league IDs) and from this site (GitHub Pages, which keeps standard access logs).</li>
           <li>Opening a player&apos;s details asks ESPN for that player&apos;s news (his ESPN id only; nothing about you or your leagues).</li>
+          <li>While games are on, the Matchup tab asks ESPN for its NFL scoreboard (nothing about you or your leagues). Its live feed is kept on this device.</li>
           <li>
             Ask the analyst (only if you add an Anthropic API key): the key stays on this device, and each question sends that league&apos;s figures (team
             and player names, projections, odds, free agents) and your question from your browser to Anthropic, under your Anthropic account.

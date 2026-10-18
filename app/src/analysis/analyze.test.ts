@@ -4,7 +4,8 @@ import { playProbability } from '../engine/availability';
 import { indexProjections, parseLeague, parseMatchup, parseRoster } from '../sleeper/parse';
 import type { RawLeague, RawMatchup, RawProjection } from '../sleeper/raw';
 import { baselineProjectionRows } from '../data/repo';
-import { analyzeLineup, analyzeWaivers, gamesByTeam, lineupChanges, playerRow, type PlayerRow, type WeekContext } from './analyze';
+import { normCdf } from '../engine/math';
+import { analyzeLineup, analyzeWaivers, gamesByTeam, lineupChanges, playerRow, starterDist, type PlayerRow, type WeekContext } from './analyze';
 
 const H = 3_600_000;
 const now = Date.UTC(2026, 9, 18, 12, 0); // Sun Oct 18, 08:00 ET
@@ -126,6 +127,19 @@ describe('playerRow', () => {
     expect(r.locked).toBe(true);
     expect(r.actual).toBe(14.2);
   });
+  it("takes how much of a started game is left from its live clock, when ESPN's game is the schedule's", () => {
+    const clock = { state: 'in' as const, period: 3, clock: 450, label: 'Q3 7:30', progress: 0.625, home: 'FFF', away: 'EEE', homeScore: 10, awayScore: 7 };
+    const ctx: WeekContext = { ...context(), clock: new Map([['EEE', clock], ['FFF', clock]]) };
+    const r = playerRow('wr1', league, ctx, 14.2);
+    expect(r.clock).toBe(clock);
+    // Without the clock, a game 36 hours old counts as over.
+    expect(starterDist(playerRow('wr1', league, context(), 14.2), now).mean).toBeCloseTo(14.2, 9);
+    expect(starterDist(r, now).mean).toBeCloseTo(14.2 + 0.375 * r.mu, 9);
+    expect(starterDist(r, now).variance).toBeCloseTo(0.375 * r.sd * r.sd, 9);
+    // Another game under these team codes (a different week's scoreboard) doesn't count.
+    const other = { ...clock, home: 'FFF', away: 'ZZZ' };
+    expect(playerRow('wr1', league, { ...context(), clock: new Map([['EEE', other]]) }, 14.2).clock).toBeUndefined();
+  });
   it('uses practice odds only once the final report is out', () => {
     const ctx = context();
     const wr3 = ctx.players.get('wr3')!;
@@ -166,6 +180,8 @@ describe('analyzeLineup', () => {
     // The other two teams are empty, so beating half the league is near-certain.
     expect(a.medianProb).toBeGreaterThan(0.9);
     expect(a.medianProb).toBeLessThanOrEqual(1);
+    // The margin the win chance comes from (swing players condition on it).
+    expect(normCdf(a.marginCurrent!.mean / Math.sqrt(a.marginCurrent!.variance))).toBeCloseTo(a.winProbCurrent!, 9);
   });
 
   it('lists IR candidates and uncovered scoring keys', () => {

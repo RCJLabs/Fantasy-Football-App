@@ -50,3 +50,22 @@ export function setDraftPrefs(leagueId: string, value: DraftPrefs): void {
     /* not saved; the settings still apply for this visit */
   }
 }
+
+const BUZZ_KEY = 'ff:buzz';
+
+/** Vibrate on big plays in the Matchup tab's live feed (phones that support it). On unless turned off. */
+export function buzzPref(): boolean {
+  try {
+    return localStorage.getItem(BUZZ_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+export function setBuzzPref(on: boolean): void {
+  try {
+    localStorage.setItem(BUZZ_KEY, on ? 'on' : 'off');
+  } catch {
+    /* not saved; the choice still applies for this visit */
+  }
+}

@@ -246,6 +246,37 @@ export const weekStats: RawProjection[] = [
   { player_id: 'w1', stats: { rec: 5, rec_tgt: 7, rec_yd: 89, pts_ppr: 13.9 }, team: 'AAA' },
   { player_id: 'o1', stats: { pass_cmp: 9, pass_att: 14, pass_yd: 80, pass_td: 1, pass_int: 1 }, team: 'BBB' },
 ];
+/** The live game after a touchdown catch by the wideout (Sleeper's score first; its stat line catches up later). */
+export const matchupsAfterScore: RawMatchup[] = matchups.map((m) => (m.roster_id === 1 ? { ...m, points: 17.4, players_points: { w1: 17.4 } } : m));
+export const weekStatsAfterScore: RawProjection[] = weekStats.map((r) =>
+  r.player_id === 'w1' ? { ...r, stats: { rec: 6, rec_tgt: 8, rec_yd: 123, rec_td: 1, pts_ppr: 24.3 } } : r,
+);
+
+/** ESPN's scoreboard (its response shape; invented games): AAA has the ball in BBB's red zone, the other games to come. */
+const espnTeam = (homeAway: string, id: string, abbreviation: string, score: string) => ({ homeAway, score, team: { id, abbreviation } });
+const espnLater = (id: string, away: string, home: string) => ({
+  id,
+  status: { clock: 900, displayClock: '15:00', period: 0, type: { name: 'STATUS_SCHEDULED', state: 'pre' } },
+  competitions: [{ competitors: [espnTeam('home', `${id}h`, home, '0'), espnTeam('away', `${id}a`, away, '0')] }],
+});
+export const scoreboard = {
+  week: { number: 6 },
+  season: { type: 2, year: 2026 },
+  events: [
+    {
+      id: '501',
+      status: { clock: 523, displayClock: '8:43', period: 2, type: { name: 'STATUS_IN_PROGRESS', state: 'in' } },
+      competitions: [
+        {
+          competitors: [espnTeam('home', '2', 'BBB', '7'), espnTeam('away', '1', 'AAA', '10')],
+          situation: { possession: '1', downDistanceText: '1st & Goal at BBB 4', isRedZone: true },
+        },
+      ],
+    },
+    espnLater('502', 'CCC', 'DDD'),
+    espnLater('503', 'EEE', 'FFF'),
+  ],
+};
 /**
  * Weeks 1–5, final: 4-1 on scores that beat 10 of 15 others (all-play), and 3-2 against the median. My starters are the same
  * every week; the bench outscored them in weeks 3 (Morgan Halfback, 22) and 5 (Casey Depth, 12).

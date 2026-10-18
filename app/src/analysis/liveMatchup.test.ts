@@ -30,6 +30,13 @@ describe('live matchup', () => {
     expect(gameState({ kickoff: NOW - 4 * H }, NOW)).toBe('final');
   });
 
+  it("goes by the game clock when ESPN's scoreboard loaded (overtime, a delayed start, an early finish)", () => {
+    const clock = (state: 'pre' | 'in' | 'post') => ({ state, period: 0, clock: 0, label: '', progress: 0, home: 'AAA', away: 'BBB', homeScore: 0, awayScore: 0 });
+    expect(gameState({ kickoff: NOW - 4 * H, clock: clock('in') }, NOW)).toBe('live');
+    expect(gameState({ kickoff: NOW - 0.5 * H, clock: clock('pre') }, NOW)).toBe('upcoming');
+    expect(gameState({ kickoff: NOW - 3 * H, clock: clock('post') }, NOW)).toBe('final');
+  });
+
   it('shows your lineup as set against the opponent, with points so far and expected finals', () => {
     const done = row('done', NOW - 4 * H, 10, { actual: 17 });
     const half = row('half', NOW - 1.625 * H, 12, { actual: 4 });

@@ -126,13 +126,35 @@
   - **Each starter:**
     - before his game: his projection;
     - once it starts: Sleeper's points so far against his projection, and his stat line from Sleeper's stats.
-  - **Each side:** points so far, a projected final (points so far plus what's left of each starter's projection, by time played),
-    and how many starters are playing or still to play.
+  - **Each side:** points so far, a projected final (points so far plus what's left of each starter's projection, by the game clock
+    since game day's idea 6, else time since kickoff), and how many starters are playing or still to play.
   - **Win chance:** for the lineup as set, with the recommended lineup's beside it when they differ.
   - **Refresh:** while a starter's game is on and the page is open, the tab reloads scores and lineups from Sleeper every minute.
     Stat lines load about every 5 minutes, since Sleeper's CDN keeps a copy that long.
   - **Not verified yet:** whether Sleeper's stats endpoint updates during games. It was checked only on a finished week (spike (g)).
     If it doesn't, stat lines appear only once Sleeper fills them in; points still come from the matchups.
+
+- **Game day — 1, 3 and 6 built (2026-10-18), the rest queued:** the owner asked for a more expansive, immersive and interactive
+  game day; all seven ideas weighed went into the queue ([gameday.md](gameday.md)).
+  - **Built:**
+    1. **Live feed:** who scored between checks on both sides, with the win chance before and after, what happened once Sleeper's
+       stat line catches up, a pop-up, and a buzz on big plays. Kept on the device per league and week.
+    3. **Swing players:** starters left to play on both sides, ranked by how much their game moves your win chance, with a what-if
+       slider. Same normal model and same-game correlations as the win chance.
+    6. **Game clock:** ESPN's unofficial scoreboard, loaded by the browser while games are on: quarter, clock, score, possession,
+       red zone. In the Matchup tab it also replaces the 3¼-hour guess for how much of a started game is left, in projected
+       finals, the win chance and swing players.
+  - **Queued, in this order:**
+    2. **Win-chance graph of the day:** the feed already keeps each check's win chance and scores (gaps while the app was closed).
+    4. **Rooting guide:** for each NFL game, your stake across all your leagues minus your opponents' (extends Across leagues).
+    5. **Around the league:** every matchup live, plus playoff odds if today's results hold (the season simulation exists).
+    7. **Scoring plays for your players:** ESPN's game summary. Browsers may read it, but it's about 640 KB per game and its plays
+       carry no athlete ids, so they'd be matched by name in the text.
+    - **Late swaps from the Matchup tab:** a shortcut to the Lineup tab's late-swap advice, which already re-optimizes around
+      players whose games have started.
+  - **Not possible without a server:** alerts while the app is closed (the Phase 3 Worker; decision 6 below); league chat, which
+    isn't in Sleeper's public API.
+  - **Points update live:** the owner saw the Matchup tab's points move during the London game (2026-10-18).
 
 - **Matchup context, display only — built (2026-10-16):** this is roadmap item 7.
   - **Defense vs position:** each PPR game is compared with that player's average in his other games (leave-one-out, players with 3+ games).
@@ -612,6 +634,7 @@ What we build instead is a **calculated consensus**: an average of independent *
 | **Sleeper API** `api.sleeper.app/v1` (user, leagues, league, rosters, users, matchups, transactions, traded_picks, state, trending) | League import, opponents, waivers | **Browser-direct**, keyless, <1000 calls/min | Non-commercial; trending requires attribution `[reported]` | Endpoints `[reported]` (ffscrapr source, unmaintained since 2024-10; `/state/nfl` from training knowledge). CORS `ACAO: *` `[reported]`. **Spike (a1)** |
 | **Sleeper `/players/nfl`** | Player DB, injury status, depth order, cross-IDs | Pipeline ≤1×/day, trimmed | Same | Size "~5 MB" `[unverified]`; measured in spike |
 | **Sleeper projections** (undocumented): `api.sleeper.com/projections/nfl/{season}/{week}?season_type=regular&position[]=…` and `api.sleeper.app/v1/projections/nfl/{season_type}/{season}/{week}` | MVP projection source (rows carry `company: "rotowire"` `[reported]`), incl. K/DEF/IDP if present | **On the device** for users. The private pipeline also stores snapshots for backtesting `[design; licensing untested]` | RotoWire's data; never republished | Report that the v1 path went empty in 2026 `[unverified]`. CORS on `api.sleeper.com` unknown. **Spikes (a2), (b), (e), (f)** |
+| **ESPN scoreboard** (unofficial) `site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard` | The Matchup tab's game clock (since 2026-10-18; [gameday.md](gameday.md)) | **On the device** only, while games are on | No licence; clock, score, possession; never republished | CORS `*`, `max-age=2` `[verified: spike 2026-10-18]`; undocumented, can change |
 | **ESPN fantasy news** (unofficial) `site.api.espn.com/apis/fantasy/v2/games/ffl/news/players?playerId=…` | Recent news in player details (since 2026-10-18; [news.md](news.md)) | **On the device** only, when details open | No licence; RotoWire's blurbs and ESPN stories; headline and snippet only, linked; never republished | CORS `*` `[verified: spike 2026-10-18]`; undocumented, can change |
 | **Sleeper stats** (undocumented) `api.sleeper.com/stats/nfl/{season}/{week}?season_type=regular` | Engine golden test; possible snap fallback; the Matchup tab's stat lines (display only, since 2026-10-18) | Pipeline / dev; **on the device** for stat lines | Same | Fields and team snap totals `[unverified]`; **spike (g)**. CORS `*`, CDN copy up to 5 min `[verified: spike (a)]`; updates during games `[unverified]` |
 | **nflverse** releases: pbp, stats_player, injuries, depth_charts, ftn_charting, pfr_advstats, nextgen_stats, weekly rosters, snap_counts | Usage, environment, P(play) training, ID joins, backtests | Pipeline (release assets send no CORS headers `[verified]`) | Broadly CC-BY 4.0; FTN data CC-BY-SA 4.0 ("FTN Data via nflverse") `[verified]`. Underlying NFL, PFR and NGS data "belong to their respective owners" `[verified: nflreadr Terms]`, so we publish derived aggregates only | Updated 10-15; ftn_charting 10-14; snap_counts 10-13 (lags ~2 days) `[verified]` |
@@ -876,7 +899,7 @@ Play production release, public ledger, draft tools, more platforms; a paid tier
 | Scoring mismatches in exotic leagues | Medium | Golden test + scoring coverage panel shown to users |
 | GitHub cron drops game-day runs (seen 2026-10-16: the deploy's first scheduled run and 2 of 4 archive runs skipped) | Medium | Duplicate staggered runs; daily archive jobs run in the first run after their hour; archive runs start a skipped deploy; the app flags data over 36 h old (all 2026-10-16); Cloudflare Cron Trigger in Phase 3 |
 | PFR-sourced nflverse data stalls (nflverse adopted a paid third-party scraping proxy 2026-09-10; workflows failed repeatedly that month, causes mixed `[verified]`) | Medium | Freshness badges; usage metrics that don't need snaps; Sleeper stats fallback only after spike (g) |
-| Play policy (ESPN access, AI content, gambling references) | Medium | ESPN out of the Play build; AI report button; implied totals only, no sportsbook anything |
+| Play policy (ESPN access, AI content, gambling references) | Medium | ESPN out of the Play build (league import, and since 2026-10-18 the player news and game clock) until reviewed; AI report button; implied totals only, no sportsbook anything |
 
 ---
 
