@@ -424,6 +424,46 @@ test('game day: a feed of scores between checks, then swing players with a what-
   await expect(page.locator('.feed > li').first().locator('.feed-lines li')).toContainText('+6.0 T. Wideout yours · TD catch, 34 yd');
 });
 
+test("game day: each check brings Sleeper's newest stat lines, and an older copy never rolls them back", async ({ page }) => {
+  // Sleeper's copies in turn: the first, a newer one with the wideout's touchdown, then the first again (as a CDN edge that
+  // hasn't caught up can answer), then a newer one still.
+  let copy = fx.weekStats;
+  let served = 0;
+  await page.route(/^https:\/\/api\.sleeper\.com\/stats\/nfl\/2026\/6\?/, (route) => {
+    served++;
+    return route.fulfill({ json: copy });
+  });
+  await page.clock.install();
+  await page.goto('./');
+  await page.getByLabel('Sleeper username').fill('testuser');
+  await page.getByRole('button', { name: 'Find my leagues' }).click();
+  await page.locator('.league-card').filter({ hasText: 'Saturday Night Gridiron' }).getByRole('link').first().click();
+  await page.getByRole('tab', { name: 'Matchup' }).click();
+  const wideout = page.locator('.mu .mu-cell', { hasText: 'T. Wideout' });
+  await expect(wideout.locator('.mu-line')).toHaveText('5/7 rec, 89 yd');
+
+  // The next automatic check, a minute on, shows the newer copy: no Refresh needed.
+  copy = fx.weekStatsAfterScore;
+  await page.clock.fastForward(61_000);
+  await expect(wideout.locator('.mu-line')).toHaveText('6/8 rec, 123 yd, TD');
+
+  // The check after gets the older copy back: the newer stat line stays.
+  copy = fx.weekStats;
+  let before = served;
+  await page.clock.fastForward(61_000);
+  await expect.poll(() => served).toBeGreaterThan(before);
+  await page.waitForTimeout(500);
+  await expect(wideout.locator('.mu-line')).toHaveText('6/8 rec, 123 yd, TD');
+
+  // Coming back to the page (from Sleeper's app, say) checks right away rather than at the next tick.
+  copy = fx.weekStatsAfterScore.map((r) => (r.player_id === 'w1' ? { ...r, stats: { rec: 7, rec_tgt: 9, rec_yd: 140, rec_td: 1 }, updated_at: Date.now() } : r));
+  before = served;
+  await page.clock.fastForward(16_000);
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(wideout.locator('.mu-line')).toHaveText('7/9 rec, 140 yd, TD');
+  expect(served).toBeGreaterThan(before);
+});
+
 test("settings: this device's choices in one place, which the tabs follow", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     if (!sessionStorage.getItem('seeded')) {
