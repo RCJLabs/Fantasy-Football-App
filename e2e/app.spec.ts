@@ -40,6 +40,7 @@ async function mockBackends(page: Page) {
     return route.fulfill({ json: id === '9000002' ? fx.espnNews : { feed: [] } });
   });
   await page.route('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard', (route) => route.fulfill({ json: fx.scoreboard }));
+  await page.route(/^https:\/\/site\.api\.espn\.com\/apis\/site\/v2\/sports\/football\/nfl\/summary\?event=501$/, (route) => route.fulfill({ json: fx.espnSummary }));
   await page.route('https://api.fantasycalc.com/**', (route) => {
     const dynasty = new URL(route.request().url()).searchParams.get('isDynasty') === 'true';
     return route.fulfill({ json: dynasty ? [...fx.marketValues, ...fx.pickValues] : fx.marketValues });
@@ -205,6 +206,15 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(passer.locator('.mu-meta')).toContainText('vs AAA · Q2 8:43 · 7–10');
   await expect(passer.locator('.mu-ball')).toHaveCount(0);
   await expect(passer.locator('.mu-line')).toHaveText('9/14, 80 yd, TD, 1 INT');
+  // His scoring plays, from ESPN's game summary, matched by his ESPN id's name in the box score.
+  await wideout.getByRole('button', { name: 'Scoring plays' }).click();
+  await expect(wideout.locator('.mu-play-list li')).toHaveText(['Q2 9:12 Taylor Wideout 34 Yd pass from Alex Thrower (Sam Boot Kick)']);
+  // Late swaps: the Lineup tab's changes for the lineup as it stands, with a way there (lineups are set in Sleeper).
+  const swaps = page.locator('.card.late-swaps');
+  await expect(swaps.getByRole('heading', { name: 'Late swaps' })).toBeVisible();
+  await expect(swaps).toContainText('over Riley Runner');
+  await expect(swaps).toContainText(/\+\d+\.\d expected points · win chance/);
+  await expect(swaps.getByRole('link', { name: 'Lineup tab' })).toHaveAttribute('href', '#/league/1001/lineup');
   // A lopsided game: nobody left can swing it.
   await expect(page.locator('.card', { has: page.getByRole('heading', { name: 'Swing players' }) })).toContainText('Nobody still to play moves your win chance (>99%) by a point or more.');
   await expect(grid.locator('.mu-cell', { hasText: 'C. Quarterback' }).locator('.mu-pts')).toContainText('proj');
@@ -367,14 +377,17 @@ test('game day: a feed of scores between checks, then swing players with a what-
   await page.getByRole('tab', { name: 'Matchup' }).click();
   const feed = page.locator('.card', { has: page.getByRole('heading', { name: 'Live feed' }) });
   const entry = feed.locator('.feed > li').first();
-  await expect(entry.locator('.feed-lines li')).toHaveText(['+6.0 T. Wideout yours']);
+  await expect(entry.locator('.feed-lines li')).toHaveCount(1);
+  await expect(entry.locator('.feed-lines li')).toContainText('+6.0 T. Wideout yours');
+  // ESPN's scoring play behind it, from the game summary: his play since the check before.
+  await expect(entry.locator('.feed-play')).toHaveText('Taylor Wideout 34 Yd pass from Alex Thrower (Sam Boot Kick)');
   await expect(entry.locator('.feed-head')).toContainText(/win chance [<>]?\d+% → [<>]?\d+%/);
   await expect(page.locator('.toast')).toContainText('+6.0 T. Wideout');
   await expect(feed.getByLabel('Buzz on big plays')).toBeChecked();
   // His stat line catches up on the next check: the entry says what happened.
   caughtUp = true;
   await page.locator('.card', { has: page.locator('.versus') }).getByRole('button', { name: 'Refresh' }).click();
-  await expect(entry.locator('.feed-lines li')).toHaveText(['+6.0 T. Wideout yours · TD catch, 34 yd']);
+  await expect(entry.locator('.feed-lines li')).toContainText('+6.0 T. Wideout yours · TD catch, 34 yd');
   await expect(feed.locator('.feed > li')).toHaveCount(1);
 
   // Win chance through the day: a line from the checks so far, each readable by keyboard (and in a table).
@@ -408,7 +421,44 @@ test('game day: a feed of scores between checks, then swing players with a what-
   // The feed is kept on this device: after a reload it's still there.
   await page.reload();
   await page.getByRole('tab', { name: 'Matchup' }).click();
-  await expect(page.locator('.feed > li').first().locator('.feed-lines li')).toHaveText(['+6.0 T. Wideout yours · TD catch, 34 yd']);
+  await expect(page.locator('.feed > li').first().locator('.feed-lines li')).toContainText('+6.0 T. Wideout yours · TD catch, 34 yd');
+});
+
+test("settings: this device's choices in one place, which the tabs follow", async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.setItem('ff:anthropic-key', 'sk-ant-test-abcd');
+      sessionStorage.setItem('seeded', '1');
+    }
+  });
+  await page.goto('./');
+  await page.getByLabel('Sleeper username').fill('testuser');
+  await page.getByRole('button', { name: 'Find my leagues' }).click();
+  await expect(page.getByRole('heading', { name: 'Leagues' })).toBeVisible();
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible();
+
+  const buzz = page.getByRole('checkbox', { name: /Buzz on big plays/ });
+  await expect(buzz).toBeChecked();
+  await buzz.uncheck();
+  const league = page.locator('fieldset', { hasText: 'Saturday Night Gridiron' });
+  await expect(league.getByRole('combobox', { name: 'Regular season' })).toHaveValue('');
+  await league.getByRole('combobox', { name: 'Regular season' }).selectOption('win');
+  await expect(page.getByText('Anthropic API key saved on this device')).toContainText('ends …abcd');
+  await page.screenshot({ path: testInfo.outputPath('settings.png'), fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  await page.getByRole('button', { name: 'Remove key' }).click();
+  await expect(page.getByText('No API key saved.')).toBeVisible();
+
+  // The Lineup tab follows: win chance in this league's regular season.
+  await page.goto('./#/league/1001/lineup');
+  await expect(page.getByRole('group', { name: 'Optimize lineup for' }).getByRole('button', { name: 'Win chance' })).toHaveAttribute('aria-pressed', 'true');
+
+  // Reset: back to the defaults.
+  await page.goto('./#/settings');
+  await page.getByRole('button', { name: 'Reset settings' }).click();
+  await expect(page.getByRole('checkbox', { name: /Buzz on big plays/ })).toBeChecked();
+  await expect(page.locator('fieldset', { hasText: 'Saturday Night Gridiron' }).getByRole('combobox', { name: 'Regular season' })).toHaveValue('');
 });
 
 test("claim plan: a full roster gets drops, a backup for the same drop, and bids from what's left", async ({ page }, testInfo) => {

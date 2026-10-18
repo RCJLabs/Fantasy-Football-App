@@ -134,8 +134,9 @@
   - **Not verified yet:** whether Sleeper's stats endpoint updates during games. It was checked only on a finished week (spike (g)).
     If it doesn't, stat lines appear only once Sleeper fills them in; points still come from the matchups.
 
-- **Game day — 1–6 built (2026-10-18), 7 queued:** the owner asked for a more expansive, immersive and interactive game day; all
-  seven ideas weighed went into the queue ([gameday.md](gameday.md)). 1, 3 and 6 came first (PR #45), then 2, 4 and 5.
+- **Game day — all seven built (2026-10-18):** the owner asked for a more expansive, immersive and interactive game day; all
+  seven ideas weighed went into the queue ([gameday.md](gameday.md)). 1, 3 and 6 came first (PR #45), then 2, 4 and 5 (PR #46),
+  then 7 and the late-swap shortcut.
   - **Built** (numbered as the ideas were):
     - **1. Live feed:** who scored between checks on both sides, with the win chance before and after, what happened once
       Sleeper's stat line catches up, a pop-up, and a buzz on big plays. Kept on the device per league and week.
@@ -150,14 +151,18 @@
     - **6. Game clock:** ESPN's unofficial scoreboard, loaded by the browser while games are on: quarter, clock, score,
       possession, red zone. In the Matchup tab it also replaces the 3¼-hour guess for how much of a started game is left, in
       projected finals, the win chance and swing players.
-  - **Queued:**
-    - **7. Scoring plays for your players:** ESPN's game summary. Browsers may read it, but it's about 640 KB per game and its
-      plays carry no athlete ids, so they'd be matched by name in the text.
-    - **Late swaps from the Matchup tab:** a shortcut to the Lineup tab's late-swap advice, which already re-optimizes around
-      players whose games have started.
+    - **7. Scoring plays for your players:** ESPN's game summary: each player's scoring plays in his Matchup tab cell, and the play
+      behind a feed entry. The plays carry no ids, so the box score's ESPN id → name map ties them to players; a summary loads
+      only when its game's score changes.
+    - **Late swaps from the Matchup tab:** a card with the Lineup tab's changes for the lineup as it stands, what they add, and a
+      link to the Lineup tab.
   - **Not possible without a server:** alerts while the app is closed (the Phase 3 Worker; decision 6 below); league chat, which
     isn't in Sleeper's public API.
   - **Points update live:** the owner saw the Matchup tab's points move during the London game (2026-10-18).
+
+- **Settings — built (2026-10-18):** the owner's request: one page for every per-device choice, reached from the top bar
+  ([settings.md](settings.md)). Game day's buzz, each league's lineup aim (regular season and playoffs), the analyst's API key,
+  saved draft settings, and the data on this device (clear, reset, switch user). New settings join it as sections.
 
 - **Matchup context, display only — built (2026-10-16):** this is roadmap item 7.
   - **Defense vs position:** each PPR game is compared with that player's average in his other games (leave-one-out, players with 3+ games).

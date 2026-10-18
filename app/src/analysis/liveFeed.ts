@@ -35,6 +35,8 @@ export interface FeedEvent {
   total: number;
   /** What his stat line added, once it catches up (empty: covered by a later entry). */
   stats?: StatLine;
+  /** His ESPN athlete id, to find him in ESPN's scoring plays. */
+  espn?: string;
 }
 
 export interface FeedGroup {
@@ -110,7 +112,9 @@ export function stepFeed(feed: LiveFeed, next: FeedSnapshot, players: ReadonlyMa
       const who = players.get(id);
       const d = round2(p.pts - (prev.players[id]?.pts ?? 0));
       if (!who || Math.abs(d) < MIN_POINTS) continue;
-      events.push({ id, name: who.row.name, pos: who.row.pos, team: who.row.team, side: who.side, pts: d, total: round2(p.pts) });
+      const e: FeedEvent = { id, name: who.row.name, pos: who.row.pos, team: who.row.team, side: who.side, pts: d, total: round2(p.pts) };
+      if (who.row.espnId) e.espn = who.row.espnId;
+      events.push(e);
     }
     if (events.length) {
       fresh = { at: next.at, since: prev.at, events: events.sort((x, y) => Math.abs(y.pts) - Math.abs(x.pts)) };

@@ -1,18 +1,15 @@
-import { useState } from 'preact/hooks';
 import { groupLabel, poolLedger, type PooledLedger } from '../analysis/ledger';
-import { clearCache } from '../data/cache';
 import type { AccuracyFile } from '../data/contracts';
 import { loadAccuracy, loadLedger, loadManifest } from '../data/repo';
 import { dateTime, pct, signed } from './format';
 import { reportProblemUrl } from './errorLog';
 import { useAsync } from './hooks';
 
-export function About({ onSignOut }: { onSignOut?: () => void }) {
+export function About() {
   const manifest = useAsync(() => loadManifest(), []);
   const accuracy = useAsync(() => loadAccuracy(), []);
   const ledger = useAsync(() => loadLedger(), []);
   const pooled = poolLedger(ledger.data);
-  const [cleared, setCleared] = useState(false);
 
   return (
     <section class="stack about">
@@ -45,7 +42,8 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             by the game clock. While a starter&apos;s game is on, the tab checks Sleeper every minute; stat lines come from Sleeper&apos;s stats, which can
             lag its scores. A live feed lists who scored between checks with the win chance before and after, a line tracks the win chance
             through the day, and swing players are the starters left to play whose games move your win chance most, with a what-if for each.
-            Around the league shows every matchup as it stands and the playoff odds now against the start of the week.
+            Around the league shows every matchup as it stands and the playoff odds now against the start of the week. Each player&apos;s scoring
+            plays come from ESPN&apos;s game summary, and a late-swap card lists the Lineup tab&apos;s changes for the lineup as it stands.
           </li>
           <li>
             <strong>Rooting guide</strong> (Home): for each game still to finish, whom to root for across your leagues and your win chance in each
@@ -205,8 +203,8 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             when you open a player&apos;s details; this app doesn&apos;t store it on its servers or republish it.
           </li>
           <li>
-            Live game clock (quarter, clock, score, possession, red zone): ESPN&apos;s NFL scoreboard (unofficial), loaded by your browser while games are
-            on, the same way.
+            Live game clock (quarter, clock, score, possession, red zone) and scoring plays: ESPN&apos;s NFL scoreboard and game summaries
+            (unofficial), loaded by your browser while games are on, the same way.
           </li>
         </ul>
         {manifest.data ? (
@@ -225,29 +223,20 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
           <li>No accounts and no server-side storage. Your Sleeper username, the lineup picks the app saves for its season review and the data the app loads stay on this device.</li>
           <li>Your browser requests data directly from Sleeper (username, league IDs) and from this site (GitHub Pages, which keeps standard access logs).</li>
           <li>Opening a player&apos;s details asks ESPN for that player&apos;s news (his ESPN id only; nothing about you or your leagues).</li>
-          <li>While games are on, the Matchup tab asks ESPN for its NFL scoreboard (nothing about you or your leagues). Its live feed is kept on this device.</li>
+          <li>
+            While games are on, the Matchup tab asks ESPN for its NFL scoreboard, and for a game&apos;s summary when it shows that game&apos;s scoring plays
+            (nothing about you or your leagues). Its live feed and the plays it loaded are kept on this device.
+          </li>
           <li>
             Ask the analyst (only if you add an Anthropic API key): the key stays on this device, and each question sends that league&apos;s figures (team
             and player names, projections, odds, free agents) and your question from your browser to Anthropic, under your Anthropic account.
           </li>
           <li>Errors are logged only on this device; “Report a problem” opens a pre-filled GitHub issue that you choose whether to submit.</li>
         </ul>
+        <p>
+          To clear what&apos;s saved on this device, reset settings or switch Sleeper user, go to <a href="#/settings">Settings</a>.
+        </p>
         <div class="row">
-          <button
-            type="button"
-            class="btn"
-            onClick={async () => {
-              await clearCache();
-              setCleared(true);
-            }}
-          >
-            {cleared ? 'Saved data cleared' : 'Clear saved data'}
-          </button>
-          {onSignOut ? (
-            <button type="button" class="btn" onClick={onSignOut}>
-              Switch Sleeper user
-            </button>
-          ) : null}
           <a class="btn" href={reportProblemUrl()} target="_blank" rel="noopener">
             Report a problem
           </a>
