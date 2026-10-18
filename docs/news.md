@@ -21,8 +21,10 @@ Code:
   - The rest are ESPN's own stories.
 - **Players:** matched by ESPN id, which the daily player file now carries (`espn`).
   - Sleeper's own `espn_id` covered only 881 of 3,089 players in the first real build (2026-10-18).
-  - nflverse's weekly rosters fill in the rest: their `espn_id`, matched by `sleeper_id` or gsis id.
-  - The build's summary line counts players with an id.
+  - nflverse's weekly rosters fill in the rest: their `espn_id`, matched by `sleeper_id` or gsis id. That raised it to 2,218
+    in the next build.
+  - The build's summary line counts players with an id, overall and among Sleeper's 300 most-searched players (defenses
+    aside).
   - Players without one, team defenses among them, get no news section.
 
 ## Data rules

@@ -113,7 +113,7 @@
   - Player details show recent news from ESPN's unofficial fantasy news feed: headline, a second line, age, and the source
     ("RotoWire via ESPN" or "ESPN"), with links to espn.com.
   - The browser loads it straight from ESPN; the pipeline never fetches or republishes it. The daily player file now carries
-    Sleeper's ESPN ids.
+    ESPN ids: Sleeper's, filled in from nflverse's weekly rosters (2,218 of 3,089 players, up from Sleeper's 881).
   - A spike from Actions confirmed browsers may read the per-player endpoint (`access-control-allow-origin: *`).
   - **Not licensed:** fine for a free app, to be revisited before monetizing.
   - The other options weighed are still open: Bluesky beat writers, a "what changed" timeline from the app's own data, and a
