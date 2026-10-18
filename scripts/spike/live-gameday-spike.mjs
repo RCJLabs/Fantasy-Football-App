@@ -1,8 +1,12 @@
-// Spike: live game-day feeds, for the Matchup tab's live play feed and game clock. Polls while games are on, from GitHub
-// Actions (the dev sandbox can't reach Sleeper or ESPN):
-// - Sleeper's stats endpoint (the Matchup tab's stat lines): does it update during games, how often, how stale is its CDN copy?
-// - ESPN's unofficial scoreboard: may browsers read it, and does it carry period, clock, possession and red-zone state?
-// - ESPN's game summary: may browsers read it, and do its plays carry ESPN athlete ids?
+// Spike: live game-day feeds, for the Matchup tab's stat lines, game clock and scoring plays. Polls while games are on,
+// from GitHub Actions (the dev sandbox can't reach Sleeper or ESPN):
+// - Sleeper's stats endpoint (the Matchup tab's stat lines): does it update during games, how often, and how stale is its
+//   CDN copy? Does each copy's newest row `updated_at` tell an older copy (another CDN edge) from a newer one? Does a request
+//   with `cache-control: max-age=0` (what a browser sends for `fetch(…, { cache: 'no-cache' })`) get a fresher copy?
+// - ESPN's unofficial scoreboard: do its live games move between polls?
+// - ESPN's game summary, loaded when a live game's score changes on the scoreboard (as the Matchup tab does): do its scoring
+//   plays already reach the scoreboard's score, or trail it?
+// Run 39145684454 (2026-10-18, 70 minutes over the 1 pm games) answered the first question; this version adds the others.
 // This repo's Actions logs are public, so it prints timings, counts, headers and field names only: no names, stats or play text.
 import { createHash } from 'node:crypto';
 
@@ -10,21 +14,22 @@ const UA = 'Fantasy-Football-App spike (+https://github.com/RCJLabs/Fantasy-Foot
 const ORIGIN = 'https://ff.rcjlabs.com';
 const MINUTES = Math.max(1, Number(process.env.MINUTES) || 50);
 const EVERY_MS = 60_000;
-const SUMMARY_EVERY = 10; // polls between game-summary checks
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
 const POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
+/** A CDN copy at least this old is another edge's (polls are a minute apart). */
+const OLD_AGE = 90;
 
 const print = (s = '') => console.log(s);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const digest = (s) => createHash('sha1').update(s).digest('hex').slice(0, 8);
 const keysOf = (objs) => [...new Set(objs.flatMap((o) => (o && typeof o === 'object' && !Array.isArray(o) ? Object.keys(o) : [])))].sort().join(', ') || '—';
 const clock = (t) => new Date(t).toISOString().slice(11, 19);
-const count = (xs) => Object.entries(xs.reduce((m, x) => ((m[x] = (m[x] ?? 0) + 1), m), {})).map(([k, n]) => `${k} ${n}`).join(', ') || '—';
+const median = (xs) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : '—');
 
-async function get(url) {
+async function get(url, headers = {}) {
   const t0 = Date.now();
   try {
-    const r = await fetch(url, { headers: { 'user-agent': UA, origin: ORIGIN } });
+    const r = await fetch(url, { headers: { 'user-agent': UA, origin: ORIGIN, ...headers } });
     const text = await r.text();
     let body = null;
     try {
@@ -33,91 +38,58 @@ async function get(url) {
       /* not JSON */
     }
     const h = (k) => r.headers.get(k) ?? '';
-    return { status: r.status, ms: Date.now() - t0, bytes: Buffer.byteLength(text), hash: digest(text), body, acao: h('access-control-allow-origin'), cache: h('cache-control'), age: h('age') };
+    return { status: r.status, ms: Date.now() - t0, bytes: Buffer.byteLength(text), hash: digest(text), body, acao: h('access-control-allow-origin'), cache: h('cache-control'), age: h('age'), lastModified: h('last-modified'), etag: h('etag') };
   } catch (e) {
-    return { status: `ERR ${e.message}`, ms: Date.now() - t0, bytes: 0, hash: '', body: null, acao: '', cache: '', age: '' };
+    return { status: `ERR ${e.message}`, ms: Date.now() - t0, bytes: 0, hash: '', body: null, acao: '', cache: '', age: '', lastModified: '', etag: '' };
   }
 }
 
-/** Sleeper stat rows: how many carry stats, and the sum of PPR points over all of them (an aggregate). */
+/** Sleeper stat rows: how many carry stats, the sum of PPR points over all of them, and the newest row times (aggregates). */
 function sleeperAgg(body) {
   const rows = Array.isArray(body) ? body : [];
   let withStats = 0;
   let pts = 0;
+  let newest = 0;
+  let newestModified = 0;
   for (const r of rows) {
     const s = r && typeof r.stats === 'object' && r.stats ? r.stats : {};
     if (Object.keys(s).length) withStats++;
     if (typeof s.pts_ppr === 'number') pts += s.pts_ppr;
+    if (typeof r?.updated_at === 'number' && r.updated_at > newest) newest = r.updated_at;
+    if (typeof r?.last_modified === 'number' && r.last_modified > newestModified) newestModified = r.last_modified;
   }
-  return { rows: rows.length, withStats, pts: Math.round(pts) };
+  return { rows: rows.length, withStats, pts: Math.round(pts), newest, newestModified };
 }
 
-/** Scoreboard games by state, and how many live ones moved (period, clock, down or ball spot) since the last poll. */
-function boardAgg(body, prev) {
-  const events = Array.isArray(body?.events) ? body.events : [];
-  const marks = new Map();
-  const out = { events: events.length, states: count(events.map((e) => e?.status?.type?.state ?? '?')), live: 0, situation: 0, possession: 0, redZone: 0, moved: 0, marks };
-  for (const e of events) {
+/** Live games by event id: their scores ("away-home") and a mark that moves with the clock, down or ball spot. */
+function boardGames(body) {
+  const out = new Map();
+  for (const e of Array.isArray(body?.events) ? body.events : []) {
     const c = e?.competitions?.[0];
+    const score = (side) => Number(c?.competitors?.find((t) => t?.homeAway === side)?.score) || 0;
     const s = c?.situation;
-    const mark = [e?.status?.period, e?.status?.clock, s?.down, s?.yardLine, s?.possession].join('|');
-    marks.set(e?.id, mark);
-    if (e?.status?.type?.state !== 'in') continue;
-    out.live++;
-    if (s) out.situation++;
-    if (s?.possession) out.possession++;
-    if (s?.isRedZone) out.redZone++;
-    if (prev?.has(e?.id) && prev.get(e?.id) !== mark) out.moved++;
+    out.set(String(e?.id), { state: e?.status?.type?.state, score: `${score('away')}-${score('home')}`, mark: [e?.status?.period, e?.status?.clock, s?.down, s?.yardLine, s?.possession].join('|') });
   }
   return out;
 }
 
-/** Paths in an object whose key names an athlete id, e.g. `participants[].athlete.id`. */
-function athletePaths(obj, prefix = '', out = new Set(), depth = 0) {
-  if (!obj || typeof obj !== 'object' || depth > 6) return out;
-  for (const [k, v] of Object.entries(obj)) {
-    const path = Array.isArray(obj) ? `${prefix}[]` : prefix ? `${prefix}.${k}` : k;
-    if (k === 'id' && /athlete/i.test(prefix) && /^\d+$/.test(String(v))) out.add(path);
-    if (v && typeof v === 'object') athletePaths(v, path, out, depth + 1);
-    if (Array.isArray(obj)) break; // one element stands for the rest
-  }
-  return out;
+/** A game summary's score by its last scoring play, and by its header (ESPN's own score bug). */
+function summaryScores(body) {
+  const plays = Array.isArray(body?.scoringPlays) ? body.scoringPlays : [];
+  const last = plays.at(-1);
+  const byPlays = !plays.length ? '0-0' : typeof last?.awayScore === 'number' && typeof last?.homeScore === 'number' ? `${last.awayScore}-${last.homeScore}` : '?';
+  const cs = body?.header?.competitions?.[0]?.competitors ?? [];
+  const side = (s) => cs.find((t) => t?.homeAway === s)?.score;
+  const byHeader = side('away') != null && side('home') != null ? `${Number(side('away')) || 0}-${Number(side('home')) || 0}` : '?';
+  return { byPlays, byHeader, plays: plays.length, headerKeys: keysOf(cs) };
 }
 
-function describeBoard(body) {
-  const events = Array.isArray(body?.events) ? body.events : [];
-  const live = events.find((e) => e?.status?.type?.state === 'in') ?? events[0];
-  const c = live?.competitions?.[0];
-  print('#### Scoreboard fields');
-  print('');
-  print(`- top level: ${keysOf([body])}; week: ${body?.week?.number ?? '—'}, season type: ${body?.season?.type ?? '—'}`);
-  print(`- event: ${keysOf([live])}`);
-  print(`- status: ${keysOf([live?.status])}; status.type: ${keysOf([live?.status?.type])}; status.clock is a ${typeof live?.status?.clock}`);
-  print(`- status names: ${count(events.map((e) => e?.status?.type?.name ?? '?'))}`);
-  print(`- competition: ${keysOf([c])}`);
-  print(`- situation: ${keysOf([c?.situation])}`);
-  print(`- competitor: ${keysOf(c?.competitors ?? [])}; team: ${keysOf((c?.competitors ?? []).map((t) => t?.team))}`);
-  print(`- team abbreviations: ${[...new Set(events.flatMap((e) => (e?.competitions?.[0]?.competitors ?? []).map((t) => t?.team?.abbreviation)))].filter(Boolean).sort().join(' ')}`);
-  print('');
-}
-
-async function checkSummary(eventId) {
-  const res = await get(`${ESPN}/summary?event=${eventId}`);
-  const b = res.body;
-  const scoring = Array.isArray(b?.scoringPlays) ? b.scoringPlays : [];
-  const drives = b?.drives;
-  const plays = [...(drives?.previous ?? []).flatMap((d) => d?.plays ?? []), ...(drives?.current?.plays ?? [])];
-  print(`#### Game summary at ${clock(Date.now())}`);
-  print('');
-  print(`- \`${ESPN}/summary?event={id}\`: HTTP ${res.status}, ${res.bytes} bytes, ${res.ms} ms; access-control-allow-origin: \`${res.acao || '(none)'}\`; cache-control: \`${res.cache || '(none)'}\``);
-  print(`- top level: ${keysOf([b])}`);
-  print(`- scoring plays: ${scoring.length}; keys: ${keysOf(scoring)}; type: ${keysOf(scoring.map((p) => p?.type))}; scoringType: ${keysOf(scoring.map((p) => p?.scoringType))}`);
-  print(`- scoring play athlete id paths: ${[...athletePaths(scoring)].join(', ') || '—'}`);
-  print(`- drives: ${keysOf([drives])}; previous: ${drives?.previous?.length ?? 0}; current: ${drives?.current ? 'yes' : 'no'}; plays: ${plays.length}`);
-  print(`- play keys: ${keysOf(plays)}; play type: ${keysOf(plays.map((p) => p?.type))}; play types: ${count(plays.map((p) => p?.type?.abbreviation ?? p?.type?.text ?? '?')).slice(0, 400)}`);
-  print(`- play athlete id paths: ${[...athletePaths(plays)].join(', ') || '—'}`);
-  print(`- win probability rows: ${Array.isArray(b?.winprobability) ? b.winprobability.length : 0}; keys: ${keysOf(b?.winprobability ?? [])}`);
-  print('');
+/** "behind", "same" or "ahead": a summary's score against the scoreboard's (both "away-home"; totals only ever rise). */
+function compare(summary, board) {
+  if (summary === '?') return 'unknown';
+  const total = (s) => s.split('-').reduce((a, b) => a + Number(b), 0);
+  if (summary === board) return 'same';
+  return total(summary) < total(board) ? 'behind' : total(summary) > total(board) ? 'ahead' : 'different';
 }
 
 async function main() {
@@ -128,55 +100,80 @@ async function main() {
   print('### Live game-day feeds');
   print('');
   print(`Started ${new Date().toISOString()} with \`Origin: ${ORIGIN}\`, polling every ${EVERY_MS / 1000} s for ${MINUTES} min. Season ${season} week ${week}.`);
-  print('Metadata and aggregates only: no names, stats or play text.');
+  print('Metadata and aggregates only: no names, stats or play text. "Newest row" is the newest `updated_at` in the copy, as seconds before the poll.');
   print('');
-  print('| time (UTC) | Sleeper stats | age | rows with stats | PPR sum | changed | ESPN scoreboard | games by state | live: situation / possession / red zone | live games moved |');
+  const head = '| time (UTC) | Sleeper stats | age | newest row | PPR sum | changed | older than the copy before | `max-age=0`: age · newest row | ESPN live games moved | scores changed → summary |';
+  print(head);
   print('|---|---|---|---|---|---|---|---|---|---|');
-  const seen = { stats: [], board: [], acao: new Set(), boardAcao: new Set(), statsCache: new Set(), boardCache: new Set() };
-  let prevStats = '';
-  let prevMarks;
-  let described = false;
-  let summaries = 0;
-  const polls = MINUTES;
-  for (let i = 0; i < polls; i++) {
+  const seen = { stats: [], statsCache: new Set(), newest: [], older: { pts: 0, newest: 0, both: 0 }, oldAge: { n: 0, olderNewest: 0 }, fresh: { ages: [], newer: 0, same: 0, older: 0 }, summaries: { same: 0, behind: 0, ahead: 0, different: 0, unknown: 0, headerMatches: 0, n: 0 }, rowKeys: '', tsType: '', validators: new Set() };
+  let prev = null; // last plain copy: { hash, pts, newest }
+  let prevGames;
+  for (let i = 0; i < MINUTES; i++) {
     const t = Date.now();
-    const [st, sb] = await Promise.all([get(stats), get(`${ESPN}/scoreboard`)]);
+    const [st, fr, sb] = await Promise.all([get(stats), get(stats, { 'cache-control': 'max-age=0' }), get(`${ESPN}/scoreboard`)]);
     const sa = sleeperAgg(st.body);
-    const ba = boardAgg(sb.body, prevMarks);
-    const changed = prevStats !== '' && st.hash !== prevStats;
-    if (changed) seen.stats.push(t);
-    if (ba.moved) seen.board.push(t);
-    seen.acao.add(st.acao || '(none)');
-    seen.boardAcao.add(sb.acao || '(none)');
+    const fa = sleeperAgg(fr.body);
+    if (!seen.rowKeys && Array.isArray(st.body) && st.body.length) {
+      seen.rowKeys = keysOf(st.body.slice(0, 50));
+      seen.tsType = `updated_at ${typeof st.body[0]?.updated_at}, last_modified ${typeof st.body[0]?.last_modified}`;
+    }
     seen.statsCache.add(st.cache || '(none)');
-    seen.boardCache.add(sb.cache || '(none)');
-    print(`| ${clock(t)} | ${st.status} · ${st.bytes} B | ${st.age || '—'} | ${sa.withStats}/${sa.rows} | ${sa.pts} | ${changed ? 'yes' : prevStats ? 'no' : '—'} | ${sb.status} · ${sb.bytes} B | ${ba.states} | ${ba.situation} / ${ba.possession} / ${ba.redZone} of ${ba.live} | ${prevMarks ? ba.moved : '—'} |`);
-    prevStats = st.hash || prevStats;
-    prevMarks = ba.marks;
-    const live = (Array.isArray(sb.body?.events) ? sb.body.events : []).find((e) => e?.status?.type?.state === 'in');
-    if ((live && !described) || (i === polls - 1 && !described && sb.body)) {
-      print('');
-      describeBoard(sb.body);
-      described = Boolean(live);
-      print('| time (UTC) | Sleeper stats | age | rows with stats | PPR sum | changed | ESPN scoreboard | games by state | live: situation / possession / red zone | live games moved |');
-      print('|---|---|---|---|---|---|---|---|---|---|');
+    seen.validators.add(`last-modified ${st.lastModified ? 'yes' : 'no'}, etag ${st.etag ? 'yes' : 'no'}`);
+    const changed = prev && st.hash && st.hash !== prev.hash;
+    if (changed) seen.stats.push(t);
+    const before = (x) => (x ? Math.round((t - x) / 1000) : '—');
+    if (sa.newest) seen.newest.push(Math.round((t - sa.newest) / 1000));
+    // An older copy than the one before: by its PPR sum (rarely falls between real copies) and by its newest row.
+    const olderPts = Boolean(prev && changed && sa.pts < prev.pts);
+    const olderNewest = Boolean(prev && sa.newest && prev.newest && sa.newest < prev.newest);
+    if (olderPts) seen.older.pts++;
+    if (olderNewest) seen.older.newest++;
+    if (olderPts && olderNewest) seen.older.both++;
+    if (Number(st.age) >= OLD_AGE) {
+      seen.oldAge.n++;
+      if (olderNewest) seen.oldAge.olderNewest++;
     }
-    if (live && summaries * SUMMARY_EVERY <= i && summaries < 3) {
-      print('');
-      await checkSummary(live.id);
-      summaries++;
-      print('| time (UTC) | Sleeper stats | age | rows with stats | PPR sum | changed | ESPN scoreboard | games by state | live: situation / possession / red zone | live games moved |');
-      print('|---|---|---|---|---|---|---|---|---|---|');
+    if (fr.age !== '') seen.fresh.ages.push(Number(fr.age));
+    if (fa.newest && sa.newest) seen.fresh[fa.newest > sa.newest ? 'newer' : fa.newest < sa.newest ? 'older' : 'same']++;
+
+    // Live games whose clock or ball moved, and those whose score changed since the poll before: load their summaries now.
+    const games = boardGames(sb.body);
+    let moved = 0;
+    const scored = [];
+    for (const [id, g] of games) {
+      const was = prevGames?.get(id);
+      if (g.state !== 'in' || !was) continue;
+      if (was.mark !== g.mark) moved++;
+      if (was.score !== g.score) scored.push([id, g.score]);
     }
-    if (i < polls - 1) await sleep(Math.max(0, t + EVERY_MS - Date.now()));
+    const verdicts = [];
+    for (const [id, score] of scored) {
+      const sum = await get(`${ESPN}/summary?event=${id}`);
+      const s = summaryScores(sum.body);
+      const v = compare(s.byPlays, score);
+      seen.summaries[v]++;
+      seen.summaries.n++;
+      if (s.byHeader === s.byPlays) seen.summaries.headerMatches++;
+      if (!seen.headerKeys) seen.headerKeys = s.headerKeys;
+      verdicts.push(v);
+    }
+    const oldMark = olderPts || olderNewest ? `${olderPts ? 'PPR sum' : ''}${olderPts && olderNewest ? ' + ' : ''}${olderNewest ? 'newest row' : ''}` : '';
+    print(`| ${clock(t)} | ${st.status} · ${st.bytes} B | ${st.age || '—'} | ${before(sa.newest)} | ${sa.pts} | ${changed ? 'yes' : prev ? 'no' : '—'} | ${oldMark || '—'} | ${fr.age || '—'} · ${before(fa.newest)} | ${prevGames ? moved : '—'} | ${verdicts.join(', ') || '—'} |`);
+    if (st.hash) prev = { hash: st.hash, pts: sa.pts, newest: sa.newest };
+    prevGames = games;
+    if (i < MINUTES - 1) await sleep(Math.max(0, t + EVERY_MS - Date.now()));
   }
   const gaps = (ts) => ts.slice(1).map((x, k) => Math.round((x - ts[k]) / 1000));
-  const median = (xs) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : '—');
+  const sm = seen.summaries;
   print('');
   print('#### Summary');
   print('');
-  print(`- Sleeper stats: changed in ${seen.stats.length} of ${polls - 1} polls; median seconds between changes: ${median(gaps(seen.stats))}; access-control-allow-origin: ${[...seen.acao].join(', ')}; cache-control: ${[...seen.statsCache].join(', ')}`);
-  print(`- ESPN scoreboard: live games moved in ${seen.board.length} of ${polls - 1} polls; median seconds between moves: ${median(gaps(seen.board))}; access-control-allow-origin: ${[...seen.boardAcao].join(', ')}; cache-control: ${[...seen.boardCache].join(', ')}`);
+  print(`- Sleeper stats: changed in ${seen.stats.length} of ${MINUTES - 1} polls; median seconds between changes: ${median(gaps(seen.stats))}; cache-control: ${[...seen.statsCache].join(', ')}; validators: ${[...seen.validators].join('; ')}`);
+  print(`- Row fields: ${seen.rowKeys || '—'}; types: ${seen.tsType || '—'}`);
+  print(`- Newest row: median ${median(seen.newest)} s before the poll (min ${seen.newest.length ? Math.min(...seen.newest) : '—'}, max ${seen.newest.length ? Math.max(...seen.newest) : '—'})`);
+  print(`- Older copies than the one before: ${seen.older.pts} by PPR sum, ${seen.older.newest} by newest row, ${seen.older.both} by both; copies ${OLD_AGE} s or older (age header): ${seen.oldAge.n}, of which older by newest row: ${seen.oldAge.olderNewest}`);
+  print(`- \`cache-control: max-age=0\` requests: median age ${median(seen.fresh.ages)} s; newest row newer than the plain request's in ${seen.fresh.newer}, same in ${seen.fresh.same}, older in ${seen.fresh.older}`);
+  print(`- Summaries loaded when a live game's score changed: ${sm.n}; scoring plays reach the scoreboard's score: ${sm.same}; behind it: ${sm.behind}; ahead: ${sm.ahead}; other: ${sm.different + sm.unknown}; header score equals the last scoring play's: ${sm.headerMatches} of ${sm.n}; header competitor fields: ${seen.headerKeys ?? '—'}`);
 }
 
 await main();
