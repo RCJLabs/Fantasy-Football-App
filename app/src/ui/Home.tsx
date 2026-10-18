@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import { exposure, gameStacks, sharedTargets, type SharedTarget } from '../analysis/across';
 import type { PlayerRow } from '../analysis/analyze';
+import { rootingGuide, type RootingGame, type RootingSide } from '../analysis/rooting';
 import { waiverBoard } from '../analysis/outlook';
 import { loadTrending } from '../data/repo';
 import type { League } from '../domain/types';
@@ -8,7 +9,7 @@ import { NextLock } from './BeforeLock';
 import { Badge, ErrorBox, Problems, Spinner } from './components';
 import { loadOverview, loadSeason, sharedBundle } from './data';
 import { logError } from './errorLog';
-import { ago, kickoffLabel, pct, pts, signed } from './format';
+import { ago, kickoffLabel, pct, pts, shortName, signed } from './format';
 import { useAsync } from './hooks';
 import type { Session } from './session';
 
@@ -46,6 +47,7 @@ export function Home({ session }: { session: Session }) {
           <LeagueCard key={l.id} league={l} week={overview.data!.week} session={session} />
         ))}
       </div>
+      {overview.data ? <RootingGuide leagues={overview.data.leagues} week={overview.data.week} session={session} /> : null}
       {overview.data ? <AcrossLeagues leagues={overview.data.leagues} week={overview.data.week} session={session} /> : null}
     </section>
   );
@@ -216,6 +218,89 @@ function AcrossLeagues({ leagues, week, session }: { leagues: League[]; week: nu
           per league, so claim him where he adds more, or in both.
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/** Games shown before "Show all". */
+const ROOT_SHOWN = 5;
+
+/** "your P. Mahomes (2), T. Kelce" or "their J. Allen". */
+function who(list: RootingSide['yours'], whose: string): string {
+  return list.length ? `${whose} ${list.map((p) => `${shortName(p.row)}${p.leagues > 1 ? ` (${p.leagues})` : ''}`).join(', ')}` : '';
+}
+
+function RootingLine({ s }: { s: RootingSide }) {
+  const label = `${s.team} ${s.unit}`;
+  const players = [who(s.yours, 'your'), who(s.theirs, 'their')].filter(Boolean).join('; ');
+  return (
+    <li>
+      {s.net > 0 ? 'Root for' : 'Root against'} <strong>{label}</strong> <span class="muted small">{signed(s.net)} pts left for you · {players}</span>
+    </li>
+  );
+}
+
+function RootingItem({ g, now }: { g: RootingGame; now: number }) {
+  return (
+    <li>
+      <div>
+        <strong>{g.game}</strong> <span class="muted small">{g.live ? 'Live' : kickoffLabel(g.kickoff, now)}</span>
+      </div>
+      <ul class="root-sides">
+        {g.sides.map((s) => (
+          <RootingLine s={s} />
+        ))}
+      </ul>
+      {g.stakes.length ? (
+        <p class="small muted">
+          {g.stakes.map((st) => `${st.name}: ${pct(st.now)} now, ${pct(st.good)} if it goes your way, ${pct(st.bad)} if not`).join(' · ')}
+        </p>
+      ) : null}
+    </li>
+  );
+}
+
+/** For each NFL game not over yet: whom to root for across your leagues, and how much it can swing each one. */
+function RootingGuide({ leagues, week, session }: { leagues: League[]; week: number; session: Session }) {
+  const active = leagues.filter((l) => (l.status === 'in_season' || l.status === 'post_season') && !l.rules.bestBall);
+  const bundles = useAsync(
+    async () =>
+      (await Promise.allSettled(active.map((l) => sharedBundle(l, week, session, false)))).flatMap((r) =>
+        r.status === 'fulfilled' && r.value.myRoster && r.value.lineup ? [r.value] : [],
+      ),
+    [active.map((l) => l.id).join(','), week],
+  );
+  const [all, setAll] = useState(false);
+  if (!bundles.data?.length) return null;
+  const now = Date.now();
+  const guide = rootingGuide(
+    bundles.data.map((b) => ({ leagueId: b.league.id, name: b.league.name, a: b.lineup! })),
+    now,
+  );
+  if (!guide.length) return null;
+  const shown = all ? guide : guide.slice(0, ROOT_SHOWN);
+  return (
+    <div class="card rooting">
+      <h2>Rooting guide</h2>
+      <p class="muted small">
+        This week&apos;s games still to finish, the most at stake first: whom to root for across your {bundles.data.length === 1 ? 'league' : `${bundles.data.length} leagues`},
+        and your win chance if the game goes your way or against you.
+      </p>
+      <ol class="root-games">
+        {shown.map((g) => (
+          <RootingItem key={g.game} g={g} now={now} />
+        ))}
+      </ol>
+      {guide.length > ROOT_SHOWN ? (
+        <button type="button" class="link small" onClick={() => setAll(!all)}>
+          {all ? 'Show fewer' : `Show all ${guide.length} games`}
+        </button>
+      ) : null}
+      <p class="muted small">
+        Points left: your starters&apos; expected points still to come in that game minus your opponents&apos;, over all your leagues. Going your way:
+        your starters in it beating your opponents&apos; by one SD more than expected (about 1 game in 6), teammates moving together. As of the
+        lineups loaded {ago(Math.min(...bundles.data.map((b) => b.data.savedAt)), now)}; Refresh for newer scores.
+      </p>
     </div>
   );
 }

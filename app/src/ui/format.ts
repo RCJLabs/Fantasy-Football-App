@@ -58,3 +58,10 @@ const STAT_LABELS: Record<string, string> = {
   def_td: 'DEF TD',
 };
 export const statLabel = (key: string): string => STAT_LABELS[key] ?? key.replace(/_/g, ' ');
+
+/** "J. Jefferson" (a defense by its team): short enough for two lineups side by side on a phone. */
+export function shortName(row: { name: string; pos: string; team: string | null }): string {
+  if (row.pos === 'DEF') return row.team ? `${row.team} DEF` : row.name;
+  const [first, ...rest] = row.name.split(' ');
+  return rest.length && first ? `${first[0]}. ${rest.join(' ')}` : row.name;
+}

@@ -5,7 +5,8 @@ import { parseBracket, parseLeague, parseMatchup, parseRoster } from '../sleeper
 import type { RawBracketMatch, RawLeague, RawTransaction } from '../sleeper/raw';
 import { gamesByTeam, type WeekContext } from './analyze';
 import { faabMarket, marketPrice, suggestBid, tierOf } from './faab';
-import { buildOutlook, byeGrid, evaluateTrade, regularStarters, scheduleOutlook, streamers, waiverBoard } from './outlook';
+import { buildOutlook, byeGrid, evaluateTrade, oddsWithWeek, regularStarters, scheduleOutlook, streamers, waiverBoard } from './outlook';
+import { currentDists, leagueMatchups, weekStartDists } from './aroundLeague';
 import {
   addGains,
   changeVariance,
@@ -388,6 +389,29 @@ describe('league outlook', () => {
     expect(me.weights.at(-1)).toBeCloseTo(o.odds!.get(1)!.pPlayoffs, 9);
     expect(scheduleOutlook(o, 1)[0]).toMatchObject({ week: 7, opponent: 4 });
     expect(scheduleOutlook(o, 1)[1]).toMatchObject({ week: 8, opponent: 3 });
+  });
+
+  it("reruns the odds with this week's games as they stand: same draws, so only the swap moves them", () => {
+    const same = oddsWithWeek(o, new Map());
+    expect([...same!.values()].map((t) => t.pPlayoffs)).toEqual([...o.odds!.values()].map((t) => t.pPlayoffs));
+    // My week turns out huge: my odds go up, the rest share fewer spots.
+    const big = oddsWithWeek(o, new Map([[1, { mean: 400, variance: 1 }]]))!;
+    expect(big.get(1)!.pPlayoffs).toBeGreaterThan(o.odds!.get(1)!.pPlayoffs);
+    expect([...big.values()].reduce((a, t) => a + t.pPlayoffs, 0)).toBeCloseTo(2, 9);
+  });
+
+  it('lists every matchup as it stands, yours first and on your side', () => {
+    const pairs = leagueMatchups(league, rosters, [], pair([1, 2], [3, 4]), ctx, 2);
+    expect(pairs.map((p) => [p.a.rosterId, p.b?.rosterId])).toEqual([[2, 1], [3, 4]]);
+    for (const p of pairs) {
+      expect(p.winA).toBeGreaterThan(0);
+      expect(p.winA).toBeLessThan(1);
+    }
+    // Same model as the lineup page's opponent: a team's distribution is its side's.
+    const dists = currentDists(pairs);
+    expect(dists.get(1)!.mean).toBeCloseTo(o.teams.get(1)!.regular[0]!.mean, 9);
+    // No games this week in this fixture: the start of the week is now.
+    expect(weekStartDists(league, rosters, [], pair([1, 2], [3, 4]), ctx).get(3)!.mean).toBeCloseTo(dists.get(3)!.mean, 9);
   });
 
   it('ranks the free-agent RB first with a drop and a bid', () => {
