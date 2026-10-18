@@ -8,6 +8,7 @@ const board: RawScoreboard = {
   season: { type: 2, year: 2026 },
   events: [
     {
+      id: '401',
       status: { clock: 523, displayClock: '8:43', period: 2, type: { name: 'STATUS_IN_PROGRESS', state: 'in' } },
       competitions: [
         {
@@ -37,7 +38,7 @@ describe('ESPN scoreboard', () => {
     const kc = games.get('KC')!;
     expect(games.get('WAS')).toBe(kc); // ESPN's WSH is Sleeper's WAS
     expect(kc).toMatchObject({ state: 'in', period: 2, clock: 523, label: 'Q2 8:43', home: 'KC', away: 'WAS', homeScore: 7, awayScore: 10 });
-    expect(kc).toMatchObject({ possession: 'WAS', down: '1st & Goal at KC 4', redZone: true });
+    expect(kc).toMatchObject({ possession: 'WAS', down: '1st & Goal at KC 4', redZone: true, event: '401' });
     expect(kc.progress).toBeCloseTo((900 + (900 - 523)) / 3600, 9);
     expect(games.get('BUF')).toMatchObject({ label: 'Half', progress: 0.5 });
     expect(games.get('BUF')!.possession).toBeUndefined();

@@ -15,6 +15,15 @@ export function objectivePref(leagueId: string, phase: Phase): Objective | undef
   }
 }
 
+/** Back to the app's default for that phase (max points in the regular season, win chance in the playoffs). */
+export function clearObjectivePref(leagueId: string, phase: Phase): void {
+  try {
+    localStorage.removeItem(objectiveKey(leagueId, phase));
+  } catch {
+    /* nothing saved */
+  }
+}
+
 export function setObjectivePref(leagueId: string, phase: Phase, value: Objective): void {
   try {
     localStorage.setItem(objectiveKey(leagueId, phase), value);
@@ -43,6 +52,14 @@ export function draftPrefs(leagueId: string): DraftPrefs {
   }
 }
 
+export function clearDraftPrefs(leagueId: string): void {
+  try {
+    localStorage.removeItem(draftKey(leagueId));
+  } catch {
+    /* nothing saved */
+  }
+}
+
 export function setDraftPrefs(leagueId: string, value: DraftPrefs): void {
   try {
     localStorage.setItem(draftKey(leagueId), JSON.stringify(value));
@@ -67,5 +84,35 @@ export function setBuzzPref(on: boolean): void {
     localStorage.setItem(BUZZ_KEY, on ? 'on' : 'off');
   } catch {
     /* not saved; the choice still applies for this visit */
+  }
+}
+
+const API_KEY = 'ff:anthropic-key';
+
+/** The manager's own Anthropic API key for Ask the analyst, kept on this device only. */
+export function apiKey(): string | null {
+  try {
+    return localStorage.getItem(API_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setApiKey(key: string | null): void {
+  try {
+    if (key) localStorage.setItem(API_KEY, key);
+    else localStorage.removeItem(API_KEY);
+  } catch {
+    /* private mode: the key lasts this visit only */
+  }
+}
+
+/** Every preference above back to its default (the API key and the season review's saved picks stay). */
+export function resetPrefs(): void {
+  try {
+    const keys = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i) ?? '');
+    for (const k of keys) if (k.startsWith('ff:objective:') || k.startsWith('ff:draft:') || k === BUZZ_KEY) localStorage.removeItem(k);
+  } catch {
+    /* nothing saved */
   }
 }

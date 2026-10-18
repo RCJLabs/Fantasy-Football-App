@@ -6,41 +6,24 @@ import { loadTrending } from '../data/repo';
 import { loadSeason, type LeagueBundle } from './data';
 import { logError } from './errorLog';
 import { dateTime } from './format';
+import { apiKey, setApiKey } from './prefs';
 
 // Ask the analyst (docs/analyst.md): the manager's own Anthropic API key, kept on this device, and a call straight from
 // the browser to Anthropic. No server of ours sees the key or the questions.
 
-const KEY_STORE = 'ff:anthropic-key';
 const MODEL = 'claude-opus-5-5';
 /** Earlier questions and answers sent with a new one, for follow-ups. [design] */
 const HISTORY = 4;
 
 const EXAMPLES = ['Who should I start this week, and why?', 'How likely am I to win this week?', 'Which free agent should I claim?', 'How are my playoff odds?'];
 
-function storedKey(): string | null {
-  try {
-    return localStorage.getItem(KEY_STORE);
-  } catch {
-    return null;
-  }
-}
-
-function storeKey(key: string | null): void {
-  try {
-    if (key) localStorage.setItem(KEY_STORE, key);
-    else localStorage.removeItem(KEY_STORE);
-  } catch {
-    /* private mode: the key lasts this visit only */
-  }
-}
-
 export function AskTab({ bundle }: { bundle: LeagueBundle }) {
-  const [key, setKey] = useState<string | null>(storedKey);
+  const [key, setKey] = useState<string | null>(apiKey);
   if (!key)
     return (
       <KeyCard
         onSave={(k) => {
-          storeKey(k);
+          setApiKey(k);
           setKey(k);
         }}
       />
@@ -50,7 +33,7 @@ export function AskTab({ bundle }: { bundle: LeagueBundle }) {
       bundle={bundle}
       apiKey={key}
       onForget={() => {
-        storeKey(null);
+        setApiKey(null);
         setKey(null);
       }}
     />

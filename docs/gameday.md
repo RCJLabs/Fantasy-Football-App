@@ -2,9 +2,10 @@
 
 Built 2026-10-18 at the owner's request, from the seven ideas weighed that day:
 - first ideas 1 (live feed), 3 (swing players) and 6 (game clock), in PR #45;
-- then ideas 2 (win-chance graph), 4 (rooting guide) and 5 (around the league).
+- then ideas 2 (win-chance graph), 4 (rooting guide) and 5 (around the league), in PR #46;
+- then idea 7 (scoring plays) and the late-swap shortcut.
 
-Idea 7 and a late-swap shortcut are queued in [PLAN.md](PLAN.md) under "Game day".
+All seven are built; [PLAN.md](PLAN.md) lists them under "Game day".
 
 Code:
 - `app/src/data/scoreboard.ts`: ESPN's scoreboard, read into game clocks by Sleeper team code.
@@ -15,6 +16,8 @@ Code:
 - `app/src/analysis/aroundLeague.ts` and `oddsWithWeek` in `app/src/analysis/outlook.ts`: around the league and its playoff odds.
 - `app/src/ui/MatchupTab.tsx`: the cards; `app/src/ui/WinChart.tsx`: the graph; `app/src/ui/Home.tsx` (`RootingGuide`).
 - `app/src/ui/statLine.ts` (`statChange`): what a change in a stat line says.
+- `app/src/data/plays.ts`: ESPN's game summary, read into scoring plays and the box score's names; plays matched to players.
+- `scripts/spike/espn-plays-spike.mjs`: the game summary check (`spike.yml` with `checks: plays`).
 - `scripts/spike/live-gameday-spike.mjs`: the live checks, run from Actions (`spike.yml` with `checks: live`).
 
 ## What it does
@@ -71,6 +74,22 @@ Code:
     what's left). Later weeks as on the Season tab. Both runs use the same seeded draws, so the difference isn't sampling noise.
   - Regular season only: once the bracket starts, the Season tab's bracket odds apply.
 
+- **Scoring plays (idea 7):** ESPN's own description of each scoring play, for your starters and your opponent's.
+  - In each live or finished player's cell, "Scoring plays" opens his plays in this game ("Q2 9:12 Taylor Wideout 34 Yd pass from
+    Alex Thrower (Sam Boot Kick)"). Passers and kickers are named in the same plays (the kicker's extra point).
+  - In the live feed, an entry of 3.5 points or more shows the play behind it: his plays between the check before (less 5
+    minutes, since Sleeper's points can trail the play) and this one, by ESPN's time of the play.
+  - **Matching:** the plays carry no player ids, but the summary's box score maps ESPN athlete ids to ESPN's spelling of each
+    name. The player file's ESPN ids (2,218 of 3,089 players, 296 of the 300 most-searched) find that spelling; without one, the
+    app's name, compared without punctuation or suffixes ("D.J. Moore Jr." reads as "DJ Moore"). One-word names never match.
+    Team defenses are left out: their plays name the players, not the unit.
+  - **Data:** a summary is 200–650 KB before compression (sent gzipped). It loads only for games the page shows plays for, and
+    again only when that game's score or state changes; what it found is kept on the device per game.
+- **Late swaps (the shortcut):** a Matchup tab card with the Lineup tab's changes for the lineup as it stands (live scores and
+  clocks), when they're worth it by what the advice aims for: half a point of win chance, or half an expected point.
+  - Each change ("Start X over Y"), the expected points and win chance they add, and a link to the Lineup tab.
+  - Lineups are set in Sleeper: the app can't change them. Players whose games have started can't be moved, and aren't.
+
 ## Data rules
 
 - **Browser only:** the browser loads ESPN's scoreboard straight from ESPN while games are on. The pipeline never fetches it, and
@@ -105,6 +124,18 @@ Code:
   - the win-chance line draws from the checks, the arrow keys read the first check (11.4–75.0) and the table the last (17.4–75.0);
   - around the league lists both matchups (yours first) and playoff odds for all four teams, at the start of the week and now;
   - Home's rooting guide lists the three games still to finish with a verdict per side and each league's win chance either way.
+- **Game summaries from Actions, 2026-10-18** (run 39149248559, four of the 1 pm games in the first quarter; counts only):
+  - HTTP 200, `access-control-allow-origin: *`, `content-encoding: gzip`; about 190 KB decoded this early (the London game's was
+    640 KB late on).
+  - Box score: 27–30 athletes per game with ESPN ids and `displayName`, `firstName`, `lastName`, `jersey`.
+  - Scoring plays: 3 (2 TDs, 1 FG), every one naming at least one box-score athlete in full (3 per TD pass: receiver, passer,
+    kicker). The play-by-play's own text abbreviates names (no full-name matches), so the scoring plays are the ones to match.
+  - Participants with athlete ids appear on only some plays (1 of 24 in one game), so ids can't carry the matching.
+- **Unit tests (idea 7 and the shortcut):** the summary parser (order, times from the play-by-play, box-score names); matching by
+  ESPN name, then by the app's name without punctuation or suffixes, never by one word; the event id on the scoreboard; reloads by
+  score and state.
+- **End to end (idea 7 and the shortcut):** the wideout's cell opens his touchdown; his feed entry shows the play; the late-swap
+  card lists the Lineup tab's two changes with what they add and the link.
 - **Unit tests (ideas 2, 4, 5):** the rooting guide (verdicts by side, leagues counted, the stake against a hand calculation,
   what's left of a live game, a defense on its own side, Out players left out, kickoff order when nothing can swing); the odds
   rerun (unchanged with nothing swapped, up for a huge week); matchups as they stand (yours first and on your side).
@@ -121,5 +152,7 @@ Code:
 - **The graph only knows what this device saw:** checks while the Matchup tab was open, nothing from before or from other devices.
 - **The rooting guide's "your way" is one scenario:** one SD in the game's net. A game can still matter more in a way it doesn't
   capture (an injury, a blowout that benches starters).
+- **Scoring plays are matched by name:** an ESPN id with no box-score line yet, or a name ESPN spells differently, can miss.
+  Team defenses get none.
 - **Google Play:** the plan keeps ESPN out of a Play build until its use is reviewed. That now covers the player news and this
   game clock; no Play build exists yet.

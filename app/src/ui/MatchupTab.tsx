@@ -8,9 +8,10 @@ import { projectionPositions } from '../analysis/ros';
 import { swingPlayers, type SwingPlayer } from '../analysis/swing';
 import { loadStored, saveStored } from '../data/cache';
 import { type LeagueData, loadLeagueData, loadWeekStats, type WeekStats } from '../data/repo';
+import { loadGamePlays, playsFor, playsVersion, type ScoringPlay } from '../data/plays';
 import { loadScoreboard } from '../data/scoreboard';
 import type { GameClock } from '../domain/types';
-import { Badge, InjuryBadge, slotLabel } from './components';
+import { Badge, ChangeLine, InjuryBadge, slotLabel } from './components';
 import { type LeagueBundle, lineupFor, loadSeason } from './data';
 import { ago, kickoffLabel, pct, pts, shortName } from './format';
 import { useAsync } from './hooks';
@@ -25,6 +26,10 @@ const FEED_SHOWN = 6;
 /** Swing players shown, and the least a player must move your win chance to be one. [design] */
 const SWING_SHOWN = 6;
 const MIN_SWING = 0.01;
+/** Entries this big may be a touchdown or field goal: they look for ESPN's scoring play. [design] */
+const SCORE_POINTS = 3.5;
+/** Sleeper's points can trail the play by a few minutes: an entry's plays can be this much older than the check before it. [design] */
+const PLAY_LAG = 5 * 60_000;
 /** A buzz for your player's 6+ points at once, or a 10-point move in your win chance. [design] */
 const BIG_POINTS = 6;
 const BIG_WIN = 0.1;
@@ -194,9 +199,12 @@ export function MatchupTab({ b, base, objective, now }: { b: LeagueBundle; base:
         {feed && a.winProbCurrent !== undefined ? <WinChart timeline={feed.timeline} /> : null}
       </div>
 
+      <LateSwaps a={a} leagueId={b.league.id} />
+
       {started && feed ? (
         <FeedCard
           feed={feed}
+          clocks={clock}
           buzz={buzz}
           onBuzz={(on) => {
             setBuzz(on);
@@ -294,11 +302,12 @@ function Cell({ row, now, line, right, assumed }: { row: PlayerRow | null; now: 
         </div>
       ) : null}
       {stat ? <div class="mu-line">{stat}</div> : null}
+      {(state === 'live' || state === 'final') && row.pos !== 'DEF' && row.clock?.event ? <ScoringPlays row={row} clock={row.clock} /> : null}
     </div>
   );
 }
 
-function FeedLine({ e }: { e: FeedEvent }) {
+function FeedLine({ e, g, clock }: { e: FeedEvent; g: FeedGroup; clock: GameClock | undefined }) {
   const what = statChange(e.pos, e.stats);
   return (
     <li class={goodForYou(e) ? 'feed-good' : 'feed-bad'}>
@@ -308,7 +317,95 @@ function FeedLine({ e }: { e: FeedEvent }) {
       </strong>{' '}
       {shortName(e)} <span class="muted small">{e.side === 'me' ? 'yours' : 'theirs'}</span>
       {what ? <span> · {what}</span> : null}
+      {Math.abs(e.pts) >= SCORE_POINTS && e.pos !== 'DEF' && clock?.event ? <FeedPlay e={e} g={g} clock={clock} /> : null}
     </li>
+  );
+}
+
+/** ESPN's description of the scoring play behind an entry: his plays between the check before (less Sleeper's lag) and this one. */
+function FeedPlay({ e, g, clock }: { e: FeedEvent; g: FeedGroup; clock: GameClock }) {
+  const version = playsVersion(clock);
+  const game = useAsync(() => loadGamePlays(clock.event!, version), [clock.event, version]);
+  if (!game.data) return null;
+  const plays = playsFor(game.data, { name: e.name, ...(e.espn ? { espnId: e.espn } : {}) }).filter((p) => p.at !== undefined && p.at > g.since - PLAY_LAG && p.at <= g.at);
+  return plays.length ? (
+    <span class="feed-play muted small">
+      {plays.map((p) => (
+        <q key={p.id}>{p.text}</q>
+      ))}
+    </span>
+  ) : null;
+}
+
+const quarter = (n: number) => (n > 4 ? 'OT' : `Q${n}`);
+
+/** His scoring plays in this game (ESPN's game summary), loaded when opened. */
+function ScoringPlays({ row, clock }: { row: PlayerRow; clock: GameClock }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div class="mu-plays">
+      <button type="button" class="link small" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {open ? 'Hide scoring plays' : 'Scoring plays'}
+      </button>
+      {open ? <PlaysList row={row} event={clock.event!} version={playsVersion(clock)} /> : null}
+    </div>
+  );
+}
+
+function PlaysList({ row, event, version }: { row: PlayerRow; event: string; version: string }) {
+  const game = useAsync(() => loadGamePlays(event, version), [event, version]);
+  if (game.error && !game.data) return <p class="muted small">ESPN&apos;s plays didn&apos;t load.</p>;
+  if (!game.data) return <p class="muted small">Loading…</p>;
+  const plays: ScoringPlay[] = playsFor(game.data, { name: row.name, ...(row.espnId ? { espnId: row.espnId } : {}) });
+  return plays.length ? (
+    <ul class="mu-play-list small">
+      {plays.map((p) => (
+        <li key={p.id}>
+          <span class="muted">
+            {quarter(p.period)} {p.clock}
+          </span>{' '}
+          {p.text}
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <p class="muted small">No scoring plays for him yet.</p>
+  );
+}
+
+/** The Lineup tab's changes for the lineup as it stands, with what they're worth: a shortcut, since lineups are set in Sleeper. */
+function LateSwaps({ a, leagueId }: { a: LineupAnalysis; leagueId: string }) {
+  const winGain = a.winProbRecommended !== undefined && a.winProbCurrent !== undefined ? a.winProbRecommended - a.winProbCurrent : undefined;
+  // Worth a card by what the advice aims for: win chance, or expected points.
+  if (!a.changes.length || (a.objective === 'win' ? (winGain ?? 0) < 0.005 : a.gain < 0.5)) return null;
+  const late = a.current.some((r) => r?.locked);
+  return (
+    <div class="card late-swaps">
+      <h2>{late ? 'Late swaps' : 'Lineup changes'}</h2>
+      <ul class="changes">
+        {a.changes.map((c) => (
+          <ChangeLine c={c} />
+        ))}
+      </ul>
+      <p>
+        <strong>
+          {a.gain >= 0 ? '+' : '−'}
+          {Math.abs(a.gain).toFixed(1)}
+        </strong>{' '}
+        expected points
+        {winGain !== undefined ? (
+          <>
+            {' '}
+            · win chance {pct(a.winProbCurrent)} → <strong>{pct(a.winProbRecommended)}</strong>
+          </>
+        ) : null}{' '}
+        <span class="muted small">({a.objective === 'win' ? 'aiming for win chance' : 'aiming for max points'})</span>
+      </p>
+      <p class="muted small">
+        Make them in Sleeper before each player&apos;s kickoff: this app can&apos;t set lineups. The <a href={`#/league/${leagueId}/lineup`}>Lineup tab</a>{' '}
+        explains each one{late ? '; players whose games have started stay put' : ''}.
+      </p>
+    </div>
   );
 }
 
@@ -330,7 +427,7 @@ function FeedHead({ g }: { g: FeedGroup }) {
   );
 }
 
-function FeedCard({ feed, buzz, onBuzz }: { feed: LiveFeed; buzz: boolean; onBuzz: (on: boolean) => void }) {
+function FeedCard({ feed, clocks, buzz, onBuzz }: { feed: LiveFeed; clocks: ReadonlyMap<string, GameClock> | null; buzz: boolean; onBuzz: (on: boolean) => void }) {
   const [all, setAll] = useState(false);
   const shown = all ? feed.groups : feed.groups.slice(0, FEED_SHOWN);
   return (
@@ -343,7 +440,7 @@ function FeedCard({ feed, buzz, onBuzz }: { feed: LiveFeed; buzz: boolean; onBuz
               <FeedHead g={g} />
               <ul class="feed-lines">
                 {g.events.map((e) => (
-                  <FeedLine e={e} />
+                  <FeedLine e={e} g={g} clock={e.team ? clocks?.get(e.team) : undefined} />
                 ))}
               </ul>
             </li>

@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
-import type { PlayerRow, Problem } from '../analysis/analyze';
+import type { LineupChange, PlayerRow, Problem } from '../analysis/analyze';
 import type { Grade } from '../analysis/grades';
 import { streak, type Streak } from '../analysis/luck';
 import { injuryDuration } from '../engine/injuries';
@@ -341,5 +341,33 @@ export function ErrorBox({ error, onRetry }: { error: Error; onRetry?: () => voi
         </button>
       ) : null}
     </div>
+  );
+}
+
+/** One recommended lineup change, as the Lineup tab lists it. */
+export function ChangeLine({ c }: { c: LineupChange }) {
+  const slot = <span class="slot">{slotLabel(c.slot)}</span>;
+  if (c.kind === 'swap')
+    return (
+      <li>
+        {slot} Start <strong>{c.in!.name}</strong> over <strong>{c.out!.name}</strong>
+      </li>
+    );
+  if (c.kind === 'start')
+    return (
+      <li>
+        {slot} Start <strong>{c.in!.name}</strong>
+      </li>
+    );
+  if (c.kind === 'bench')
+    return (
+      <li>
+        <span class="slot">BN</span> Bench <strong>{c.out!.name}</strong>
+      </li>
+    );
+  return (
+    <li>
+      {slot} Move <strong>{c.in!.name}</strong> to {slotLabel(c.slot)}
+    </li>
   );
 }

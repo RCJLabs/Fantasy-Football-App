@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import type { LineupAnalysis, LineupChange, Objective } from '../analysis/analyze';
+import type { LineupAnalysis, Objective } from '../analysis/analyze';
 import { AskTab } from './AskTab';
 import { BeforeLockCard } from './BeforeLock';
 import { DraftTab } from './DraftTab';
-import { ErrorBox, PlayerLine, Problems, slotLabel, Spinner } from './components';
+import { ChangeLine, ErrorBox, PlayerLine, Problems, Spinner } from './components';
 import { findLeague, lineupFor, loadLeagueBundle, rememberAdvice, type LeagueBundle } from './data';
 import { ago, pct, pts, signed } from './format';
 import { useAsync, useTick } from './hooks';
@@ -83,33 +83,6 @@ export function LeaguePage({ session, leagueId, tab }: { session: Session; leagu
         <LineupArea b={b} tab="lineup" now={now} />
       )}
     </section>
-  );
-}
-
-function ChangeLine({ c }: { c: LineupChange }) {
-  const slot = <span class="slot">{slotLabel(c.slot)}</span>;
-  if (c.kind === 'swap')
-    return (
-      <li>
-        {slot} Start <strong>{c.in!.name}</strong> over <strong>{c.out!.name}</strong>
-      </li>
-    );
-  if (c.kind === 'start')
-    return (
-      <li>
-        {slot} Start <strong>{c.in!.name}</strong>
-      </li>
-    );
-  if (c.kind === 'bench')
-    return (
-      <li>
-        <span class="slot">BN</span> Bench <strong>{c.out!.name}</strong>
-      </li>
-    );
-  return (
-    <li>
-      {slot} Move <strong>{c.in!.name}</strong> to {slotLabel(c.slot)}
-    </li>
   );
 }
 

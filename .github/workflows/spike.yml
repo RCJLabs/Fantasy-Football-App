@@ -6,9 +6,9 @@ on:
   workflow_dispatch: # league-specific checks run privately via league-pull.yml instead
     inputs:
       checks:
-        description: 'all = CORS + Sleeper data (fetches the players dump) + FantasyCalc; light = CORS + FantasyCalc only; live = game-day feeds, polled while games are on'
+        description: 'all = CORS + Sleeper data (fetches the players dump) + FantasyCalc; light = CORS + FantasyCalc only; live = game-day feeds, polled while games are on; plays = ESPN game summaries (scoring plays) of games under way'
         type: choice
-        options: [all, light, live]
+        options: [all, light, live, plays]
         default: light
       minutes:
         description: 'live only: minutes to poll (one poll a minute)'
@@ -32,14 +32,20 @@ jobs:
           node-version: 22
           package-manager-cache: false
       - name: CORS checks
+        if: inputs.checks != 'plays'
         run: bash scripts/spike/cors.sh | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Data checks
         if: inputs.checks == 'all'
         run: node scripts/spike/sleeper-spike.mjs | tee -a "$GITHUB_STEP_SUMMARY"
       - name: FantasyCalc checks
+        if: inputs.checks != 'plays'
         run: node scripts/spike/fantasycalc-spike.mjs | tee -a "$GITHUB_STEP_SUMMARY"
       - name: ESPN news checks
+        if: inputs.checks != 'plays'
         run: node scripts/spike/espn-news-spike.mjs | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: ESPN scoring plays checks
+        if: inputs.checks == 'plays'
+        run: node scripts/spike/espn-plays-spike.mjs | tee -a "$GITHUB_STEP_SUMMARY"
 
   # Game-day feeds (Sleeper stats, ESPN scoreboard and game summary), polled once a minute while games are on.
   live:

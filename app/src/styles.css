@@ -1244,3 +1244,85 @@ mark.unchecked {
 .draft-positions > span {
   white-space: nowrap;
 }
+
+/* Matchup tab: a player's scoring plays (ESPN), opened from his cell; and the play behind a feed entry. */
+.mu-plays {
+  margin-top: 0.15rem;
+}
+.mu-play-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.2rem 0 0;
+  display: grid;
+  gap: 0.2rem;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.feed-play {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.feed-play q {
+  font-style: italic;
+}
+
+/* Top bar: the settings button. */
+.icon-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+}
+.icon-link:hover,
+.icon-link:focus-visible {
+  color: var(--text);
+}
+
+/* Settings. */
+.setting {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+.setting input[type='checkbox'] {
+  margin-top: 0.25rem;
+  flex: 0 0 auto;
+}
+.setting-group {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0;
+  padding: 0.6rem 0 0.4rem;
+  display: grid;
+  gap: 0.4rem;
+}
+.setting-group legend {
+  padding: 0 0.4rem 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.setting-select {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+.setting-select select {
+  min-height: 36px;
+  max-width: 60%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  padding: 0 0.5rem;
+}
+.setting-row {
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--border);
+}
+.setting-notes {
+  margin: 0 0 0.6rem;
+  padding-left: 1.1rem;
+}

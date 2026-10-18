@@ -113,6 +113,7 @@ export const playersFile: PlayersFile = {
     ...(id === 'w2' ? { prac: 'Limited' as const, rpt: 'Questionable', body: 'Hamstring' } : {}),
     ...(id === 'r1' ? { body: 'Knee' } : {}),
     ...(id === 'w2' ? { espn: '9000002' } : {}),
+    ...(id === 'w1' ? { espn: '9000001' } : {}),
   })).concat([{ id: 'cb1', n: 'Corner Back', pos: 'CB', t: 'CCC', inj: 'Out' }]),
 };
 
@@ -251,6 +252,15 @@ export const matchupsAfterScore: RawMatchup[] = matchups.map((m) => (m.roster_id
 export const weekStatsAfterScore: RawProjection[] = weekStats.map((r) =>
   r.player_id === 'w1' ? { ...r, stats: { rec: 6, rec_tgt: 8, rec_yd: 123, rec_td: 1, pts_ppr: 24.3 } } : r,
 );
+
+/** ESPN's game summary for the live game (its response shape; invented): the wideout's touchdown, a minute ago. */
+export const espnSummary = {
+  scoringPlays: [
+    { id: 701, text: 'Taylor Wideout 34 Yd pass from Alex Thrower (Sam Boot Kick)', period: { number: 2 }, clock: { displayValue: '9:12' }, scoringType: { abbreviation: 'TD' } },
+  ],
+  drives: { previous: [{ plays: [{ id: 701, scoringPlay: true, wallclock: iso(-0.02) }] }] },
+  boxscore: { players: [{ statistics: [{ name: 'receiving', athletes: [{ athlete: { id: '9000001', displayName: 'Taylor Wideout' } }] }] }] },
+};
 
 /** ESPN's scoreboard (its response shape; invented games): AAA has the ball in BBB's red zone, the other games to come. */
 const espnTeam = (homeAway: string, id: string, abbreviation: string, score: string) => ({ homeAway, score, team: { id, abbreviation } });

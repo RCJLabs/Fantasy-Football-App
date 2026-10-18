@@ -85,6 +85,8 @@ export interface GameClock {
   down?: string;
   /** The team with the ball is inside the opponent's 20. */
   redZone?: boolean;
+  /** ESPN's event id: its game summary has the scoring plays. */
+  event?: string;
 }
 
 export interface LeagueRules {

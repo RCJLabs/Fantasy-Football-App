@@ -24,6 +24,7 @@ interface RawCompetitor {
   team?: { id?: string; abbreviation?: string };
 }
 interface RawEvent {
+  id?: string;
   status?: { clock?: number; displayClock?: string; period?: number; type?: { name?: string; state?: string } };
   competitions?: Array<{
     competitors?: RawCompetitor[];
@@ -82,6 +83,7 @@ export function parseScoreboard(body: RawScoreboard, week?: number): Map<string,
       homeScore: Number(home.score) || 0,
       awayScore: Number(away.score) || 0,
     };
+    if (e.id) g.event = String(e.id);
     const s = c?.situation;
     if (state === 'in' && s) {
       const holder = [home, away].find((t) => t.team?.id !== undefined && t.team.id === s.possession);
