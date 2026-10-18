@@ -175,6 +175,7 @@ export function parsePlayersDump(dump: Record<string, RawPlayer>): Map<string, P
       ...(typeof p.depth_chart_order === 'number' ? { depthOrder: p.depth_chart_order } : {}),
       ...(typeof p.search_rank === 'number' ? { rank: p.search_rank } : {}),
       ...(p.gsis_id ? { gsis: p.gsis_id.trim() } : {}),
+      ...(/^\d+$/.test(String(p.espn_id ?? '').trim()) ? { espnId: String(p.espn_id).trim() } : {}),
     });
   }
   return out;

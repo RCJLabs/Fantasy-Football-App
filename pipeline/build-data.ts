@@ -465,6 +465,7 @@ async function main() {
     await appendFile(process.env.GITHUB_STEP_SUMMARY, `### Data shards\n\n| shard | status | rows | note |\n|---|---|---|---|\n${health.join('\n')}\n\n`);
   }
   const withPractice = playersFile.players.filter((p) => p.prac).length;
+  const withEspn = playersFile.players.filter((p) => p.espn).length;
   const acc = shards.get('accuracy.json') as AccuracyFile | undefined;
   const all = acc?.rows.find((r) => r.pos === 'ALL');
   const use = shards.get('usage.json') as UsageFile | undefined;
@@ -473,7 +474,7 @@ async function main() {
   const led = shards.get('ledger.json') as LedgerFile | undefined;
   const next = shards.get('nextseason.json') as NextSeasonFile | undefined;
   console.log(
-    `season ${season} week ${week}: ${playersFile.players.length} players (${withPractice} with practice status, report week ${report?.week ?? '-'}), ${scheduleFile.games.length} games` +
+    `season ${season} week ${week}: ${playersFile.players.length} players (${withPractice} with practice status, report week ${report?.week ?? '-'}; ${withEspn} with ESPN ids), ${scheduleFile.games.length} games` +
       `${all ? `, accuracy weeks ${acc!.weeks.join(',')} n=${all.n} MAE ${all.mae} within±1sd ${Math.round(all.within1 * 100)}%` : ''}` +
       `${use ? `, usage weeks ${use.weeks.join(',')} for ${Object.keys(use.players).length} players` : ''}` +
       `${mat ? `, matchups for ${Object.keys(mat.defense).length} defenses` : ''}` +

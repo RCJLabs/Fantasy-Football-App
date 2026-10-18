@@ -483,6 +483,23 @@ h3 {
 .explain p {
   margin: 0.35rem 0;
 }
+/* Recent news in player details (from ESPN). */
+.news h4 {
+  margin: 0.7rem 0 0.3rem;
+  font-size: 0.9rem;
+}
+.news-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+.news-list a,
+.news-list strong {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
 .breakdown {
   list-style: none;
   padding: 0;

@@ -19,6 +19,7 @@ export interface CompactPlayer {
   do?: number; // depth chart order
   rk?: number; // Sleeper search_rank
   gsis?: string;
+  espn?: string; // ESPN athlete id (Sleeper's espn_id): the app loads his news from ESPN
 }
 
 export interface PlayersFile {

@@ -35,6 +35,10 @@ async function mockBackends(page: Page) {
     const week = Number(new URL(route.request().url()).pathname.split('/').pop());
     return route.fulfill({ json: week === 6 ? fx.weekStats : [] });
   });
+  await page.route(/^https:\/\/site\.api\.espn\.com\/apis\/fantasy\/v2\/games\/ffl\/news\/players\?/, (route) => {
+    const id = new URL(route.request().url()).searchParams.get('playerId');
+    return route.fulfill({ json: id === '9000002' ? fx.espnNews : { feed: [] } });
+  });
   await page.route('https://api.fantasycalc.com/**', (route) => {
     const dynasty = new URL(route.request().url()).searchParams.get('isDynasty') === 'true';
     return route.fulfill({ json: dynasty ? [...fx.marketValues, ...fx.pickValues] : fx.marketValues });
@@ -141,9 +145,18 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   // The in-house baseline, labelled as a second opinion (half PPR: 4 × 0.5 + 5 + 0.3 × 6).
   await expect(flanker).toContainText('Second opinion, not used: 8.8 pts if he plays');
   await expect(flanker).toContainText('games through week 5');
+  // Recent news from ESPN, loaded when his details open: RotoWire's blurb without a link, ESPN's story with one.
+  const news = flanker.locator('.news');
+  await expect(news.locator('li')).toHaveCount(2);
+  await expect(news.locator('li').first()).toContainText('RotoWire via ESPN');
+  await expect(news.locator('li').first()).toContainText('Drew Flanker: Limited again Friday');
+  await expect(news.getByRole('link', { name: 'Invented notebook: receivers to watch' })).toHaveAttribute('href', 'https://www.espn.com/nfl/story/_/id/7002/invented');
+  await expect(news.getByRole('link', { name: 'More on ESPN' })).toHaveAttribute('href', 'https://www.espn.com/nfl/player/_/id/9000002');
   // An injured player: how long absences with his injury have lasted (2019–2025 history, not a forecast).
   const runner = page.locator('.pl').filter({ hasText: 'Riley Runner' }).first();
   await runner.getByRole('button').click();
+  // No ESPN id on file: no news section.
+  await expect(runner.locator('.news')).toHaveCount(0);
   await expect(runner).toContainText('Knee absences (QB/RB/WR/TE, 2019–2025, 213): 28% lasted one game, 46% two or fewer, 70% four or fewer.');
   const defense = page.locator('.pl').filter({ hasText: 'Fff Defense' }).first();
   await defense.getByRole('button').click();

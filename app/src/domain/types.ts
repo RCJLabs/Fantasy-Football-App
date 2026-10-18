@@ -37,6 +37,8 @@ export interface Player {
   depthOrder?: number;
   rank?: number; // Sleeper search_rank (lower = more relevant)
   gsis?: string;
+  /** ESPN athlete id, for his news. */
+  espnId?: string;
 }
 
 /** One source's projection for one player-week. Stats use Sleeper keys. */

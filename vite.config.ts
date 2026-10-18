@@ -10,7 +10,7 @@ const base = process.env.BASE_PATH ?? './';
 // Pages can't send headers, so the CSP ships as a meta tag (production only: dev needs inline HMR).
 const CSP = [
   "default-src 'self'",
-  "connect-src 'self' https://api.sleeper.app https://api.sleeper.com https://api.fantasycalc.com https://api.anthropic.com",
+  "connect-src 'self' https://api.sleeper.app https://api.sleeper.com https://api.fantasycalc.com https://api.anthropic.com https://site.api.espn.com",
   "img-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self'",

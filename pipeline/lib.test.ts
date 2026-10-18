@@ -96,6 +96,9 @@ describe('injury report', () => {
     expect(map.get('30')).toBe('00-3');
     const players = compactPlayers(dump, latestInjuryReport(csvRecords(csv), 6), map);
     expect(players.find((p) => p.id === '20')).toMatchObject({ gsis: '00-2', prac: 'Full' });
+    // The ESPN id rides along for the app's news; a player without one gets none.
+    expect(players.find((p) => p.id === '30')!.espn).toBe('777');
+    expect(players.find((p) => p.id === '20')!.espn).toBeUndefined();
   });
   it("flags players who weren't active in their team's last game", () => {
     // SEA played weeks 4 and 5 (week 6 not yet); DEN was on bye in week 5.

@@ -198,6 +198,8 @@ export function compactPlayers(dump: Record<string, RawPlayer>, report?: InjuryR
     if (p.depth_chart_position) cp.dp = p.depth_chart_position;
     if (typeof p.depth_chart_order === 'number') cp.do = p.depth_chart_order;
     if (typeof p.search_rank === 'number' && p.search_rank < 9_999_999) cp.rk = p.search_rank;
+    const espn = String(p.espn_id ?? '').trim();
+    if (/^\d+$/.test(espn)) cp.espn = espn;
     const gsis = p.gsis_id?.trim() || gsisBySleeper?.get(id);
     if (gsis) {
       cp.gsis = gsis;
