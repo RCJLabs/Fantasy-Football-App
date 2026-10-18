@@ -19,8 +19,11 @@ Code:
   - Items of type `Rotowire` are RotoWire's blurbs, which ESPN licenses. They're labelled "RotoWire via ESPN" and have no
     espn.com link.
   - The rest are ESPN's own stories.
-- **Players:** matched through Sleeper's `espn_id`, which the daily player file now carries (`espn`). Players without one,
-  team defenses among them, get no news section.
+- **Players:** matched by ESPN id, which the daily player file now carries (`espn`).
+  - Sleeper's own `espn_id` covered only 881 of 3,089 players in the first real build (2026-10-18).
+  - nflverse's weekly rosters fill in the rest: their `espn_id`, matched by `sleeper_id` or gsis id.
+  - The build's summary line counts players with an id.
+  - Players without one, team defenses among them, get no news section.
 
 ## Data rules
 

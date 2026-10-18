@@ -160,6 +160,31 @@ export function sleeperToGsis(dump: Record<string, RawPlayer>, rosterRecords: Ar
   return out;
 }
 
+const espnId = (x: unknown): string | undefined => {
+  const s = String(x ?? '').trim();
+  return /^\d+$/.test(s) ? s : undefined;
+};
+
+/**
+ * Sleeper player_id → ESPN athlete id, for the app's news. Sleeper's own `espn_id` covered 881 of 3,089 players in
+ * the 2026-10-18 build, so nflverse weekly rosters (`espn_id`, matched by `sleeper_id` or gsis id) fill in the rest.
+ */
+export function sleeperToEspn(dump: Record<string, RawPlayer>, rosterRecords: Array<Record<string, string>>, gsisBySleeper: ReadonlyMap<string, string>): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const [id, p] of Object.entries(dump)) {
+    const e = espnId(p.espn_id);
+    if (e) out.set(id, e);
+  }
+  const sleeperByGsis = new Map([...gsisBySleeper].map(([sid, g]) => [g, sid]));
+  for (const r of rosterRecords) {
+    const e = espnId(r.espn_id);
+    if (!e) continue;
+    const sid = r.sleeper_id && r.sleeper_id !== 'NA' ? r.sleeper_id : r.gsis_id && r.gsis_id !== 'NA' ? sleeperByGsis.get(r.gsis_id) : undefined;
+    if (sid && !out.has(sid)) out.set(sid, e);
+  }
+  return out;
+}
+
 /**
  * gsis ids of players who weren't active in their team's last game before `beforeWeek`: inactive, or on a reserve
  * list (nflverse weekly rosters). A game counts once games.csv has its final score. The Questionable model uses it.
@@ -183,7 +208,13 @@ export function missedLastGame(rosterRecords: Array<Record<string, string>>, gam
 }
 
 /** Sleeper players dump → compact records for rostered/injured players, joined with the injury report. */
-export function compactPlayers(dump: Record<string, RawPlayer>, report?: InjuryReport, gsisBySleeper?: Map<string, string>, missed?: ReadonlySet<string>): CompactPlayer[] {
+export function compactPlayers(
+  dump: Record<string, RawPlayer>,
+  report?: InjuryReport,
+  gsisBySleeper?: Map<string, string>,
+  missed?: ReadonlySet<string>,
+  espnBySleeper?: ReadonlyMap<string, string>,
+): CompactPlayer[] {
   const out: CompactPlayer[] = [];
   for (const [id, p] of Object.entries(dump)) {
     if (!p.team && !p.injury_status) continue;
@@ -198,8 +229,8 @@ export function compactPlayers(dump: Record<string, RawPlayer>, report?: InjuryR
     if (p.depth_chart_position) cp.dp = p.depth_chart_position;
     if (typeof p.depth_chart_order === 'number') cp.do = p.depth_chart_order;
     if (typeof p.search_rank === 'number' && p.search_rank < 9_999_999) cp.rk = p.search_rank;
-    const espn = String(p.espn_id ?? '').trim();
-    if (/^\d+$/.test(espn)) cp.espn = espn;
+    const espn = espnBySleeper?.get(id) ?? espnId(p.espn_id);
+    if (espn) cp.espn = espn;
     const gsis = p.gsis_id?.trim() || gsisBySleeper?.get(id);
     if (gsis) {
       cp.gsis = gsis;

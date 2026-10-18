@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compactPlayers, csvRecords, easternToUtcIso, gamesFromCsv, isEasternDst, latestInjuryReport, missedLastGame, parseCsv, practiceStatus, projectionAccuracy, sleeperToGsis, toSleeperTeam } from './lib';
+import { compactPlayers, csvRecords, easternToUtcIso, gamesFromCsv, isEasternDst, latestInjuryReport, missedLastGame, parseCsv, practiceStatus, projectionAccuracy, sleeperToEspn, sleeperToGsis, toSleeperTeam } from './lib';
 
 describe('csv', () => {
   it('handles quotes, escaped quotes, empty quoted fields and CRLF', () => {
@@ -96,9 +96,14 @@ describe('injury report', () => {
     expect(map.get('30')).toBe('00-3');
     const players = compactPlayers(dump, latestInjuryReport(csvRecords(csv), 6), map);
     expect(players.find((p) => p.id === '20')).toMatchObject({ gsis: '00-2', prac: 'Full' });
-    // The ESPN id rides along for the app's news; a player without one gets none.
+    // The ESPN id rides along for the app's news: Sleeper's own, else nflverse's weekly rosters (by sleeper_id, then gsis).
     expect(players.find((p) => p.id === '30')!.espn).toBe('777');
     expect(players.find((p) => p.id === '20')!.espn).toBeUndefined();
+    const espn = sleeperToEspn(dump, rosters, map);
+    expect(espn).toEqual(new Map([['30', '777'], ['20', '1'], ['99', '5']]));
+    expect(compactPlayers(dump, undefined, map, undefined, espn).find((p) => p.id === '20')!.espn).toBe('1');
+    const byGsis = sleeperToEspn({ '40': { player_id: '40', full_name: 'D', position: 'WR', team: 'DEN', espn_id: 'NA' } }, csvRecords('gsis_id,sleeper_id,espn_id\n00-4,NA,444'), new Map([['40', '00-4']]));
+    expect(byGsis.get('40')).toBe('444');
   });
   it("flags players who weren't active in their team's last game", () => {
     // SEA played weeks 4 and 5 (week 6 not yet); DEN was on bye in week 5.

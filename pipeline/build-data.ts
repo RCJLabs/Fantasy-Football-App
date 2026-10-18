@@ -29,7 +29,7 @@ import type { StatLine } from '../app/src/domain/types';
 import type { RawPlayer, RawState } from '../app/src/sleeper/raw';
 import { parquetReadObjects } from 'hyparquet';
 import { buildBaselineFile, ffoppStats, SKILL, type SleeperRow } from './baseline';
-import { compactPlayers, csvRecords, gamesFromCsv, latestInjuryReport, missedLastGame, projectionAccuracy, sleeperToGsis, type PointsRow } from './lib';
+import { compactPlayers, csvRecords, gamesFromCsv, latestInjuryReport, missedLastGame, projectionAccuracy, sleeperToEspn, sleeperToGsis, type PointsRow } from './lib';
 import { defGames, dstWeek } from './dst';
 import { buildMatchups } from './matchups';
 import { buildNextSeasonFile, type ContractRow, contractThrough, defenseSums, fantasyPos, type NextSeasonFit, normalizeName, seasonSums, teamGames } from './next-season';
@@ -338,7 +338,7 @@ async function main() {
     season,
     week,
     ...(report ? { injuryReportWeek: report.week } : {}),
-    players: compactPlayers(dump, report, gsisBySleeper, missedLastGame(rosterRecords, gamesRecords, season, week)),
+    players: compactPlayers(dump, report, gsisBySleeper, missedLastGame(rosterRecords, gamesRecords, season, week), sleeperToEspn(dump, rosterRecords, gsisBySleeper)),
   };
   const scheduleFile: ScheduleFile = {
     schemaVersion: DATA_SCHEMA_VERSION,
