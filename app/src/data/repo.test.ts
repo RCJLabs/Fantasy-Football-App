@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { StatLine } from '../domain/types';
 import { indexProjections } from '../sleeper/parse';
+import type { RawProjection } from '../sleeper/raw';
 import type { PlayersFile } from './contracts';
-import { baselineProjectionRows, hasOffenseProjections, playersFromFile, staleDataNote } from './repo';
+import { baselineProjectionRows, compactStats, hasOffenseProjections, playersFromFile, staleDataNote } from './repo';
 
 const file = (injuryReportWeek: number | undefined): PlayersFile => ({
   schemaVersion: 1,
@@ -72,5 +73,16 @@ describe('baseline fallback', () => {
       { player_id: 'c', stats: { rec: 4 }, team: 'CCC' },
       { player_id: 'x', stats: { rush_yd: 30 }, team: null },
     ]);
+  });
+});
+
+describe('week stats', () => {
+  it('keeps only the stats that stat lines show, and only players who have some', () => {
+    const rows: RawProjection[] = [
+      { player_id: 'w1', stats: { rec: 5, rec_tgt: 7, rec_yd: 89, pts_ppr: 13.9, off_snp: 51, rec_td: 0 } },
+      { player_id: 'k1', stats: { pts_ppr: 0, gp: 1 } },
+      { player_id: 'x', stats: null },
+    ];
+    expect(compactStats(rows)).toEqual({ w1: { rec: 5, rec_tgt: 7, rec_yd: 89 } });
   });
 });

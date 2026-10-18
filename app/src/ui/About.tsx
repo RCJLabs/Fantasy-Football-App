@@ -40,6 +40,11 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             together (a QB and his receivers; a QB and the defense he faces). It's an estimate, not a guarantee.
           </li>
           <li>
+            <strong>Matchup</strong>: both lineups slot by slot, with Sleeper&apos;s live points, each starter&apos;s projection and, once his game starts,
+            his stat line. Each side&apos;s projected final adds what&apos;s left of its starters&apos; projections to the points so far. While a starter&apos;s
+            game is on, the tab checks Sleeper every minute; stat lines come from Sleeper&apos;s stats, which can lag its scores by up to 5 minutes.
+          </li>
+          <li>
             <strong>Playoff mode</strong>: in playoff weeks the lineup maximizes your chance to win the round (both weeks of a two-week round),
             not expected points. Favorites narrow the range of outcomes, underdogs widen it. It only departs from the max-points lineup when the
             edge is at least half a percentage point. You can switch modes in any week.

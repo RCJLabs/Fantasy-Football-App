@@ -109,6 +109,21 @@
     It doesn't change projections.
   - The archive also runs before Sunday's 4 pm games (after their inactives) and before SNF in EDT, so every slate gets a late prediction.
 
+- **Live matchup — built (2026-10-18):** the owner's request.
+  - **Lineups:** the Matchup tab shows both lineups slot by slot.
+    - Yours is as set in Sleeper, since that's what scores; the recommended one stays on the Lineup tab.
+    - The opponent's includes the model's fill-ins for starters who can't play, marked "assumed".
+  - **Each starter:**
+    - before his game: his projection;
+    - once it starts: Sleeper's points so far against his projection, and his stat line from Sleeper's stats.
+  - **Each side:** points so far, a projected final (points so far plus what's left of each starter's projection, by time played),
+    and how many starters are playing or still to play.
+  - **Win chance:** for the lineup as set, with the recommended lineup's beside it when they differ.
+  - **Refresh:** while a starter's game is on and the page is open, the tab reloads scores and lineups from Sleeper every minute.
+    Stat lines load about every 5 minutes, since Sleeper's CDN keeps a copy that long.
+  - **Not verified yet:** whether Sleeper's stats endpoint updates during games. It was checked only on a finished week (spike (g)).
+    If it doesn't, stat lines appear only once Sleeper fills them in; points still come from the matchups.
+
 - **Matchup context, display only — built (2026-10-16):** this is roadmap item 7.
   - **Defense vs position:** each PPR game is compared with that player's average in his other games (leave-one-out, players with 3+ games).
     - The edges are summed per defense and position, per game, then shrunk toward zero with 4 pseudo-games of an average defense `[design]`.
@@ -587,7 +602,7 @@ What we build instead is a **calculated consensus**: an average of independent *
 | **Sleeper API** `api.sleeper.app/v1` (user, leagues, league, rosters, users, matchups, transactions, traded_picks, state, trending) | League import, opponents, waivers | **Browser-direct**, keyless, <1000 calls/min | Non-commercial; trending requires attribution `[reported]` | Endpoints `[reported]` (ffscrapr source, unmaintained since 2024-10; `/state/nfl` from training knowledge). CORS `ACAO: *` `[reported]`. **Spike (a1)** |
 | **Sleeper `/players/nfl`** | Player DB, injury status, depth order, cross-IDs | Pipeline ≤1×/day, trimmed | Same | Size "~5 MB" `[unverified]`; measured in spike |
 | **Sleeper projections** (undocumented): `api.sleeper.com/projections/nfl/{season}/{week}?season_type=regular&position[]=…` and `api.sleeper.app/v1/projections/nfl/{season_type}/{season}/{week}` | MVP projection source (rows carry `company: "rotowire"` `[reported]`), incl. K/DEF/IDP if present | **On the device** for users. The private pipeline also stores snapshots for backtesting `[design; licensing untested]` | RotoWire's data; never republished | Report that the v1 path went empty in 2026 `[unverified]`. CORS on `api.sleeper.com` unknown. **Spikes (a2), (b), (e), (f)** |
-| **Sleeper stats** (undocumented) `api.sleeper.com/stats/nfl/{season}/{week}?season_type=regular` | Engine golden test; possible snap fallback | Pipeline / dev | Same | Fields and team snap totals `[unverified]`; **spike (g)** |
+| **Sleeper stats** (undocumented) `api.sleeper.com/stats/nfl/{season}/{week}?season_type=regular` | Engine golden test; possible snap fallback; the Matchup tab's stat lines (display only, since 2026-10-18) | Pipeline / dev; **on the device** for stat lines | Same | Fields and team snap totals `[unverified]`; **spike (g)**. CORS `*`, CDN copy up to 5 min `[verified: spike (a)]`; updates during games `[unverified]` |
 | **nflverse** releases: pbp, stats_player, injuries, depth_charts, ftn_charting, pfr_advstats, nextgen_stats, weekly rosters, snap_counts | Usage, environment, P(play) training, ID joins, backtests | Pipeline (release assets send no CORS headers `[verified]`) | Broadly CC-BY 4.0; FTN data CC-BY-SA 4.0 ("FTN Data via nflverse") `[verified]`. Underlying NFL, PFR and NGS data "belong to their respective owners" `[verified: nflreadr Terms]`, so we publish derived aggregates only | Updated 10-15; ftn_charting 10-14; snap_counts 10-13 (lags ~2 days) `[verified]` |
 | **ffopportunity** (`ep_weekly`, stat-level `*_exp` incl. first downs) | Baseline, usage/regression | Pipeline | **CC-BY-SA 4.0** `[verified]`; published derivatives carry it (§4 rule 6) | 2026 Weeks 1–5 present; trained 2006–20, recalibrate `[verified]` |
 | **nfldata `games.csv`** | Kickoff times (locks), lines → implied totals, QB IDs, rest/roof | Pipeline | **No licence file; line provenance unknown** `[verified]`. Publish derived implied totals only | Commits every ~10–30 min; lines only for near weeks `[verified]` |

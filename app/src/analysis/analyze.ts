@@ -108,6 +108,10 @@ export interface TeamSide {
   rosterId: number;
   name: string;
   rows: Array<PlayerRow | null>;
+  /** Starters by starting slot (null: empty), assumed fill-ins in place. */
+  bySlot: Array<PlayerRow | null>;
+  /** Sleeper's points so far this week (live during games). */
+  points: number;
   dist: Dist;
   /** Bench players assumed to start in place of starters who can't play (opponents fix their holes). */
   assumed?: string[];
@@ -307,7 +311,7 @@ export function teamSide(league: League, roster: Roster, users: readonly LeagueU
     return sub;
   });
   const live = rows.filter(isRow);
-  const side: TeamSide = { rosterId: roster.rosterId, name: teamName(roster, users), rows: live, dist: lineupDist(live, ctx.now) };
+  const side: TeamSide = { rosterId: roster.rosterId, name: teamName(roster, users), rows: live, bySlot: rows, points: m?.points ?? 0, dist: lineupDist(live, ctx.now) };
   if (assumed.length) side.assumed = assumed;
   return side;
 }
@@ -410,7 +414,14 @@ export function analyzeLineup(
   const reshuffled = changes.length > 0 && changes.every((c) => c.kind === 'move');
   const bench = rows.filter((_, i) => !recommendedSet.has(i)).sort((a, b) => b.ev - a.ev);
   const reserve = [...myRoster.reserve, ...myRoster.taxi].map((id) => playerRow(id, league, ctx, points[id]));
-  const me: TeamSide = { rosterId: myRoster.rosterId, name: teamName(myRoster, users), rows: recommendedRows, dist: lineupDist(recommendedRows, ctx.now) };
+  const me: TeamSide = {
+    rosterId: myRoster.rosterId,
+    name: teamName(myRoster, users),
+    rows: recommendedRows,
+    bySlot: recommendedRows,
+    points: myMatchup?.points ?? 0,
+    dist: lineupDist(recommendedRows, ctx.now),
+  };
 
   const analysis: LineupAnalysis = {
     week: ctx.week,
