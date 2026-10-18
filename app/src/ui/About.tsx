@@ -43,8 +43,13 @@ export function About({ onSignOut }: { onSignOut?: () => void }) {
             <strong>Matchup</strong>: both lineups slot by slot, with Sleeper&apos;s live points, each starter&apos;s projection and, once his game starts,
             his stat line and his game&apos;s clock. Each side&apos;s projected final adds what&apos;s left of its starters&apos; projections to the points so far,
             by the game clock. While a starter&apos;s game is on, the tab checks Sleeper every minute; stat lines come from Sleeper&apos;s stats, which can
-            lag its scores. A live feed lists who scored between checks with the win chance before and after, and swing players are the starters
-            left to play whose games move your win chance most, with a what-if for each.
+            lag its scores. A live feed lists who scored between checks with the win chance before and after, a line tracks the win chance
+            through the day, and swing players are the starters left to play whose games move your win chance most, with a what-if for each.
+            Around the league shows every matchup as it stands and the playoff odds now against the start of the week.
+          </li>
+          <li>
+            <strong>Rooting guide</strong> (Home): for each game still to finish, whom to root for across your leagues and your win chance in each
+            if it goes your way or not.
           </li>
           <li>
             <strong>Playoff mode</strong>: in playoff weeks the lineup maximizes your chance to win the round (both weeks of a two-week round),

@@ -94,6 +94,13 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(card).toContainText('Better lineup available');
   await expect(page.locator('.league-card').filter({ hasText: 'Dynasty Startup' })).toContainText('pre draft');
   await expect(card.locator('.next-lock')).toHaveText(/^Next lock .+: 2 changes due, 1 Questionable to check at inactives\.$/);
+  // Rooting guide: the games still to finish, whom to root for across both leagues, and each league's win chance either way.
+  const rooting = page.locator('.card.rooting');
+  await expect(rooting.getByRole('heading', { name: 'Rooting guide' })).toBeVisible();
+  await expect(rooting.locator('.root-games > li')).toHaveCount(3); // AAA@BBB, CCC@DDD, EEE@FFF
+  await expect(rooting).toContainText(/Root for \S+ (offense|defense)/);
+  await expect(rooting.locator('.root-games > li').first()).toContainText(/Saturday Night Gridiron: [<>]?\d+% now, [<>]?\d+% if it goes your way, [<>]?\d+% if not/);
+  await rooting.screenshot({ path: testInfo.outputPath('rooting.png') });
   // Across leagues: the keeper and dynasty test leagues share one roster, so every starter is in both lineups.
   const across = page.locator('.card.across');
   const lists = across.locator('.across-list');
@@ -203,6 +210,14 @@ test('username import → league dashboard → lineup, matchup and waivers', asy
   await expect(grid.locator('.mu-cell', { hasText: 'C. Quarterback' }).locator('.mu-pts')).toContainText('proj');
   await expect(grid.locator('.mu-cell', { hasText: 'J. Back' })).toContainText('BYE');
   await expect(grid.locator('.mu-cell', { hasText: 'FFF DEF' })).toBeVisible();
+  // Around the league: every matchup as it stands (mine first), then the playoff odds now against the start of the week.
+  const around = page.locator('.card', { has: page.getByRole('heading', { name: 'Around the league' }) });
+  await expect(around.locator('tbody').first()).toContainText('Test Titans');
+  await expect(around.locator('tbody').first()).toContainText('Rival Raiders');
+  await expect(around.locator('table').first().locator('tbody')).toHaveCount(2);
+  await expect(around.getByRole('heading', { name: 'Playoff odds' })).toBeVisible();
+  await expect(around.locator('table').nth(1).locator('tbody tr')).toHaveCount(4);
+  await expect(around.locator('table').nth(1).locator('thead')).toContainText('Start of week');
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   await page.screenshot({ path: testInfo.outputPath('matchup.png'), fullPage: true });
 
@@ -361,6 +376,16 @@ test('game day: a feed of scores between checks, then swing players with a what-
   await page.locator('.card', { has: page.locator('.versus') }).getByRole('button', { name: 'Refresh' }).click();
   await expect(entry.locator('.feed-lines li')).toHaveText(['+6.0 T. Wideout yours · TD catch, 34 yd']);
   await expect(feed.locator('.feed > li')).toHaveCount(1);
+
+  // Win chance through the day: a line from the checks so far, each readable by keyboard (and in a table).
+  const chart = page.locator('.winchart');
+  await expect(chart.locator('.wc-line')).toBeVisible();
+  await expect(chart.locator('figcaption')).toContainText(/High [<>]?\d+% at .+, low [<>]?\d+% at /);
+  await chart.locator('.wc-box').focus();
+  await expect(chart.locator('.wc-tip')).toContainText(/[<>]?\d+% win chance/);
+  await chart.locator('.wc-box').press('Home');
+  await expect(chart.locator('.wc-tip')).toContainText('11.4–75.0');
+  await expect(chart.locator('.wc-table tbody tr').first()).toContainText('17.4–75.0');
 
   // Swing players: who's left on both sides, with a what-if for one of them.
   const swing = page.locator('.card', { has: page.getByRole('heading', { name: 'Swing players' }) });

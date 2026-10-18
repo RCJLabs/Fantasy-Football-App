@@ -227,6 +227,18 @@ function simulate(o: LeagueOutlook, override: ReadonlyMap<number, { future: Dist
   });
 }
 
+/**
+ * The regular-season odds again with other distributions for this week, by roster id (e.g. its games as they stand
+ * now, or before any of them): later weeks as they were. The same seeded draws, so differences aren't sampling noise.
+ * The outlook's own odds when this week is already decided.
+ */
+export function oddsWithWeek(o: LeagueOutlook, week: ReadonlyMap<number, Dist>): Map<number, TeamOdds> | undefined {
+  const futureCount = o.regularWeeks.filter((w) => o.weeks.includes(w)).length;
+  if (!o.odds || o.regularWeeks.length === futureCount) return o.odds;
+  const teams = new Map([...o.teams].map(([id, t]) => [id, { ...t, regular: [week.get(id) ?? t.regular[0]!, ...t.regular.slice(1)] }]));
+  return simulate({ ...o, teams }, new Map());
+}
+
 /** Win probability in each future week against the scheduled opponent (best lineups on both sides). */
 export function scheduleOutlook(o: LeagueOutlook, rosterId: number): Array<{ week: number; opponent: number | null; winProb: number | null; mean: number }> {
   const me = o.teams.get(rosterId);

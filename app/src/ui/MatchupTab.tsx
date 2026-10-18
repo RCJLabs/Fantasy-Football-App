@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import type { LineupAnalysis, Objective, PlayerRow } from '../analysis/analyze';
+import type { LineupAnalysis, Objective, PlayerRow, WeekContext } from '../analysis/analyze';
+import { currentDists, leagueMatchups, weekStartDists, type TeamNow } from '../analysis/aroundLeague';
 import { emptyFeed, feedPlayers, feedSnapshot, stepFeed, type FeedEvent, type FeedGroup, type LiveFeed } from '../analysis/liveFeed';
 import { gameState, liveMatchup, type LiveSide } from '../analysis/liveMatchup';
+import { oddsWithWeek } from '../analysis/outlook';
 import { projectionPositions } from '../analysis/ros';
 import { swingPlayers, type SwingPlayer } from '../analysis/swing';
 import { loadStored, saveStored } from '../data/cache';
@@ -9,10 +11,12 @@ import { type LeagueData, loadLeagueData, loadWeekStats, type WeekStats } from '
 import { loadScoreboard } from '../data/scoreboard';
 import type { GameClock } from '../domain/types';
 import { Badge, InjuryBadge, slotLabel } from './components';
-import { type LeagueBundle, lineupFor } from './data';
-import { ago, kickoffLabel, pct, pts } from './format';
+import { type LeagueBundle, lineupFor, loadSeason } from './data';
+import { ago, kickoffLabel, pct, pts, shortName } from './format';
+import { useAsync } from './hooks';
 import { buzzPref, setBuzzPref } from './prefs';
 import { statChange, statLine } from './statLine';
+import { WinChart } from './WinChart';
 
 /** How often the Matchup tab checks Sleeper's scores while a starter's game is on and the page is open. [design] */
 const LIVE_POLL = 60_000;
@@ -24,13 +28,6 @@ const MIN_SWING = 0.01;
 /** A buzz for your player's 6+ points at once, or a 10-point move in your win chance. [design] */
 const BIG_POINTS = 6;
 const BIG_WIN = 0.1;
-
-/** "J. Jefferson" (a defense by its team) so two lineups fit side by side on a phone. */
-function shortName(row: Pick<PlayerRow, 'name' | 'pos' | 'team'>): string {
-  if (row.pos === 'DEF') return row.team ? `${row.team} DEF` : row.name;
-  const [first, ...rest] = row.name.split(' ');
-  return rest.length && first ? `${first[0]}. ${rest.join(' ')}` : row.name;
-}
 
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
 const clockTime = (ms: number) => timeFmt.format(new Date(ms));
@@ -63,13 +60,14 @@ export function MatchupTab({ b, base, objective, now }: { b: LeagueBundle; base:
   const [clock, setClock] = useState<ReadonlyMap<string, GameClock> | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The league as of the last check: Sleeper's scores and lineups, and the game clocks.
+  const data = live?.data ?? b.data;
+  const ctx = useMemo(() => ({ ...b.ctx, now: live?.at ?? b.ctx.now, ...(clock ? { clock } : {}) }), [b, live, clock]);
   const a = useMemo(() => {
     if (!live && !clock) return base;
-    const data = live?.data ?? b.data;
     const myRoster = data.rosters.find((r) => r.rosterId === b.myRoster!.rosterId) ?? b.myRoster!;
-    const ctx = { ...b.ctx, now: live?.at ?? b.ctx.now, ...(clock ? { clock } : {}) };
     return lineupFor({ ...b, data, myRoster, ctx }, objective ?? base.objective) ?? base;
-  }, [b, base, live, clock, objective]);
+  }, [b, base, data, ctx, objective]);
   const view = useMemo(() => liveMatchup(a, now), [a, now]);
   const positions = useMemo(() => projectionPositions(b.league), [b.league]);
   const started = [...view.me.slots, ...(view.opponent?.slots ?? [])].some((r) => r && r.kickoff !== null && r.kickoff <= now);
@@ -193,6 +191,7 @@ export function MatchupTab({ b, base, objective, now }: { b: LeagueBundle; base:
           </button>
         </p>
         {error ? <p class="problem problem-error">{error}</p> : null}
+        {feed && a.winProbCurrent !== undefined ? <WinChart timeline={feed.timeline} /> : null}
       </div>
 
       {started && feed ? (
@@ -232,6 +231,7 @@ export function MatchupTab({ b, base, objective, now }: { b: LeagueBundle; base:
           {opp?.assumed.size ? ` ${opp.name} is assumed to replace starters who can't play (marked “assumed”).` : ''}
         </p>
       </div>
+      <AroundCard b={b} data={data} ctx={ctx} />
       {toast ? <Toast g={toast} onClose={() => setToast(null)} /> : null}
     </div>
   );
@@ -445,6 +445,87 @@ function WhatIf({ s }: { s: SwingPlayer }) {
         If {s.row.name} finishes with <strong>{pts(x)}</strong> points (expected {pts(s.mean)}): your win chance <strong>{pct(s.winIf(x))}</strong>
         <input type="range" min={lo} max={hi} step={0.5} value={x} onInput={(e) => setX(Number((e.currentTarget as HTMLInputElement).value))} />
       </label>
+    </div>
+  );
+}
+
+/** Both teams of a matchup with their win chances (one row without an opponent). */
+const sidesOf = (p: { a: TeamNow; b?: TeamNow; winA?: number }): Array<{ t: TeamNow; win: number | undefined }> => [
+  { t: p.a, win: p.winA },
+  ...(p.b ? [{ t: p.b, win: p.winA === undefined ? undefined : 1 - p.winA }] : []),
+];
+
+/** Every matchup this week as it stands, and the playoff odds now against the start of the week. */
+function AroundCard({ b, data, ctx }: { b: LeagueBundle; data: LeagueData; ctx: WeekContext }) {
+  const myId = b.myRoster?.rosterId;
+  const pairs = useMemo(() => leagueMatchups(b.league, data.rosters, data.users, data.matchups, ctx, myId), [b.league, data, ctx, myId]);
+  const season = useAsync(() => loadSeason(b), [b]);
+  const outlook = season.data?.outlook;
+  // The start of the week from the lineups as the page loaded them; now from the last check.
+  const start = useMemo(() => (outlook ? oddsWithWeek(outlook, weekStartDists(b.league, b.data.rosters, b.data.users, b.data.matchups, b.ctx)) : undefined), [outlook, b]);
+  const odds = useMemo(() => (outlook ? oddsWithWeek(outlook, currentDists(pairs)) : undefined), [outlook, pairs]);
+  if (pairs.length < 2) return null;
+  const records = new Map(data.rosters.map((r) => [r.rosterId, `${r.wins}-${r.losses}${r.ties ? `-${r.ties}` : ''}`]));
+  const table = odds && start ? [...odds.values()].sort((x, y) => y.pPlayoffs - x.pPlayoffs) : [];
+  const name = (id: number) => pairs.flatMap((p) => [p.a, ...(p.b ? [p.b] : [])]).find((t) => t.rosterId === id)?.name ?? `Team ${id}`;
+  return (
+    <div class="card">
+      <h2>Around the league</h2>
+      <table class="around">
+        <thead>
+          <tr>
+            <th>Team</th>
+            <th class="num">Points</th>
+            <th class="num">Proj</th>
+            <th class="num">Win</th>
+          </tr>
+        </thead>
+        {pairs.map((p) => (
+          <tbody key={p.a.rosterId} class={p.a.rosterId === myId ? 'around-mine' : undefined}>
+            {sidesOf(p).map(({ t, win }) => (
+              <tr>
+                <td>{t.rosterId === myId ? <strong>{t.name}</strong> : t.name}</td>
+                <td class="num">{pts(t.points)}</td>
+                <td class="num muted">{pts(t.dist.mean)}</td>
+                <td class="num">{win === undefined ? '–' : pct(win)}</td>
+              </tr>
+            ))}
+          </tbody>
+        ))}
+      </table>
+      {table.length ? (
+        <>
+          <h3>Playoff odds</h3>
+          <table class="around">
+            <thead>
+              <tr>
+                <th>Team</th>
+                <th class="num">Record</th>
+                <th class="num">Start of week</th>
+                <th class="num">Now</th>
+              </tr>
+            </thead>
+            <tbody>
+              {table.map((t) => (
+                <tr key={t.rosterId} class={t.rosterId === myId ? 'around-mine' : undefined}>
+                  <td>{t.rosterId === myId ? <strong>{name(t.rosterId)}</strong> : name(t.rosterId)}</td>
+                  <td class="num muted">{records.get(t.rosterId) ?? ''}</td>
+                  <td class="num muted">{pct(start!.get(t.rosterId)?.pPlayoffs)}</td>
+                  <td class="num">{pct(t.pPlayoffs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p class="muted small">
+            The Season tab&apos;s simulation of the rest of the season, with this week&apos;s games as they stand now (points so far plus what&apos;s
+            left of each lineup) against before this week&apos;s first kickoff. Later weeks are as on the Season tab.
+          </p>
+        </>
+      ) : season.loading ? (
+        <p class="muted small">Loading playoff odds…</p>
+      ) : season.error ? (
+        <p class="muted small">Playoff odds didn&apos;t load: {season.error.message}</p>
+      ) : null}
     </div>
   );
 }

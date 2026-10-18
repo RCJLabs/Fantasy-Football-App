@@ -404,6 +404,143 @@ h3 {
   padding: 0 0.2rem;
 }
 
+/* Matchup tab: win chance through the day. One series in the accent; hairline grid; hover or arrow keys for each check. */
+.winchart {
+  margin: 0.6rem 0 0;
+}
+.wc-box {
+  position: relative;
+  width: 100%;
+  outline-offset: 2px;
+}
+.wc-box svg {
+  display: block;
+  overflow: visible;
+}
+.wc-grid,
+.wc-mid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.wc-mid {
+  stroke: var(--muted);
+  stroke-opacity: 0.5;
+}
+.wc-tick,
+.wc-end {
+  fill: var(--muted);
+  font-size: 11px;
+}
+.wc-end {
+  fill: var(--text);
+  font-weight: 600;
+}
+.wc-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.wc-dot {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+.wc-cross {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+.wc-hit {
+  fill: transparent;
+  cursor: crosshair;
+}
+.wc-tip {
+  position: absolute;
+  top: 0;
+  width: 150px;
+  padding: 0.3rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  pointer-events: none;
+}
+.winchart details {
+  margin-top: 0.3rem;
+}
+.wc-table {
+  border-collapse: collapse;
+  margin-top: 0.3rem;
+  font-variant-numeric: tabular-nums;
+}
+.wc-table th,
+.wc-table td {
+  padding: 0.15rem 0.75rem 0.15rem 0;
+  text-align: left;
+}
+
+/* Matchup tab: around the league, each matchup its own row group. */
+.around {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.around th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding: 0 0.4rem 0.3rem 0;
+}
+.around td {
+  padding: 0.25rem 0.4rem 0.25rem 0;
+  overflow-wrap: anywhere;
+}
+.around tbody {
+  border-top: 1px solid var(--border);
+}
+.around .num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.around th:last-child,
+.around td:last-child {
+  padding-right: 0;
+}
+.around-mine {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* Home: rooting guide, a game per item. */
+.root-games {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+}
+.root-games > li {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--border);
+}
+.root-games > li:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.root-sides {
+  list-style: none;
+  padding: 0;
+  margin: 0.2rem 0;
+  display: grid;
+  gap: 0.15rem;
+  overflow-wrap: anywhere;
+}
+.root-games p {
+  margin: 0.2rem 0 0;
+}
+
 /* Matchup tab: swing players, each opening a what-if slider. */
 .swing {
   list-style: none;

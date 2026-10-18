@@ -134,22 +134,25 @@
   - **Not verified yet:** whether Sleeper's stats endpoint updates during games. It was checked only on a finished week (spike (g)).
     If it doesn't, stat lines appear only once Sleeper fills them in; points still come from the matchups.
 
-- **Game day — 1, 3 and 6 built (2026-10-18), the rest queued:** the owner asked for a more expansive, immersive and interactive
-  game day; all seven ideas weighed went into the queue ([gameday.md](gameday.md)).
-  - **Built:**
-    1. **Live feed:** who scored between checks on both sides, with the win chance before and after, what happened once Sleeper's
-       stat line catches up, a pop-up, and a buzz on big plays. Kept on the device per league and week.
-    3. **Swing players:** starters left to play on both sides, ranked by how much their game moves your win chance, with a what-if
-       slider. Same normal model and same-game correlations as the win chance.
-    6. **Game clock:** ESPN's unofficial scoreboard, loaded by the browser while games are on: quarter, clock, score, possession,
-       red zone. In the Matchup tab it also replaces the 3¼-hour guess for how much of a started game is left, in projected
-       finals, the win chance and swing players.
-  - **Queued, in this order:**
-    2. **Win-chance graph of the day:** the feed already keeps each check's win chance and scores (gaps while the app was closed).
-    4. **Rooting guide:** for each NFL game, your stake across all your leagues minus your opponents' (extends Across leagues).
-    5. **Around the league:** every matchup live, plus playoff odds if today's results hold (the season simulation exists).
-    7. **Scoring plays for your players:** ESPN's game summary. Browsers may read it, but it's about 640 KB per game and its plays
-       carry no athlete ids, so they'd be matched by name in the text.
+- **Game day — 1–6 built (2026-10-18), 7 queued:** the owner asked for a more expansive, immersive and interactive game day; all
+  seven ideas weighed went into the queue ([gameday.md](gameday.md)). 1, 3 and 6 came first (PR #45), then 2, 4 and 5.
+  - **Built** (numbered as the ideas were):
+    - **1. Live feed:** who scored between checks on both sides, with the win chance before and after, what happened once
+      Sleeper's stat line catches up, a pop-up, and a buzz on big plays. Kept on the device per league and week.
+    - **2. Win-chance graph of the day:** a line in the Matchup tab from the feed's checks, with a hover readout, keyboard steps
+      and a table; breaks where the app was closed.
+    - **3. Swing players:** starters left to play on both sides, ranked by how much their game moves your win chance, with a
+      what-if slider. Same normal model and same-game correlations as the win chance.
+    - **4. Rooting guide:** a Home card. For each NFL game not over: whom to root for by side of the ball (expected points left,
+      yours minus your opponents', over all your leagues), and each league's win chance if the game goes your way or not.
+    - **5. Around the league:** every matchup as it stands in the Matchup tab, and playoff odds at the start of the week and now
+      (the season simulation rerun with this week's games as they stand).
+    - **6. Game clock:** ESPN's unofficial scoreboard, loaded by the browser while games are on: quarter, clock, score,
+      possession, red zone. In the Matchup tab it also replaces the 3¼-hour guess for how much of a started game is left, in
+      projected finals, the win chance and swing players.
+  - **Queued:**
+    - **7. Scoring plays for your players:** ESPN's game summary. Browsers may read it, but it's about 640 KB per game and its
+      plays carry no athlete ids, so they'd be matched by name in the text.
     - **Late swaps from the Matchup tab:** a shortcut to the Lineup tab's late-swap advice, which already re-optimizes around
       players whose games have started.
   - **Not possible without a server:** alerts while the app is closed (the Phase 3 Worker; decision 6 below); league chat, which
