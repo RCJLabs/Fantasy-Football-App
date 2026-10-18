@@ -63,7 +63,9 @@ Code:
     - The live game's clock had moved a minute later.
   - **ESPN game summary** (`summary?event={id}`): HTTP 200 and CORS `*` too, but about 640 KB per game. Its scoring plays and plays
     carry text and team ids, no athlete ids; that matters for idea 7.
-  - **Sleeper stats:** see the live run below.
+  - **Sleeper stats:** HTTP 200, CORS `*`, `cache-control: public, s-maxage=4, stale-while-revalidate=600`; unchanged between two
+    polls a minute apart (the CDN copy was 59 seconds old). Whether its stat lines update during play is for the 70-minute run over
+    the 1 pm games (39145684454); until then the feed's "what happened" may only fill in after Sleeper's stats catch up.
 - **Unit tests:** the scoreboard parser (clock, halftime, overtime, a later week, `WSH` → `WAS`); the share played; the clock in
   `starterDist` and in live or final; the feed (entries, win chance, stats matched late, two plays before the stats catch up,
   older data ignored); swing players (ranking, theirs, conditioning, a QB with his receiver); what a stat change says.
